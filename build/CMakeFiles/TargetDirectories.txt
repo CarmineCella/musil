@@ -1,0 +1,5 @@
+/Users/n4/Desktop/backsynth/build/CMakeFiles/edit_cache.dir
+/Users/n4/Desktop/backsynth/build/CMakeFiles/rebuild_cache.dir
+/Users/n4/Desktop/backsynth/build/src/CMakeFiles/backsynth.dir
+/Users/n4/Desktop/backsynth/build/src/CMakeFiles/edit_cache.dir
+/Users/n4/Desktop/backsynth/build/src/CMakeFiles/rebuild_cache.dir

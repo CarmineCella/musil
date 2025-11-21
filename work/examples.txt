@@ -1,0 +1,27 @@
+F8
+(define sr 44100)
+(* (220 44100 osc) (join (line 0 1 22050) (line 0 1 22050)))
+
+Backsynth
+: sr 44100 ;
+0 1 22050 line 1 0 22050 line join 220 44100 osc *
+
+Supercollider
+{ SinOsc.ar(220) * Env([0,1,0],[1,1],'sine').kr(doneAction:2) ! 2 }.play;
+
+Csound
+i1 0 2
+instr 1; a oscili linen(1,1,1,p3),220; out a; endin
+
+Faust
+process = os.osc(220) * env.ar(2,1,1,0);
+
+TydalCycles
+d1 $ sound "sine*1" # freq 220 # gain (slow 2 $ range 0 1 $ sine)
+
+Nyquist
+(mult (pwlv 0 1 1 1 0) (hzosc 220))
+
+reverse Backsynth
+mul osc 1 220 line 0 1 1 220 
+
