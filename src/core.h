@@ -236,42 +236,35 @@ std::string next (std::istream &in, unsigned& linenum) {
 }
 AtomPtr read (std::istream& in, unsigned& linenum) {
     std::string token = next(in, linenum);
-    if (!token.size()) {
-        return make_atom(); // nil / empty
-    }
+    if (!token.size()) return nullptr; // EOF sentinel
+
     if (token == "(") {
         AtomPtr l = make_atom();
         while (true) {
-            if (in.eof()) {
-                error("unexpected EOF while reading list", l);
-            }
             AtomPtr n = read(in, linenum);
-            if (n->type == SYMBOL && n->lexeme == ")") {
-                break;
-            }
-
-            if (is_nil(n)) {
+            if (!n) {
                 if (in.eof()) {
                     error("unexpected EOF while reading list", l);
                 } else {
                     continue;
                 }
             }
+            if (n->type == SYMBOL && n->lexeme == ")") {
+                break;
+            }
             l->tail.push_back(n);
         }
         return l;
-    } 
-    else if (token == "\'") {
+    } else if (token == "\'") {
         AtomPtr ll = make_atom();
         ll->tail.push_back(make_atom("quote"));
         AtomPtr quoted = read(in, linenum);
-        if (is_nil(quoted) && in.eof()) {
+        if (!quoted && in.eof()) {
             error("unexpected EOF after quote", ll);
         }
         ll->tail.push_back(quoted);
         return ll;
-    } 
-    else if (is_number(token)) {
+    } else if (is_number(token)) {
         return make_atom(atof(token.c_str()));
     } else {
         return make_atom(token);
@@ -807,17 +800,19 @@ AtomPtr fn_print (AtomPtr node, AtomPtr env) {
 	return make_atom ("");
 }
 AtomPtr fn_read (AtomPtr node, AtomPtr env) {
-	unsigned linenum = 0;
-	if (node->tail.size ()) {
-		std::ifstream in (type_check (node->tail.at (0), STRING)->lexeme);
-		if (!in.good ()) error ("[read] cannot open input file", node);
-		AtomPtr r = make_atom ();
-		while (!in.eof ()) {
-			AtomPtr l = read (in, linenum);
-			if (!in.eof ()) r->tail.push_back (l);
-		}
-		return r;
-	} else return read (std::cin, linenum);
+    unsigned linenum = 0;
+    if (node->tail.size ()) {
+        std::ifstream in (type_check (node->tail.at (0), STRING)->lexeme);
+        if (!in.good ()) error ("[read] cannot open input file", node);
+        AtomPtr r = make_atom ();
+        while (true) {
+            AtomPtr l = read(in, linenum);
+            if (!l && in.eof()) break;
+            if (!l) continue;
+            r->tail.push_back(l);
+        }
+        return r;
+    } else return read (std::cin, linenum);
 }
 void replace (std::string &s, std::string from, std::string to) {
 	int idx = 0;
@@ -884,21 +879,23 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 	return l;
 }
 AtomPtr load (const std::string&fname, AtomPtr env) {
-	std::ifstream in (fname);
-	if (!in.good ()) error ("cannot open input file", make_atom(fname));
-	AtomPtr r;
-	unsigned linenum = 0;
-	while (!in.eof ()) {
-		try {
-			AtomPtr l = read (in, linenum);
-			if (!in.eof ()) r = eval (l, env);
-		} catch (std::exception& e) {
-			std::cerr << "[" << fname << ":" << linenum << "] " << e.what () << std::endl;
-		} catch (...) {
-			std::cerr << "unknown error detected" << std::endl;
-		}
-	}
-	return r;
+    std::ifstream in (fname);
+    if (!in.good ()) error ("cannot open input file", make_atom(fname));
+    AtomPtr r;
+    unsigned linenum = 0;
+    while (true) {
+        try {
+            AtomPtr l = read(in, linenum);
+            if (!l && in.eof()) break;
+            if (!l) continue;
+            r = eval(l, env);
+        } catch (std::exception& e) {
+            std::cerr << "[" << fname << ":" << linenum << "] " << e.what () << std::endl;
+        } catch (...) {
+            std::cerr << "unknown error detected" << std::endl;
+        }
+    }
+    return r;
 }
 AtomPtr fn_load (AtomPtr node, AtomPtr env) {
 	return load (type_check (node->tail.at (0), STRING)->lexeme, env);
@@ -982,7 +979,7 @@ AtomPtr add_core (AtomPtr env) {
 	return env;
 }
 void repl (std::istream& in, std::ostream& out, AtomPtr env) {
-	unsigned linenum = 0;;
+	unsigned linenum = 0;
 	while (true) {
 		std::cout << ">> " << std::flush;
 		try {

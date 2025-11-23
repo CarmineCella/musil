@@ -13,8 +13,9 @@
     (begin
       (= total (+ total (array 1)))
       (def value (eval expr))
-      (if (== value expected)
-          (array 1)
+      (def ok (== value expected))
+      (if (== ok (array 1))
+          (print "PASS: " expr "\n")
           (begin
             (= failed (+ failed (array 1)))
             (print "FAIL: " expr " => " value ", expected " expected "\n"))))))
@@ -24,8 +25,8 @@
     (begin
       (print "Total tests: " total ", failed: " failed "\n")
       (if (== failed (array 0))
-          (print "ALL TESTS PASSED\n")
-          (print "SOME TESTS FAILED\n")))))
+          (print "ALL READER TESTS PASSED\n")
+          (print "SOME READER TESTS FAILED\n")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic arrays, equality, arithmetic
@@ -304,6 +305,129 @@
 (test '(info 'typeof t-mac)              '(macro))
 
 (test '(info 'typeof +)                  '(op))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; Currying & partial application
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; simple 2-arg function
+(def two-params
+  (lambda (x y)
+    (+ x y)))
+
+;; full application
+(test '(two-params 2 3) (array 5))
+
+;; partial application: one argument
+(def add2 (two-params 2))
+(test '(add2 10) (array 12))
+
+;; 3-arg function to exercise multi-step currying
+(def add3
+  (lambda (x y z)
+    (+ (+ x y) z)))
+
+;; full application
+(test '(add3 1 2 3) (array 6))
+
+;; partially apply 1 argument
+(def add1 (add3 1))
+(test '(add1 2 3) (array 6))
+
+;; partially apply 2 arguments
+(def add1and2 (add3 1 2))
+(test '(add1and2 3) (array 6))
+
+;; chained partial application
+(test '(((add3 1) 2) 3) (array 6))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Closures
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; classic counter closure
+(def make-counter
+  (lambda (n)
+    (lambda ()
+      (= n (+ n 1))
+      n)))
+
+(def c1 (make-counter 0))
+
+(test '(c1) (array 1))
+(test '(c1) (array 2))
+
+(def c2 (make-counter 10))
+(test '(c2) (array 11))
+
+;; c1 retains its own state
+(test '(c1) (array 3))
+
+;; closure capturing outer variable
+(def outer-val 5)
+
+(def make-adder-with-outer
+  (lambda (y)
+    (lambda (z)
+      (+ (+ outer-val y) z))))  ;; captures outer-val lexically
+
+(def add-from-outer (make-adder-with-outer 2))
+(test '(add-from-outer 3) (array 10))  ;; 5 + 2 + 3
+
+(= outer-val 100)
+(test '(add-from-outer 3) (array 105))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Shadowing (parameters vs globals, nested scopes)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; parameter shadowing a global
+(def x 10)
+
+(def use-x
+  (lambda (x)
+    (+ x 1)))
+
+(test '(use-x 5) (array 6))   ;; uses parameter x=5
+(test 'x         (array 10))  ;; global x unchanged
+
+;; local variable shadowing outer within a lambda
+(def y 5)
+
+(def f
+  (lambda (y)
+    (+ y 1)))
+
+(test '(f 10) (array 11))    ;; uses inner y=10
+(test 'y       (array 5))    ;; outer y still 5
+
+;; lexical vs dynamic-style shadowing: closure should see *lexical* x
+(def x 1)
+
+(def make-lex-adder
+  (lambda (y)
+    (lambda (z)
+      (+ (+ x y) z))))  ;; x captured here (1)
+
+(def add-from-x (make-lex-adder 2))  ;; x=1, y=2
+
+;; rebind x at top level
+(= x 100)
+
+;; closure should still use x=100
+(test '(add-from-x 3) (array 105))  
+
+;; nested shadowing inside lambda body
+(def z 7)
+
+(def g
+  (lambda (z)
+    (begin
+      (def z (+ z 1))
+      z)))
+
+(test '(g 3) (array 4))   ;; inner z = 4
+(test 'z       (array 7)) ;; outer z untouched
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; String operations via (str ...)

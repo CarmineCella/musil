@@ -29,7 +29,6 @@ int main (int argc, char* argv[]) {
 		        throw runtime_error (msg.str ());
 		    }
 		}
-
 		if (argc - optind == 0) {
 			cout << BOLDBLUE << "[musil, version "
 				<< VERSION <<"]" << RESET << endl << endl;

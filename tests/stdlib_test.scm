@@ -19,8 +19,9 @@
     (begin
       (= total (+ total (array 1)))
       (def value (eval expr))
-      (if (== value expected)
-          (array 1)
+      (def ok (== value expected))
+      (if (== ok (array 1))
+          (print "PASS: " expr "\n")
           (begin
             (= failed (+ failed (array 1)))
             (print "FAIL: " expr " => " value ", expected " expected "\n"))))))
@@ -28,10 +29,11 @@
 (def report
   (lambda ()
     (begin
-      (print "Total stdlib tests: " total ", failed: " failed "\n")
+      (print "Total tests: " total ", failed: " failed "\n")
       (if (== failed (array 0))
-          (print "STDLIB: ALL TESTS PASSED\n")
-          (print "STDLIB: SOME TESTS FAILED\n")))))
+          (print "ALL READER TESTS PASSED\n")
+          (print "SOME READER TESTS FAILED\n")))))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Booleans & logic

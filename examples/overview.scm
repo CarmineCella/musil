@@ -124,6 +124,35 @@
 (print (count-down-from-4) "\n")
 (print (count-down-from-4) "\n\n")
 
+(def x 42)
+
+(def make-printer
+  (lambda ()
+    (lambda ()
+      (print "inner sees x = " x "\n"))))
+
+(def p (make-printer))
+
+(print "before changing x, calling p:\n")
+(p)
+
+(= x 99)
+(print "after changing x globally, calling p again:\n")
+(p)
+
+(print "\nparameter shadowing example:\n")
+
+(def x 10)
+
+(def show-shadow
+  (lambda (x)
+    (print "inside show-shadow, x = " x "\n")
+    (+ x 1)))
+
+(print "global x = " x "\n")
+(print "(show-shadow 5) = " (show-shadow 5) "\n")
+(print "global x still = " x "\n\n")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 4. Conditionals and loops
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -305,6 +334,21 @@
 
 (def add2 (two-params 2))  ;; partially applied
 (print "add2 is (two-params 2), (add2 5) = " (add2 5) "\n\n")
+
+(def sum3
+  (lambda (a b c)
+    (+ (+ a b) c)))
+
+(print "sum3 1 2 3 = " (sum3 1 2 3) "\n")
+
+(def add1 (sum3 1))
+(print "(add1 2 3) = " (add1 2 3) "\n")
+
+(def add1and2 (sum3 1 2))
+(print "(add1and2 3) = " (add1and2 3) "\n")
+
+(print "(((sum3 1) 2) 3) = " (((sum3 1) 2) 3) "\n\n")
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; End
