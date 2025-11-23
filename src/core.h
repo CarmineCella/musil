@@ -345,6 +345,10 @@ AtomPtr clone(AtomPtr n) {
     }
     return r;
 }
+struct BreakException : public std::exception {
+    const char* what() const noexcept override { return "break"; }
+};
+AtomPtr fn_break (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_quote (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_def (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_set (AtomPtr, AtomPtr) { return nullptr; } // dummy
@@ -363,6 +367,10 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 		if (node->type != LIST) return node;
 
 		AtomPtr func = eval (node->tail.at (0), env);
+		if (func->op == &fn_break) {
+    		throw BreakException {};
+		}		
+
 		if (func->op == &fn_quote) {
 			args_check (node, 2);
 			return clone(node->tail.at(1));
@@ -402,13 +410,17 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			}
 		}
 		if (func->op == &fn_while) {
-			args_check (node, 3);
-			AtomPtr r = make_atom ();
-			while (type_check (eval (node->tail.at (1), env), ARRAY)->array[0]) {
-				r = eval (node->tail.at (2), env);
+			args_check(node, 3);
+			AtomPtr r = make_atom();
+			while (type_check(eval(node->tail.at(1), env), ARRAY)->array[0]) {
+				try {
+					r = eval(node->tail.at(2), env);
+				} catch (const BreakException&) {
+					break;
+				}
 			}
 			return r;
-		}	
+		}
 		if (func->op == &fn_begin) {
 			args_check (node, 2);
 			for (unsigned i = 0; i < node->tail.size () - 1; ++i) {
@@ -422,39 +434,52 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			args->tail.push_back ((func->type == MACRO ? node->tail.at (i) : eval (node->tail.at (i), env)));
 		}
 		if (func->type == LAMBDA || func->type == MACRO) {
-			AtomPtr vars = func->tail.at (0);
-			AtomPtr body = func->tail.at (1);
-			AtomPtr nenv = make_atom ();
-			nenv->tail.push_back (func->tail.at (2)); // new environment with static binding
-
-			if (vars->tail.size () < args->tail.size ()) error ("[lambda/macro] too many arguments", node);
-			unsigned minargs = (vars->tail.size () > args->tail.size () ? args->tail.size () : vars->tail.size ());
+			AtomPtr vars = func->tail.at(0);
+			AtomPtr body = func->tail.at(1);
+			AtomPtr nenv = make_atom();
+			nenv->tail.push_back(func->tail.at(2)); // parent env (lexical)
+			if (vars->tail.size() < args->tail.size())
+				error("[lambda/macro] too many arguments", node);
+			unsigned minargs = (vars->tail.size() > args->tail.size()
+								? args->tail.size()
+								: vars->tail.size());
 			for (unsigned i = 0; i < minargs; ++i) {
-				extend (vars->tail.at (i), args->tail.at (i), nenv);
+				extend(vars->tail.at(i), args->tail.at(i), nenv);
 			}
-
-			
-			if (vars->tail.size () > args->tail.size ()) {		
+			// Currying / partial application
+			if (vars->tail.size() > args->tail.size()) {
 				AtomPtr vars_rest = make_atom();
 				for (unsigned i = minargs; i < vars->tail.size(); ++i) {
 					vars_rest->tail.push_back(vars->tail.at(i));
 				}
-
 				AtomPtr new_lambda = make_atom();
 				new_lambda->tail.push_back(vars_rest);
-				new_lambda->tail.push_back (body);
-				new_lambda->tail.push_back (nenv);
-				AtomPtr f = make_atom (new_lambda); // return lambda/macro with bounded vars
+				new_lambda->tail.push_back(body);
+				new_lambda->tail.push_back(nenv);
+				AtomPtr f = make_atom(new_lambda);
 				if (func->type == MACRO) f->type = MACRO;
 				return f;
 			}
-			env = nenv;
-			for (unsigned i = 0; i < body->tail.size () - 1; ++i) {
-				eval ((func->type == MACRO ? eval (body->tail.at (i), nenv) : body->tail.at (i)), nenv);
+			if (func->type == LAMBDA) {
+				env = nenv;
+				for (unsigned i = 0; i < body->tail.size() - 1; ++i) {
+					eval(body->tail.at(i), nenv);
+				}
+				node = body->tail.at(body->tail.size() - 1);
+				continue;
+			} else {
+				AtomPtr expansion;
+				if (body->tail.size() == 0) {
+					expansion = make_atom(); // ()
+				} else {
+					for (unsigned i = 0; i < body->tail.size() - 1; ++i) {
+						eval(body->tail.at(i), nenv); // side effects, if any
+					}
+					expansion = eval(body->tail.at(body->tail.size() - 1), nenv);
+				}
+				node = expansion; // new expression to evaluate in the original env
+				continue;
 			}
-			node = (func->type == MACRO ? eval (body->tail.at (body->tail.size () - 1), nenv) 
-				: body->tail.at (body->tail.size () - 1));		
-			continue; 
 		}
 		if (func->type == OP) {
 			args_check (args, func->minargs);
@@ -880,7 +905,12 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 }
 AtomPtr load (const std::string&fname, AtomPtr env) {
     std::ifstream in (fname);
-    if (!in.good ()) error ("cannot open input file", make_atom(fname));
+	if (!in.good ()) {
+		std::string longname = getenv("HOME");
+		longname += "/.musil/" + fname;
+		in.open (longname.c_str());
+		if (!in.good ()) error ("cannot open input file", make_atom(fname));
+	}	
     AtomPtr r;
     unsigned linenum = 0;
     while (true) {
@@ -917,7 +947,8 @@ void add_op (const std::string& lexeme, Functor f, int minargs, AtomPtr env) {
 	extend (make_atom(lexeme), op, env);
 }
 AtomPtr add_core (AtomPtr env) {
-	add_op ("quote", &fn_quote, -1, env); // -1 are checked in the handling function
+	add_op ("break", &fn_break, -1, env); // -1 are checked in the handling function
+	add_op ("quote", &fn_quote, -1, env); 
 	add_op ("def", &fn_def, -1, env);
 	add_op ("=", &fn_set, -1, env);
 	add_op ("lambda", &fn_lambda, -1, env);

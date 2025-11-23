@@ -25,8 +25,8 @@
     (begin
       (print "Total tests: " total ", failed: " failed "\n")
       (if (== failed (array 0))
-          (print "ALL READER TESTS PASSED\n")
-          (print "SOME READER TESTS FAILED\n")))))
+          (print "ALL TESTS PASSED\n")
+          (print "SOME TESTS FAILED\n")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Basic arrays, equality, arithmetic

@@ -31,9 +31,105 @@
     (begin
       (print "Total tests: " total ", failed: " failed "\n")
       (if (== failed (array 0))
-          (print "ALL READER TESTS PASSED\n")
-          (print "SOME READER TESTS FAILED\n")))))
+          (print "ALL TESTS PASSED\n")
+          (print "SOME TESTS FAILED\n")))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Macro tests: function, let, when, unless, schedule
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; ---------------------------------------------------------------------------
+;; function
+;; ---------------------------------------------------------------------------
+
+(function add2 (x)
+  (+ x 2))
+
+(test '(add2 (array 3)) (array 5))
+
+(function addxy (x y)
+  (+ x y))
+
+(test '(addxy (array 2) (array 3)) (array 5))
+
+;; partial application: (addxy 2) returns a closure
+(def add2b (addxy (array 2)))
+(test '(add2b (array 5)) (array 7))
+
+;; typeof for function macro itself (it should be a macro)
+(test '(info 'typeof function) '(macro))
+
+;; ---------------------------------------------------------------------------
+;; let
+;; ---------------------------------------------------------------------------
+
+;; simple let
+(test '(let ((x (array 1))
+             (y (array 2)))
+         (+ x y))
+      (array 3))
+
+;; let with shadowing of outer variable
+(def x (array 10))
+(test '(let ((x (array 5)))
+         (+ x (array 1)))
+      (array 6))
+
+;; let with more bindings
+(test '(let ((a (array 1))
+             (b (array 2))
+             (c (array 3)))
+         (+ a (+ b c)))
+      (array 6))
+
+;; typeof let (macro)
+(test '(info 'typeof let) '(macro))
+
+;; ---------------------------------------------------------------------------
+;; when
+;; ---------------------------------------------------------------------------
+
+(def w1 (array 0))
+(when (> (array 1) (array 0))
+  (begin
+    (= w1 (array 1))))
+(test 'w1 (array 1))
+
+(def w2 (array 0))
+(when (< (array 1) (array 0))
+  (begin
+    (= w2 (array 1))))
+(test 'w2 (array 0))
+
+;; typeof when (macro)
+(test '(info 'typeof when) '(macro))
+
+;; ---------------------------------------------------------------------------
+;; unless
+;; ---------------------------------------------------------------------------
+
+(def u1 (array 0))
+(unless (< (array 1) (array 0))
+  (begin
+    (= u1 (array 1))))
+(test 'u1 (array 1))
+
+(def u2 (array 0))
+(unless (> (array 1) (array 0))
+  (begin
+    (= u2 (array 1))))
+(test 'u2 (array 0))
+
+;; typeof unless (macro)
+(test '(info 'typeof unless) '(macro))
+
+;; ---------------------------------------------------------------------------
+;; schedule
+;; ---------------------------------------------------------------------------
+
+;; We only test that 'schedule' is a macro here; timing/async semantics are
+;; better tested manually or with a more elaborate harness.
+(test '(info 'typeof schedule) '(macro))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Booleans & logic

@@ -22,6 +22,28 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>
 
+AtomPtr fn_schedule(AtomPtr node, AtomPtr env) {
+    args_check(node, 2);
+    AtomPtr expr = node->tail.at(0);
+    AtomPtr delayAtom = type_check(node->tail.at(1), ARRAY);
+    int delay_ms = static_cast<int>(delayAtom->array[0]);
+    AtomPtr expr_clone = clone(expr);
+    AtomPtr env_clone  = clone(env);
+
+    std::thread([expr_clone, env_clone, delay_ms]() {
+        try {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+            eval(expr_clone, env_clone);
+        } catch (const std::exception& e) {
+            std::cerr << "[schedule] error: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "[schedule] unknown error" << std::endl;
+        }
+    }).detach();
+
+    // return ()
+    return make_atom();
+}
 AtomPtr fn_clock (AtomPtr params, AtomPtr env) {
     return make_atom (clock ());
 }
@@ -158,6 +180,7 @@ AtomPtr fn_udpsend (AtomPtr n, AtomPtr env) {
     return  make_atom (1);
 }
 AtomPtr add_system (AtomPtr env) {
+    add_op ("%schedule", &fn_schedule, 2, env);
     add_op ("clock", &fn_clock, 0, env);
     add_op ("dirlist", &fn_dirlist, 1, env);
     add_op ("filestat", &fn_filestat, 1, env);

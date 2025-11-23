@@ -2,6 +2,99 @@
 ;; Musil standard library
 ;; ----------------------
 
+;; ------------------------------------------------------------
+;; Macros layer
+;; ------------------------------------------------------------
+
+;; schedule macro:
+;; (schedule EXPR DELAY)
+;; expands to:
+;;   (%schedule (quote EXPR) DELAY)
+;;
+;; so the expression is *not* evaluated immediately, only later.
+(def schedule
+  (macro (expr delay)
+    (list '%schedule
+          (list 'quote expr)
+          delay)))
+
+
+;; function macro:
+;; (function name (args...) body)
+;; expands to:
+;;   (def name (lambda (args...) body))
+;;
+;; body is a *single* expression; for multiple forms use (begin ...)
+(def function
+  (macro (name args body)
+    (list 'def
+          name
+          (list 'lambda args body))))
+
+
+;; when macro:
+;; (when cond body)
+;; expands to:
+;;   (if cond body '())
+;;
+;; body is a single expression (often (begin ...)).
+(def when
+  (macro (cond body)
+    (list 'if
+          cond
+          body
+          (list 'quote '()))))
+
+
+;; unless macro:
+;; (unless cond body)
+;; expands to:
+;;   (if cond '() body)
+(def unless
+  (macro (cond body)
+    (list 'if
+          cond
+          (list 'quote '())
+          body)))
+
+;; ------------------------------------------------------------
+;; let macro
+;; (let ((x 1) (y 2) ...) body)
+;;   => ((lambda (x y ...) body) 1 2 ...)
+;; body is a single expression (use (begin ...) for multiple)
+;; ------------------------------------------------------------
+
+(def let
+  (macro (bindings body)
+    (begin
+      ;; collect variable names
+      (def vars '())
+      (def n (llength bindings))
+      (def i (array 0))
+
+      (while (< i n)
+        (begin
+          (def b (lindex bindings i))      ;; b = (x expr)
+          (= vars (lappend vars (lindex b (array 0))))
+          (= i (+ i (array 1)))))
+
+      ;; build lambda: (lambda (vars...) body)
+      (def lam (list 'lambda vars body))
+
+      ;; start call as: ( (lambda ...) )
+      (def call (list lam))
+
+      ;; append each value expr to call
+      (= i (array 0))
+      (while (< i n)
+        (begin
+          (def b (lindex bindings i))          ;; b = (x expr)
+          (= call (lappend call (lindex b (array 1))))
+          (= i (+ i (array 1)))))
+
+      call)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Booleans
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -14,66 +107,53 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; eq: structural equality, wraps built-in ==
-(def eq
-  (lambda (a b)
-    (== a b)))
+(function eq (a b)
+  (== a b))
 
-(def not
-  (lambda (x)
-    (if x false true)))
+(function not (x)
+  (if x false true))
 
-(def and
-  (lambda (x y)
-    (if x
-        (if y true false)
-        false)))
+(function and (x y)
+  (if x
+      (if y true false)
+      false))
 
-(def or
-  (lambda (x y)
-    (if x x (if y y false))))
+(function or (x y)
+  (if x x (if y y false)))
 
-(def <>
-  (lambda (n1 n2)
-    (not (eq n1 n2))))
+(function <> (n1 n2)
+  (not (eq n1 n2)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Lists
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def car
-  (lambda (l)
-    (lindex l 0)))
+(function car (l)
+  (lindex l 0))
 
-(def cdr
-  (lambda (l)
-    (lrange l 1 (- (llength l) 1))))
+(function cdr (l)
+  (lrange l 1 (- (llength l) 1)))
 
-(def second
-  (lambda (l)
-    (lindex l 1)))
+(function second (l)
+  (lindex l 1))
 
-(def third
-  (lambda (l)
-    (lindex l 2)))
+(function third (l)
+  (lindex l 2))
 
-(def fourth
-  (lambda (l)
-    (lindex l 3)))
+(function fourth (l)
+  (lindex l 3))
 
-(def lhead
-  (lambda (l)
-    (lappend '() (car l))))
+(function lhead (l)
+  (lappend '() (car l)))
 
-(def llast
-  (lambda (l)
-    (lindex l (- (llength l) 1))))
+(function llast (l)
+  (lindex l (- (llength l) 1)))
 
-(def ltail
-  (lambda (l)
-    (lappend '() (llast l))))
+(function ltail (l)
+  (lappend '() (llast l)))
 
-(def ltake
-  (lambda (l n)
+(function ltake (l n)
+  (begin
     (def ltake-runner
       (lambda (acc l n)
         (if (<= n 0)
@@ -83,19 +163,17 @@
               (ltake-runner acc (cdr l) (- n 1))))))
     (ltake-runner '() l n)))
 
-(def ldrop
-  (lambda (l n)
-    (if (<= n 0)
-        l
-        (ldrop (cdr l) (- n 1)))))
+(function ldrop (l n)
+  (if (<= n 0)
+      l
+      (ldrop (cdr l) (- n 1))))
 
-(def lsplit
-  (lambda (l n)
-    (list (ltake l n) (ldrop l n))))
+(function lsplit (l n)
+  (list (ltake l n) (ldrop l n)))
 
 ;; iterative reverse
-(def lreverse
-  (lambda (l)
+(function lreverse (l)
+  (begin
     (def res '())
     (def i (- (llength l) 1))
     (while (>= i 0)
@@ -104,8 +182,8 @@
         (= i (- i 1))))
     res))
 
-(def match
-  (lambda (e l)
+(function match (e l)
+  (begin
     (def match-runner
       (lambda (acc n e l)
         (if (eq l '())
@@ -115,18 +193,16 @@
               (match-runner acc (+ n 1) e (cdr l))))))
     (match-runner '() 0 e l)))
 
-(def elem
-  (lambda (x l)
-    (if (eq (llength (match x l)) 0)
-        false
-        true)))
+(function elem (x l)
+  (if (eq (llength (match x l)) 0)
+      false
+      true))
 
-(def zip
-  (lambda (l1 l2)
-    (map2 list l1 l2)))
+(function zip (l1 l2)
+  (map2 list l1 l2))
 
-(def dup
-  (lambda (n x)
+(function dup (n x)
+  (begin
     (def dup-runner
       (lambda (acc n x)
         (if (<= n 0)
@@ -140,8 +216,8 @@
 ;; Higher-order operators
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def map
-  (lambda (f l)
+(function map (f l)
+  (begin
     (def map-runner
       (lambda (acc f l)
         (if (eq l '())
@@ -151,8 +227,8 @@
               (map-runner acc f (cdr l))))))
     (map-runner '() f l)))
 
-(def map2
-  (lambda (f l1 l2)
+(function map2 (f l1 l2)
+  (begin
     (def map2-runner
       (lambda (acc f l1 l2)
         (if (or (eq l1 '()) (eq l2 '()))
@@ -162,8 +238,8 @@
               (map2-runner acc f (cdr l1) (cdr l2))))))
     (map2-runner '() f l1 l2)))
 
-(def filter
-  (lambda (f l)
+(function filter (f l)
+  (begin
     (def filter-runner
       (lambda (acc f l)
         (if (eq l '())
@@ -173,103 +249,84 @@
               (filter-runner acc f (cdr l))))))
     (filter-runner '() f l)))
 
-(def foldl
-  (lambda (f z l)
-    (if (eq l '())
-        z
-        (foldl f (f z (car l)) (cdr l)))))
+(function foldl (f z l)
+  (if (eq l '())
+      z
+      (foldl f (f z (car l)) (cdr l))))
 
-(def flip
-  (lambda (f a b)
-    (f b a)))
+(function flip (f a b)
+  (f b a))
 
-(def comp
-  (lambda (f g x)
-    (f (g x))))
+(function comp (f g x)
+  (f (g x)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Arithmetic helpers (on arrays/scalars)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def getval
-  (lambda (x n)
-    (slice x n 1)))
+(function getval (x n)
+  (slice x n 1))
 
-(def setval
-  (lambda (x v n)
-    (assign x v n 1)))
+(function setval (x v n)
+  (assign x v n 1))
 
-(def succ
-  (lambda (x)
-    (+ x 1)))
+(function succ (x)
+  (+ x 1))
 
-(def pred
-  (lambda (x)
-    (- x 1)))
+(function pred (x)
+  (- x 1))
 
-(def quotient
-  (lambda (a b)
-    (floor (/ a b))))
+(function quotient (a b)
+  (floor (/ a b)))
 
-(def remainder
-  (lambda (a b)
-    (floor (- a (* b (quotient a b))))))
+(function remainder (a b)
+  (floor (- a (* b (quotient a b)))))
 
-(def mod
-  (lambda (a b)
-    (floor (- a (* b (quotient a b))))))
+(function mod (a b)
+  (floor (- a (* b (quotient a b)))))
 
-(def twice
-  (lambda (x)
-    (+ x x)))
+(function twice (x)
+  (+ x x))
 
-(def square
-  (lambda (x)
-    (* x x)))
+(function square (x)
+  (* x x))
 
-(def round
-  (lambda (x)
-    (floor (+ x 0.5))))
+(function round (x)
+  (floor (+ x 0.5)))
 
 ;; mean of an array
-(def mean
-  (lambda (x)
-    (/ (sum x) (size x))))
+(function mean (x)
+  (/ (sum x) (size x)))
 
-(def stddev
-  (lambda (x)
+(function stddev (x)
+  (begin
     (def mu (mean x))
     (def normal (/ 1. (- (size x) 1)))
     (sqrt (* (sum (square (- x mu))) normal))))
 
-(def standard
-  (lambda (x)
+(function standard (x)
+  (begin
     (def mu (mean x))
     (def s (stddev x))
     (/ (- x mu) s)))
 
-(def normal
-  (lambda (x)
-    (/ x (max x))))
+(function normal (x)
+  (/ x (max x)))
 
-(def dot
-  (lambda (a b)
-    (sum (* a b))))
+(function dot (a b)
+  (sum (* a b)))
 
-(def ortho
-  (lambda (a b)
-    (eq (dot a b) 0)))
+(function ortho (a b)
+  (eq (dot a b) 0))
 
-(def norm
-  (lambda (x)
-    (sqrt (sum (* x x)))))
+(function norm (x)
+  (sqrt (sum (* x x))))
 
-(def diff
-  (lambda (x)
-    (- (slice x 1 (size x)) x)))
+(function diff (x)
+  (- (slice x 1 (size x)) x))
 
-(def fac
-  (lambda (x)
+(function fac (x)
+  (begin
     (def fact-worker
       (lambda (a product)
         (if (eq a 0)
@@ -277,8 +334,8 @@
             (fact-worker (- a 1) (* product a)))))
     (fact-worker x 1)))
 
-(def fib
-  (lambda (n)
+(function fib (n)
+  (begin
     (def fib-worker
       (lambda (a b count)
         (if (<= count 1)
@@ -286,20 +343,19 @@
             (fib-worker (+ a b) a (- count 1)))))
     (fib-worker 1 1 n)))
 
-(def ack
-  (lambda (m n)
-    (if (eq m 0)
-        (+ n 1)
-        (if (eq n 0)
-            (ack (- m 1) 1)
-            (ack (- m 1) (ack m (- n 1)))))))
+(function ack (m n)
+  (if (eq m 0)
+      (+ n 1)
+      (if (eq n 0)
+          (ack (- m 1) 1)
+          (ack (- m 1) (ack m (- n 1))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; List-based numeric operators
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def sign
-  (lambda (l)
+(function sign (l)
+  (begin
     (def sign-runner
       (lambda (acc l)
         (if (eq l '())
@@ -311,8 +367,8 @@
               (sign-runner acc (cdr l))))))
     (sign-runner '() l)))
 
-(def compare
-  (lambda (op l)
+(function compare (op l)
+  (begin
     (def cmp-runner
       (lambda (n l)
         (if (eq l '())
@@ -324,9 +380,8 @@
                 (cmp-runner n (cdr l))))))
     (cmp-runner (car l) l)))
 
-(def .
-  (lambda (f l1 l2)
-    (map2 (lambda (x y) (f x y)) l1 l2)))
+(function . (f l1 l2)
+  (map2 (lambda (x y) (f x y)) l1 l2))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants

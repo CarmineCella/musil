@@ -2,7 +2,7 @@
 ;; Musil overview (Scheme-like DSL)
 ;; --------------------------------
 
-;; load standard library
+;; load standard library (defines macros: function, when, unless, let, schedule, ...)
 (load "stdlib.scm")
 
 (print "** hallo Musil!! **\n\n")
@@ -60,6 +60,8 @@
 (print "(info 'typeof +) = " (info 'typeof +) "\n\n")
 
 (print "does 'alpha exist? " (info 'exists 'alpha) "\n\n")
+(def alpha 10)
+(print "does 'alpha exist now? " (info 'exists 'alpha) "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 3. Functions, lexical scope, and closures
@@ -67,10 +69,9 @@
 
 (print "** functions & lexical scope **\n\n")
 
-;; simple function
-(def add3
-  (lambda (z)
-    (+ z 3)))
+;; simple function (idiomatic: use function macro)
+(function add3 (z)
+  (+ z 3))
 
 (print "(add3 10) = " (add3 10) "\n\n")
 
@@ -103,7 +104,7 @@
 (def bar
   (lambda ()
     (def outer-val 100)
-    (foo)))   ;; foo still sees outer outer-val = 5
+    (foo)))   ;; foo still sees outer outer-val = 5 (lexical binding)
 
 (print "outer-val = " outer-val "\n")
 (print "foo() = " (foo) "\n")
@@ -163,6 +164,7 @@
 
 (print "start from v = " v "\n")
 
+;; simple if
 (if (> v 5)
     (begin
       (= v (+ v 10))
@@ -170,7 +172,7 @@
     (begin
       (print "this branch is not executed\n")))
 
-(print "\nwhile loop with emulated break at 5:\n")
+(print "\nwhile loop with break at 5:\n")
 
 (while (> v 0)
   (begin
@@ -178,7 +180,7 @@
     (if (== v 5)
         (begin
           (print "here we stop at " v "\n")
-          (= v 0))  ;; force exit
+          (break))  ;; uses BreakException internally
         (print v "\n"))))
 
 (print "\n")
@@ -189,25 +191,23 @@
 
 (print "** recursion **\n\n")
 
-(def fact
-  (lambda (n)
-    (if (<= n 1)
-        1
-        (* n (fact (- n 1))))))
+(function fact (n)
+  (if (<= n 1)
+      1
+      (* n (fact (- n 1)))))
 
 (print "fact(5) = " (fact 5) "\n\n")
 
-(def bad_fib
-  (lambda (x)
-    (if (<= x 1)
-        1
-        (+ (bad_fib (- x 1))
-           (bad_fib (- x 2))))))
+(function bad_fib (x)
+  (if (<= x 1)
+      1
+      (+ (bad_fib (- x 1))
+         (bad_fib (- x 2)))))
 
 (print "bad_fib(10) = " (bad_fib 10) "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 6. Higher functions & lists from stdlib
+;; 6. Lists & higher functions from stdlib
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (print "** lists & higher functions (stdlib) **\n\n")
@@ -248,12 +248,12 @@
 (def L2 '(-2 0 3))
 (print "L2 = " L2 "\n")
 (print "sign L2 = " (sign L2) "\n")
-(print "compare < '(3 1 2) (min) = " (compare < '(3 1 2)) "\n")
-(print "compare > '(3 1 2) (max) = " (compare > '(3 1 2)) "\n")
+(print "compare < '(3 1 2) = " (compare < '(3 1 2)) "   (min)\n")
+(print "compare > '(3 1 2) = " (compare > '(3 1 2)) "   (max)\n")
 (print "(. + '(1 2) '(10 20)) = " (. + '(1 2) '(10 20)) "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 7. Arrays, numeric utilities, and DSP-ish examples
+;; 7. Arrays and numeric utilities
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (print "** arrays & numeric utilities **\n\n")
@@ -278,12 +278,12 @@
 (print "assign (array 9 9) into sig2 at 2 len 2 => " sig2 "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 8. Macros: simple examples
+;; 8. Macros: simple examples (inc!, function, when, unless, let)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (print "** macros **\n\n")
 
-;; macro: increment a variable in-place
+;; local macro: increment a variable in-place
 (def inc!
   (macro (var)
     (list '= var (list '+ var 1))))
@@ -295,30 +295,46 @@
 (inc! m)
 (print "after (inc! m) again, m = " m "\n\n")
 
-;; macro: when (single-body expression)
-(def when
-  (macro (cond body)
-    (list 'if cond body '())))
+;; function macro (already in stdlib)
+(function add2 (x)
+  (+ x (array 2)))
 
-(def z 3)
-(when (> z 1)
-  (print "when macro: z > 1, z = " z "\n"))
+(print "add2 10 => " (add2 (array 10)) "\n\n")
 
-(when (< z 0)
-  (print "this will NOT be printed\n"))
+;; when / unless macros
+(def x (array 5))
 
-(print "\n")
+(when (> x (array 0))
+  (begin
+    (print "x is positive\n")
+    (print "and we are in a when\n")))
 
-;; macro: unless (single-body expression)
-(def unless
-  (macro (cond body)
-    (list 'if cond '() body)))
+(unless (> x (array 10))
+  (print "x is not greater than 10\n"))
 
-(def flag 0)
-(unless (== flag 1)
-  (print "unless macro: flag is not 1\n"))
+(print "\nlet examples:\n")
 
-(print "\n")
+;; simple let
+(print "(let ((x [1]) (y [2])) (+ x y)) => "
+       (let ((x (array 1))
+             (y (array 2)))
+         (+ x y))
+       "\n")
+
+;; multiple forms via begin
+(print "(let ((x [10])) ...) with begin => "
+       (let ((x (array 10)))
+         (begin
+           (print "inside let, x = " x "\n")
+           (+ x (array 5))))
+       "\n")
+
+;; nested let
+(print "nested let => "
+       (let ((x (array 1)))
+         (let ((y (array 2)))
+           (+ x y)))
+       "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 9. Partial application (automatic currying)
@@ -326,18 +342,16 @@
 
 (print "** partial application / currying **\n\n")
 
-(def two-params
-  (lambda (x y)
-    (+ x y)))
+(function two-params (x y)
+  (+ x y))
 
 (print "(two-params 2 3) = " (two-params 2 3) "\n")
 
-(def add2 (two-params 2))  ;; partially applied
-(print "add2 is (two-params 2), (add2 5) = " (add2 5) "\n\n")
+(def add2c (two-params 2))  ;; partially applied
+(print "add2c is (two-params 2), (add2c 5) = " (add2c 5) "\n\n")
 
-(def sum3
-  (lambda (a b c)
-    (+ (+ a b) c)))
+(function sum3 (a b c)
+  (+ (+ a b) c))
 
 (print "sum3 1 2 3 = " (sum3 1 2 3) "\n")
 
@@ -348,7 +362,6 @@
 (print "(add1and2 3) = " (add1and2 3) "\n")
 
 (print "(((sum3 1) 2) 3) = " (((sum3 1) 2) 3) "\n\n")
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; End
