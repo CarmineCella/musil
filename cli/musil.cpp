@@ -8,14 +8,7 @@
 
 using namespace std;
 
-// BUGS:
-// - def does not complain if the () don't match
-// - partial functions seem not to work now
-// - bug in print: no erro if it does not finish
-// NB --> tutto dipende dalla read "(" che non segnala di non aver finito!!
-
-
-// TODO: bachi, esempi "system", scientific + esempi + tests, signals + esempi + tests, plotting + esempi
+// TODO: esempi "system", scientific + esempi + tests, signals + esempi + tests, plotting + esempi
 // 		 GUI
 // 	     sparkle, bconv, maple, orchieda, sound-types
 //		 granulatore orchestrale

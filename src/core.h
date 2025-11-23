@@ -197,28 +197,36 @@ std::string next (std::istream &in, unsigned& linenum) {
 				else continue;
 			break;
 			case '\"':
-			if (accum.str ().size ()) {
-				in.putback(c);
-				return accum.str ();
-			} else {
-				accum << c;
-				while (!in.eof ()) {
-					in.get (c);
-					if (c == '\n') ++linenum;
-					if (c == '\"') break;
-					else if (c == '\\') {
-						c = in.get ();
-						switch (c) {
-							case 'n': accum <<'\n'; break;
-							case 'r': accum <<'\r'; break;
-							case 't': accum <<'\t'; break;
-							case '\"': accum << "\""; c = 0; break;
+				if (accum.str().size()) {
+					in.putback(c);
+					return accum.str();
+				} else {
+					accum << c;  // opening quote
+					bool closed = false;
+					while (!in.eof()) {
+						in.get(c);
+						if (c == '\n') ++linenum;
+						if (c == '\"') {
+							closed = true;
+							break;
+						} else if (c == '\\') {
+							c = in.get();
+							if (c == 'n')      accum << '\n';
+							else if (c == 'r') accum << '\r';
+							else if (c == 't') accum << '\t';
+							else if (c == '\"') accum << "\"";
+							else if (c == '\\') accum << '\\';
+						} else {
+							accum << c;
 						}
-					} else accum << c;
+					}
+					if (!closed) {
+						// EOF reached before closing quote
+						throw std::runtime_error("unterminated string literal");
+					}
+					return accum.str();
 				}
-				return accum.str ();
-			}
-			break; 
+			break;
 			default:
 				if (c > 0) accum << c;
 			break;
@@ -227,29 +235,47 @@ std::string next (std::istream &in, unsigned& linenum) {
 	return accum.str ();
 }
 AtomPtr read (std::istream& in, unsigned& linenum) {
-	std::string token = next (in, linenum);
-	if (!token.size ()) return make_atom();
-	if (token == "(") {
-		AtomPtr l = make_atom ();
-		while (!in.eof ()) {
-			AtomPtr n = read (in, linenum);
-			if (n->lexeme == ")") break;
-			else l->tail.push_back (n);
-		}
-		std::cout << "FIXME -- "; print (l->tail.at (l->tail.size ()-1), std::cout) << std::endl;
-		return l;
-	} 
+    std::string token = next(in, linenum);
+    if (!token.size()) {
+        return make_atom(); // nil / empty
+    }
+    if (token == "(") {
+        AtomPtr l = make_atom();
+        while (true) {
+            if (in.eof()) {
+                error("unexpected EOF while reading list", l);
+            }
+            AtomPtr n = read(in, linenum);
+            if (n->type == SYMBOL && n->lexeme == ")") {
+                break;
+            }
+
+            if (is_nil(n)) {
+                if (in.eof()) {
+                    error("unexpected EOF while reading list", l);
+                } else {
+                    continue;
+                }
+            }
+            l->tail.push_back(n);
+        }
+        return l;
+    } 
     else if (token == "\'") {
-		AtomPtr ll = make_atom();
-		ll->tail.push_back (make_atom ("quote"));
-		ll->tail.push_back (read (in, linenum));
-		return ll;
-	} else if (is_number (token)) {
-		return make_atom(atof (token.c_str ()));
-	}
-	else {
-		return make_atom (token);
-	}
+        AtomPtr ll = make_atom();
+        ll->tail.push_back(make_atom("quote"));
+        AtomPtr quoted = read(in, linenum);
+        if (is_nil(quoted) && in.eof()) {
+            error("unexpected EOF after quote", ll);
+        }
+        ll->tail.push_back(quoted);
+        return ll;
+    } 
+    else if (is_number(token)) {
+        return make_atom(atof(token.c_str()));
+    } else {
+        return make_atom(token);
+    }
 }
 bool atom_eq (AtomPtr a, AtomPtr b) {
 	if (is_nil (a) && !is_nil (b)) return false;
@@ -414,13 +440,15 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 				extend (vars->tail.at (i), args->tail.at (i), nenv);
 			}
 
+			
 			if (vars->tail.size () > args->tail.size ()) {		
-				AtomPtr vars_cut = make_atom ();
-				for (unsigned i = 0; i < minargs; ++i) {
-					vars_cut->tail.push_back (vars->tail.at (i));
-				}	
-				AtomPtr new_lambda = make_atom (); 
-				new_lambda->tail.push_back (vars_cut);
+				AtomPtr vars_rest = make_atom();
+				for (unsigned i = minargs; i < vars->tail.size(); ++i) {
+					vars_rest->tail.push_back(vars->tail.at(i));
+				}
+
+				AtomPtr new_lambda = make_atom();
+				new_lambda->tail.push_back(vars_rest);
 				new_lambda->tail.push_back (body);
 				new_lambda->tail.push_back (nenv);
 				AtomPtr f = make_atom (new_lambda); // return lambda/macro with bounded vars
