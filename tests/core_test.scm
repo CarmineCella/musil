@@ -279,37 +279,31 @@
 (test '(m1 (array 3)) (array 99))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; env and type
+;; info: vars / exists / typeof
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; env should return a list
-(test '(type (env)) 'list)
+;; (info 'vars) should return a non-empty list of symbols
+(test '(> (llength (info 'vars)) (array 0)) (array 1))
 
-;; env with "full"
-(test '(type (env 'full)) 'list)
+;; exists: define a variable and check its presence
+(def t_var (array 123))
+(test '(lindex (info 'exists 't_var) (array 0))       (array 1))
+(test '(lindex (info 'exists 'non_existing_var) (array 0)) (array 0))
 
-;; list
-(test '(type '(1 2 3)) 'list)
+;; typeof: lists the types of evaluated arguments as symbols
+(test '(info 'typeof '(1 2 3))           '(list))
+(test '(info 'typeof 'x)                 '(symbol))
+(test '(info 'typeof "hello")            '(string))
+(test '(info 'typeof (array 1 2 3))      '(array))
 
-;; symbol
-(test '(type 'x)       'symbol)
-
-;; string
-(test '(type "hello")  'string)
-
-;; array
-(test '(type (array 1 2 3)) 'array)
-
-;; lambda
+;; typeof on lambda, macro, and built-in op
 (def t-lam (lambda (x) x))
-(test '(type t-lam) 'lambda)
+(test '(info 'typeof t-lam)              '(lambda))
 
-;; macro
 (def t-mac (macro (x) x))
-(test '(type t-mac) 'macro)
+(test '(info 'typeof t-mac)              '(macro))
 
-;; op (built-in function)
-(test '(type +) 'op)
+(test '(info 'typeof +)                  '(op))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; String operations via (str ...)

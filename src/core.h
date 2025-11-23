@@ -312,6 +312,19 @@ AtomPtr extend (AtomPtr node, AtomPtr val, AtomPtr env, bool recurse = false) {
 	
 	return make_atom(); // dummy
 }
+AtomPtr clone(AtomPtr n) {
+    if (is_nil(n)) return make_atom();
+    AtomPtr r = make_atom();
+    r->type   = n->type;
+    r->lexeme = n->lexeme;
+    r->array  = n->array;
+    r->op     = n->op;
+    r->minargs = n->minargs;
+    for (auto& t : n->tail) {
+        r->tail.push_back(clone(t));
+    }
+    return r;
+}
 AtomPtr fn_quote (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_def (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr fn_set (AtomPtr, AtomPtr) { return nullptr; } // dummy
@@ -332,7 +345,7 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 		AtomPtr func = eval (node->tail.at (0), env);
 		if (func->op == &fn_quote) {
 			args_check (node, 2);
-			return node->tail.at (1);
+			return clone(node->tail.at(1));
 		}
 		if (func->op == &fn_def) {
 			args_check (node, 3);
@@ -441,14 +454,65 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 }
 
 // functors
-AtomPtr fn_env (AtomPtr node, AtomPtr env) {
-	if (node->tail.size () && type_check(node->tail.at(0), SYMBOL)->lexeme == "full") return env;
-	AtomPtr l = make_atom();
-	for (unsigned i = 1; i < env->tail.size (); ++i) l->tail.push_back (env->tail.at (i)->tail.at (0));
-	return l;
+// helper: collect all variable names from env (current + parents)
+void browse_env(AtomPtr env, AtomPtr vars) {
+    for (unsigned i = 1; i < env->tail.size(); ++i) {
+        AtomPtr binding = env->tail.at(i);
+        if (!is_nil(binding) && binding->tail.size() >= 1) {
+            vars->tail.push_back(binding->tail.at(0)); // symbol
+        }
+    }
+    if (!is_nil(env->tail.at(0))) {
+        browse_env(env->tail.at(0), vars);
+    }
 }
-AtomPtr fn_type (AtomPtr node, AtomPtr env) {
-	return make_atom (ATOM_NAMES[node->tail.at (0)->type]);
+AtomPtr fn_info(AtomPtr b, AtomPtr env) {
+    std::string cmd = type_check(b->tail.at(0), SYMBOL)->lexeme;
+    AtomPtr l = make_atom();
+    std::regex r;
+
+    if (cmd == "vars") {
+        // (info vars) or (info vars "regex")
+        std::string pattern = ".*";
+        if (b->tail.size() > 1) {
+            // second arg should be a STRING with the regex pattern
+            AtomPtr pat = type_check(b->tail.at(1), STRING);
+            pattern = pat->lexeme;
+        }
+        r.assign(pattern);
+
+        AtomPtr vars = make_atom();
+        browse_env(env, vars);
+
+        for (unsigned i = 0; i < vars->tail.size(); ++i) {
+            std::string k = vars->tail.at(i)->lexeme;
+            if (std::regex_match(k, r)) {
+                // keep the same symbol node
+                l->tail.push_back(vars->tail.at(i));
+            }
+        }
+    } else if (cmd == "exists") {
+        // (info exists 'a 'b ...)
+        for (unsigned i = 1; i < b->tail.size(); ++i) {
+            AtomPtr key = type_check(b->tail.at(i), SYMBOL);
+            Real ans = 1;
+            try {
+                AtomPtr r = assoc(key, env);
+                (void)r;
+            } catch (...) {
+                ans = 0;
+            }
+            l->tail.push_back(make_atom(ans));
+        }
+    } else if (cmd == "typeof") {
+        for (unsigned i = 1; i < b->tail.size(); ++i) {
+            AtomPtr v = b->tail.at(i);
+            l->tail.push_back(make_atom(std::string(ATOM_NAMES[v->type])));
+        }
+    } else {
+        error("[info] invalid request", b->tail.at(0));
+    }
+    return l;
 }
 AtomPtr fn_list (AtomPtr node, AtomPtr env) {
 	return node;
@@ -837,8 +901,7 @@ AtomPtr add_core (AtomPtr env) {
 	add_op ("begin", &fn_begin, -1, env);
 	add_op ("eval", &fn_eval, 1, env);
 	add_op ("apply", &fn_apply, 2, env);
-	add_op ("env", &fn_env, 0, env);
-	add_op ("type", &fn_type, 1, env);    
+	add_op ("info", &fn_info, 1, env);  
 	add_op ("list", &fn_list, 0, env);
 	add_op ("lappend", &fn_lappend, 1, env);
 	add_op ("lreplace", &fn_lreplace, 4, env);
