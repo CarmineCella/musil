@@ -8,7 +8,7 @@ Built on a Scheme-like syntax and powered by efficient C++ `valarray` operations
 It has been designed to be small, easy to expand and easy to embed in host applications. **Musil** is a tool for people who cross boundaries —  
 for musicians who code, coders who compose, and thinkers who move fluidly between algorithms and aesthetics.
 
-The core of the language is made of a single [C++ header](src/musil.h) (~ 1000 loc in total).
+The core of the language is made of a single [C++ header](src/musil.h) (~ 1000 loc in total) and a [standard library](src/stdlib.scm) written in **Musil**.
 
 **Musil** includes several features:
 
