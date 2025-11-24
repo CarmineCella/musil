@@ -80,6 +80,7 @@ struct Atom {
 	Functor op;
 	unsigned minargs;
 	std::vector <AtomPtr> tail;
+	std::vector<std::string> paths;
 };
 bool is_nil (AtomPtr e) {
 	return (e == nullptr || (e->type == LIST && e->tail.size () == 0));
@@ -920,9 +921,12 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 AtomPtr load (const std::string&fname, AtomPtr env) {
     std::ifstream in (fname);
 	if (!in.good ()) {
-		std::string longname = getenv("HOME");
-		longname += "/.musil/" + fname;
-		in.open (longname.c_str());
+		for (unsigned i = 0; i < env->paths.size (); ++i) {
+			std::string longname = env->paths.at (i);
+			longname = longname + "/" + fname;
+			in.open (longname.c_str());
+			if (in.good ()) break;
+		}
 		if (!in.good ()) error ("cannot open input file", make_atom(fname));
 	}	
     AtomPtr r;

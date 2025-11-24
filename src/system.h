@@ -96,6 +96,26 @@ AtomPtr fn_getvar (AtomPtr params, AtomPtr env) {
     if (c) return make_atom ((std::string) "\"" + (std::string) c);
     else return make_atom("");
 }
+AtomPtr fn_addpaths (AtomPtr params, AtomPtr env) {
+    if (params->tail.size () == 0) {
+        AtomPtr list = make_atom ();
+        for (unsigned i = 0; i < env->paths.size (); ++i) {
+            AtomPtr s =make_atom (env->paths.at (i));
+            s->type = STRING;
+            list->tail.push_back (s);
+        }
+        return list;
+    } else {
+        for (unsigned i = 0; i < params->tail.size (); ++i) {
+            env->paths.push_back (type_check (params->tail.at (i), STRING)->lexeme);
+        }
+        return make_atom (params->tail.size ());
+    }
+}
+AtomPtr fn_clearpaths (AtomPtr params, AtomPtr env) {
+    env->paths.resize (1); // keep home folder
+    return make_atom (env->paths.size ());
+}
 #define MESSAGE_SIZE 4096
 AtomPtr fn_udprecv (AtomPtr n, AtomPtr env) {
     struct sockaddr_in server, client;
@@ -193,6 +213,8 @@ AtomPtr add_system (AtomPtr env) {
     add_op ("dirlist", &fn_dirlist, 1, env);
     add_op ("filestat", &fn_filestat, 1, env);
     add_op ("getvar", &fn_getvar, 1, env);
+    add_op ("addpaths", &fn_addpaths, 0, env);
+    add_op ("clearpaths", &fn_clearpaths, 0, env);
     add_op ("udpsend", &fn_udpsend, 3, env);
     add_op ("udprecv", &fn_udprecv, 2, env);
     return env;
