@@ -8,7 +8,7 @@
 
 using namespace std;
 
-// TODO: esempi "system", scientific + esempi + tests, signals + esempi + tests, plotting + esempi
+// TODO: scientific + esempi + tests, signals + esempi + tests, plotting + esempi
 // 		 GUI
 // 	     sparkle, bconv, maple, orchieda, sound-types
 //		 granulatore orchestrale

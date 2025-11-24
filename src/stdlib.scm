@@ -13,11 +13,6 @@
 (def schedule
   (macro (thunk delay)
     (list '%schedule thunk delay)))
-; (def schedule
-;   (macro (expr delay)
-;     (list '%schedule
-;           (list 'quote expr)
-;           delay)))
           
 ;; function macro:
 ;; (function name (args...) body)
