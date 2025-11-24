@@ -10,9 +10,6 @@ option(BUILD_MUSIL_IDE "Build Musil IDE" ON)
 if(BUILD_MUSIL_IDE)
     add_subdirectory(ide)
 endif()
-option(BUILD_MUSIL_LIVE "Build Musil LIVE" ON)
-if(BUILD_MUSIL_LIVE)
-    add_subdirectory(live)
-endif()
+
 
 
