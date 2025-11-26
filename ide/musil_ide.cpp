@@ -34,6 +34,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <fstream>
 #include <stdexcept>
 #include <cerrno>
 #include <cstring>
@@ -89,8 +90,6 @@ Fl_Text_Buffer *app_style_buffer = nullptr;
 Fl_Preferences g_prefs(Fl_Preferences::USER,
                        "carminecella",   // vendor / org
                        "musil_ide");     // app name
-
-std::vector<std::string> g_search_paths;
 
 int g_paren_pos1 = -1;
 int g_paren_pos2 = -1;
@@ -214,59 +213,14 @@ void listener_eval_line();
 // Musil environment initialization
 // -----------------------------------------------------------------------------
 
-void load_env_paths_from_prefs() {
-    g_search_paths.clear();
-
-    Fl_Preferences paths_group(g_prefs, "paths"); // child group "paths"
-
-    int count = 0;
-    paths_group.get("count", count, 0);
-
-    char buf[FL_PATH_MAX];
-    for (int i = 0; i < count; ++i) {
-        char key[32];
-        std::snprintf(key, sizeof(key), "path%d", i);
-        buf[0] = '\0';
-        if (paths_group.get(key, buf, "", FL_PATH_MAX) && buf[0] != '\0') {
-            g_search_paths.emplace_back(buf);
-        }
-    }
-}
-
-void save_env_paths_to_prefs() {
-    Fl_Preferences paths_group(g_prefs, "paths");
-
-    // remove old entries
-    int old_count = 0;
-    paths_group.get("count", old_count, 0);
-    for (int i = 0; i < old_count; ++i) {
-        char key[32];
-        std::snprintf(key, sizeof(key), "path%d", i);
-        paths_group.deleteEntry(key);
-    }
-
-    int count = static_cast<int>(g_search_paths.size());
-    paths_group.set("count", count);
-
-    for (int i = 0; i < count; ++i) {
-        char key[32];
-        std::snprintf(key, sizeof(key), "path%d", i);
-        paths_group.set(key, g_search_paths[i].c_str());
-    }
-}
-
-
 void init_musil_env() {
     musil_env = make_env();
     
-    // Load search paths from preferences and add them to the environment
-    load_env_paths_from_prefs();
-    for (const std::string &p : g_search_paths) {
-        // assuming Env type behind musil_env has: std::vector<std::string> paths;
-        musil_env->paths.push_back(p);
-        // If you have a helper like add_path(musil_env, p), call that instead.
-    }    
+    load_env_paths (musil_env);
 
+    for (unsigned i = 0; i < musil_env->paths.size (); ++i) {
+        std::cout << musil_env->paths.at (i) << std::endl;
+    }
     std::stringstream out;
     out << "[musil, version " << VERSION <<"]" << std::endl <<  std::endl;
     out << "music scripting language" << std::endl;
@@ -809,7 +763,6 @@ const int N_STYLES = sizeof(styletable) / sizeof(styletable[0]);
 
 // Musil-ish keywords (extend as you like)
 const char* musil_keywords[] = {
-    "%",
     "%schedule",
     "*",
     "+",
@@ -1131,9 +1084,6 @@ struct PathsDialog {
     Fl_Select_Browser *list = nullptr;
 };
 
-// Forward declaration
-void save_env_paths_to_prefs();
-
 static void paths_add_cb(Fl_Widget *w, void *userdata) {
     PathsDialog *dlg = static_cast<PathsDialog*>(userdata);
     if (!dlg || !dlg->list) return;
@@ -1147,9 +1097,9 @@ static void paths_add_cb(Fl_Widget *w, void *userdata) {
         if (dir && *dir) {
             std::string s = dir;
             // avoid duplicates
-            auto it = std::find(g_search_paths.begin(), g_search_paths.end(), s);
-            if (it == g_search_paths.end()) {
-                g_search_paths.push_back(s);
+            auto it = std::find(musil_env->paths.begin(), musil_env->paths.end(), s);
+            if (it == musil_env->paths.end()) {
+                musil_env->paths.push_back(s);
                 dlg->list->add(s.c_str());
             }
         }
@@ -1165,8 +1115,8 @@ static void paths_remove_cb(Fl_Widget *w, void *userdata) {
 
     dlg->list->remove(idx);
 
-    if (idx - 1 >= 0 && idx - 1 < static_cast<int>(g_search_paths.size())) {
-        g_search_paths.erase(g_search_paths.begin() + (idx - 1));
+    if (idx - 1 >= 0 && idx - 1 < static_cast<int>(musil_env->paths.size())) {
+        musil_env->paths.erase(musil_env->paths.begin() + (idx - 1));
     }
 }
 
@@ -1175,8 +1125,8 @@ static void paths_close_cb(Fl_Widget *w, void *userdata) {
     if (!dlg || !dlg->win) return;
 
     // Save current list to preferences and reload it
-    save_env_paths_to_prefs();
-    load_env_paths_from_prefs();
+    save_env_paths (musil_env);
+    load_env_paths (musil_env);
 
     dlg->win->hide();
 }
@@ -1197,13 +1147,13 @@ void build_paths_dialog() {
     dlg->list = new Fl_Select_Browser(10, 10, W - 20, H - 70);
     dlg->list->when(FL_WHEN_RELEASE); // fire callback on mouse up
 
-    for (const auto &p : g_search_paths) {
+    for (const auto &p : musil_env->paths){
         dlg->list->add(p.c_str());
     }
 
     // Optional: no auto-selection; user explicitly clicks
     // If you prefer a default, you can uncomment:
-    // if (!g_search_paths.empty()) dlg->list->select(1);
+    if (!musil_env->paths.empty()) dlg->list->select(1);
 
     // Callback to ensure click updates the current selection
     dlg->list->callback(
@@ -1353,8 +1303,13 @@ void build_main_editor_console_listener() {
 int main(int argc, char **argv) {
     try {
         Fl::scheme("oxy");   // set global scheme
-        Fl::args_to_utf8(argc, argv);
+        // Add VS Code dark theme:
+        Fl::set_color(FL_BACKGROUND_COLOR,  30,  30,  30);   // Dark gray
+        Fl::set_color(FL_BACKGROUND2_COLOR, 45,  45,  48);   // Slightly lighter
+        Fl::set_color(FL_FOREGROUND_COLOR, 212, 212, 212);   // Light text
+        Fl::set_color(FL_SELECTION_COLOR,   14,  99, 156);   // Blue selection        
 
+        Fl::args_to_utf8(argc, argv);
 
         build_app_window();
         build_app_menu_bar();

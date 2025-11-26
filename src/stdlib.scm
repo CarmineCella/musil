@@ -1,6 +1,7 @@
 ;; ----------------------
 ;; Musil standard library
 ;; ----------------------
+;;
 
 ;; ------------------------------------------------------------
 ;; Macros layer
@@ -13,13 +14,13 @@
 (def schedule
   (macro (thunk delay)
     (list '%schedule thunk delay)))
-          
+
 ;; function macro:
 ;; (function name (args...) body)
 ;; expands to:
 ;;   (def name (lambda (args...) body))
 ;;
-;; body is a *single* expression; for multiple forms use (begin ...)
+;; body is a *single* expression; for multiple forms use { ... }.
 (def function
   (macro (name args body)
     (list 'def
@@ -31,14 +32,13 @@
 ;; expands to:
 ;;   (if cond body '())
 ;;
-;; body is a single expression (often (begin ...)).
+;; body is a single expression (often a block { ... }).
 (def when
   (macro (cond body)
     (list 'if
           cond
           body
           (list 'quote '()))))
-
 
 ;; unless macro:
 ;; (unless cond body)
@@ -55,22 +55,23 @@
 ;; let macro
 ;; (let ((x 1) (y 2) ...) body)
 ;;   => ((lambda (x y ...) body) 1 2 ...)
-;; body is a single expression (use (begin ...) for multiple)
+;; body is a single expression (use { ... } for multiple)
 ;; ------------------------------------------------------------
 
 (def let
   (macro (bindings body)
-    (begin
+    {
       ;; collect variable names
       (def vars '())
       (def n (llength bindings))
-      (def i (array 0))
+      (def i [0])
 
       (while (< i n)
-        (begin
+        {
           (def b (lindex bindings i))      ;; b = (x expr)
-          (= vars (lappend vars (lindex b (array 0))))
-          (= i (+ i (array 1)))))
+          (= vars (lappend vars (lindex b [0])))
+          (= i (+ i [1]))
+        })
 
       ;; build lambda: (lambda (vars...) body)
       (def lam (list 'lambda vars body))
@@ -79,14 +80,16 @@
       (def call (list lam))
 
       ;; append each value expr to call
-      (= i (array 0))
+      (= i [0])
       (while (< i n)
-        (begin
+        {
           (def b (lindex bindings i))          ;; b = (x expr)
-          (= call (lappend call (lindex b (array 1))))
-          (= i (+ i (array 1)))))
+          (= call (lappend call (lindex b [1])))
+          (= i (+ i [1]))
+        })
 
-      call)))
+      call
+    }))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -147,15 +150,17 @@
   (lappend '() (llast l)))
 
 (function ltake (l n)
-  (begin
+  {
     (def ltake-runner
       (lambda (acc l n)
         (if (<= n 0)
             acc
-            (begin
+            {
               (if (eq (car l) '()) acc (lappend acc (car l)))
-              (ltake-runner acc (cdr l) (- n 1))))))
-    (ltake-runner '() l n)))
+              (ltake-runner acc (cdr l) (- n 1))
+            })))
+    (ltake-runner '() l n)
+  })
 
 (function ldrop (l n)
   (if (<= n 0)
@@ -167,25 +172,29 @@
 
 ;; iterative reverse
 (function lreverse (l)
-  (begin
+  {
     (def res '())
     (def i (- (llength l) 1))
     (while (>= i 0)
-      (begin
+      {
         (lappend res (lindex l i))
-        (= i (- i 1))))
-    res))
+        (= i (- i 1))
+      })
+    res
+  })
 
 (function match (e l)
-  (begin
+  {
     (def match-runner
       (lambda (acc n e l)
         (if (eq l '())
             acc
-            (begin
+            {
               (if (eq (car l) e) (lappend acc n) acc)
-              (match-runner acc (+ n 1) e (cdr l))))))
-    (match-runner '() 0 e l)))
+              (match-runner acc (+ n 1) e (cdr l))
+            })))
+    (match-runner '() 0 e l)
+  })
 
 (function elem (x l)
   (if (eq (llength (match x l)) 0)
@@ -196,52 +205,60 @@
   (map2 list l1 l2))
 
 (function dup (n x)
-  (begin
+  {
     (def dup-runner
       (lambda (acc n x)
         (if (<= n 0)
             acc
-            (begin
+            {
               (lappend acc x)
-              (dup-runner acc (- n 1) x)))))
-    (dup-runner '() n x)))
+              (dup-runner acc (- n 1) x)
+            })))
+    (dup-runner '() n x)
+  })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Higher-order operators
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (function map (f l)
-  (begin
+  {
     (def map-runner
       (lambda (acc f l)
         (if (eq l '())
             acc
-            (begin
+            {
               (lappend acc (f (car l)))
-              (map-runner acc f (cdr l))))))
-    (map-runner '() f l)))
+              (map-runner acc f (cdr l))
+            })))
+    (map-runner '() f l)
+  })
 
 (function map2 (f l1 l2)
-  (begin
+  {
     (def map2-runner
       (lambda (acc f l1 l2)
         (if (or (eq l1 '()) (eq l2 '()))
             acc
-            (begin
+            {
               (lappend acc (f (car l1) (car l2)))
-              (map2-runner acc f (cdr l1) (cdr l2))))))
-    (map2-runner '() f l1 l2)))
+              (map2-runner acc f (cdr l1) (cdr l2))
+            })))
+    (map2-runner '() f l1 l2)
+  })
 
 (function filter (f l)
-  (begin
+  {
     (def filter-runner
       (lambda (acc f l)
         (if (eq l '())
             acc
-            (begin
+            {
               (if (f (car l)) (lappend acc (car l)) acc)
-              (filter-runner acc f (cdr l))))))
-    (filter-runner '() f l)))
+              (filter-runner acc f (cdr l))
+            })))
+    (filter-runner '() f l)
+  })
 
 (function foldl (f z l)
   (if (eq l '())
@@ -293,16 +310,18 @@
   (/ (sum x) (size x)))
 
 (function stddev (x)
-  (begin
+  {
     (def mu (mean x))
     (def normal (/ 1. (- (size x) 1)))
-    (sqrt (* (sum (square (- x mu))) normal))))
+    (sqrt (* (sum (square (- x mu))) normal))
+  })
 
 (function standard (x)
-  (begin
+  {
     (def mu (mean x))
     (def s (stddev x))
-    (/ (- x mu) s)))
+    (/ (- x mu) s)
+  })
 
 (function normal (x)
   (/ x (max x)))
@@ -320,22 +339,24 @@
   (- (slice x 1 (size x)) x))
 
 (function fac (x)
-  (begin
+  {
     (def fact-worker
       (lambda (a product)
         (if (eq a 0)
             product
             (fact-worker (- a 1) (* product a)))))
-    (fact-worker x 1)))
+    (fact-worker x 1)
+  })
 
 (function fib (n)
-  (begin
+  {
     (def fib-worker
       (lambda (a b count)
         (if (<= count 1)
             b
             (fib-worker (+ a b) a (- count 1)))))
-    (fib-worker 1 1 n)))
+    (fib-worker 1 1 n)
+  })
 
 (function ack (m n)
   (if (eq m 0)
@@ -349,30 +370,34 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (function sign (l)
-  (begin
+  {
     (def sign-runner
       (lambda (acc l)
         (if (eq l '())
             acc
-            (begin
+            {
               (if (>= (car l) 0)
                   (lappend acc 1)
                   (lappend acc -1))
-              (sign-runner acc (cdr l))))))
-    (sign-runner '() l)))
+              (sign-runner acc (cdr l))
+            })))
+    (sign-runner '() l)
+  })
 
 (function compare (op l)
-  (begin
+  {
     (def cmp-runner
       (lambda (n l)
         (if (eq l '())
             n
             (if (op (car l) n)
-                (begin
+                {
                   (= n (car l))
-                  (cmp-runner n (cdr l)))
+                  (cmp-runner n (cdr l))
+                }
                 (cmp-runner n (cdr l))))))
-    (cmp-runner (car l) l)))
+    (cmp-runner (car l) l)
+  })
 
 (function . (f l1 l2)
   (map2 (lambda (x y) (f x y)) l1 l2))

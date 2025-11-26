@@ -86,4 +86,24 @@ if(APPLE)
                 $<TARGET_FILE_DIR:musil_ide>/stdlib.scm
         COMMENT "Copying stdlib.scm next to musil_ide binary"
     )
+
+    if(APPLE)
+        # On macOS, copy stdlib.scm into the app bundle's Resources folder
+        set(MUSIL_RESOURCES_DIR "$<TARGET_BUNDLE_DIR:musil_ide>/Contents/Resources")
+
+        add_custom_command(TARGET musil_ide POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${MUSIL_RESOURCES_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/src/stdlib.scm"
+                "${MUSIL_RESOURCES_DIR}/stdlib.scm"
+        )
+    else()
+        # On Linux/Windows (non-bundle), keep copying next to the executable
+        add_custom_command(TARGET musil_ide POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/src/stdlib.scm"
+                "$<TARGET_FILE_DIR:musil_ide>/stdlib.scm"
+        )
+    endif()
+
 endif()

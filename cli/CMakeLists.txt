@@ -16,3 +16,11 @@ target_include_directories(musil
 
 
 target_link_libraries (musil ${LIBS})
+
+INSTALL(PROGRAMS ../src/stdlib.scm DESTINATION $ENV{HOME}/.musil)
+INSTALL(
+    TARGETS musil
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION $ENV{HOME}/.musil
+    ARCHIVE DESTINATION $ENV{HOME}/.musil)
+

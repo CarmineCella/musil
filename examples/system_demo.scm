@@ -20,12 +20,12 @@
 
 (def start (clock))
 ;; do a tiny loop just to waste some time
-(def acc (array 0))
-(def i   (array 0))
-(while (< i (array 100000))
-  (begin
+(def acc 0)
+(def i   0)
+(while (< i 100000) {
     (= acc (+ acc i))
-    (= i   (+ i (array 1)))))
+    (= i   (+ i 1))
+})
 
 (def stop (clock))
 
@@ -53,12 +53,13 @@
 ;; we pick first entry (if any) and inspect it
 (if (eq (llength files) 0)
     (print "no files to stat here\n\n")
-    (begin
-      (def first (lindex files (array 0)))
+    {
+      (def first (lindex files 0))
       (print "first entry: " first "\n")
       ;; filestat returns: (exists size nlink perms)
       (def st (filestat first))
-      (print "filestat " first " => " st "\n\n")))
+      (print "filestat " first " => " st "\n\n")
+    })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 4. getvar (environment variable)
@@ -76,8 +77,7 @@
 (print "Scheduling a message in 1000 ms...\n")
 
 (schedule
-  (lambda () (print "[scheduled] one second has passed\n"))
-  (array 1000))
+  (lambda () (print "[scheduled] one second has passed\n")) 1000)
 
 (print "Wait a couple of secounds, you should see the message in a while...\n\n")
 (sleep 2000)

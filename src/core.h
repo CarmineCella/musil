@@ -112,6 +112,19 @@ std::ostream& print (AtomPtr e, std::ostream& out, bool write = false) {
 	if (e != nullptr) { // to have () printed for nil
 		switch (e->type) {
 		case LIST:
+			if (e->tail.size () == 0) {
+				out << "()";
+				break;
+			}
+			if (e->tail.at (0)->type == SYMBOL && e->tail.at (0)->lexeme == "begin") {
+				out << "{";
+				for (unsigned i = 1; i < e->tail.size (); ++i) {
+					print (e->tail.at (i), out, write);
+					if (i != e->tail.size () - 1) out << " ";
+				}
+				out << "}";	
+				break;			
+			}
 			out << "(";
 			for (unsigned i = 0; i < e->tail.size (); ++i) {
 				print (e->tail.at (i), out, write);
@@ -178,70 +191,70 @@ AtomPtr type_check (AtomPtr node, AtomType t) {
 
 // lexing, parsing, evaluation
 std::string next (std::istream &in, unsigned& linenum) {
-	std::stringstream accum;
-	while (!in.eof ()) {
-		char c = in.get ();
-		switch (c) {
-			case ';':
-			do { c = in.get (); } while (c != '\n' && !in.eof ());
-			++linenum;
-			break;
-			case '(': case ')': case '\'':
-				if (accum.str ().size ()) {
-					in.putback (c);
-					return accum.str ();
-				} else {
-					accum << c;
-					return accum.str ();
-				}
-			break;
-			case '\t': case '\n': case '\r': case ' ':
-				if (c == '\n') ++linenum;
-				if (accum.str ().size ()) return accum.str ();
-				else continue;
-			break;
-			case '\"':
-				if (accum.str().size()) {
-					in.putback(c);
-					return accum.str();
-				} else {
-					accum << c;  // opening quote
-					bool closed = false;
-					while (!in.eof()) {
-						in.get(c);
-						if (c == '\n') ++linenum;
-						if (c == '\"') {
-							closed = true;
-							break;
-						} else if (c == '\\') {
-							c = in.get();
-							if (c == 'n')      accum << '\n';
-							else if (c == 'r') accum << '\r';
-							else if (c == 't') accum << '\t';
-							else if (c == '\"') accum << "\"";
-							else if (c == '\\') accum << '\\';
-						} else {
-							accum << c;
-						}
-					}
-					if (!closed) {
-						// EOF reached before closing quote
-						throw std::runtime_error("unterminated string literal");
-					}
-					return accum.str();
-				}
-			break;
-			default:
-				if (c > 0) accum << c;
-			break;
-		}
-	}
-	return accum.str ();
+    std::stringstream accum;
+    while (!in.eof ()) {
+        char c = in.get ();
+        switch (c) {
+            case ';':  // comment until end of line
+                do { c = in.get (); } while (c != '\n' && !in.eof ());
+                ++linenum;
+                break;
+            case '(': case ')': case '{': case '}': case '[': case ']': // single-character tokens
+            case '\'':
+                if (accum.str ().size ()) {
+                    in.putback (c);
+                    return accum.str ();
+                } else {
+                    accum << c;
+                    return accum.str ();
+                }
+                break;
+            case '\t': case '\n': case '\r': case ' ':
+                if (c == '\n') ++linenum;
+                if (accum.str ().size ()) return accum.str ();
+                else continue;
+                break;
+            case '\"':
+                if (accum.str().size()) {
+                    in.putback(c);
+                    return accum.str();
+                } else {
+                    accum << c;  // opening quote
+                    bool closed = false;
+                    while (!in.eof()) {
+                        in.get(c);
+                        if (c == '\n') ++linenum;
+                        if (c == '\"') {
+                            closed = true;
+                            break;
+                        } else if (c == '\\') {
+                            c = in.get();
+                            if (c == 'n')       accum << '\n';
+                            else if (c == 'r')  accum << '\r';
+                            else if (c == 't')  accum << '\t';
+                            else if (c == '\"') accum << "\"";
+                            else if (c == '\\') accum << '\\';
+                        } else {
+                            accum << c;
+                        }
+                    }
+                    if (!closed) {
+                        throw std::runtime_error("unterminated string literal");
+                    }
+                    return accum.str();
+                }
+                break;
+
+            default:
+                if (c > 0) accum << c;
+                break;
+        }
+    }
+    return accum.str ();
 }
 AtomPtr read (std::istream& in, unsigned& linenum) {
     std::string token = next(in, linenum);
     if (!token.size()) return nullptr; // EOF sentinel
-
     if (token == "(") {
         AtomPtr l = make_atom();
         while (true) {
@@ -249,14 +262,50 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
             if (!n) {
                 if (in.eof()) {
                     error("unexpected EOF while reading list", l);
-                } else {
-                    continue;
-                }
+                } else continue;
             }
-            if (n->type == SYMBOL && n->lexeme == ")") {
-                break;
-            }
+            if (n->type == SYMBOL && n->lexeme == ")") break;
             l->tail.push_back(n);
+        }
+        return l;
+    } else if (token == "{") {
+        AtomPtr body = make_atom(); // temporary list of block forms
+        while (true) {
+            AtomPtr n = read(in, linenum);
+            if (!n) {
+                if (in.eof()) {
+                    error("unexpected EOF while reading block", body);
+                } else continue;
+            }
+            if (n->type == SYMBOL && n->lexeme == "}") break;
+            body->tail.push_back(n);
+        }
+        if (body->tail.empty()) return make_atom();
+        AtomPtr l = make_atom();
+        l->tail.push_back(make_atom("begin"));
+        for (auto& e : body->tail) {
+            l->tail.push_back(e);
+        }
+        return l;
+    } else if (token == "[") {
+        AtomPtr elems = make_atom(); // temporary list of elements
+        while (true) {
+            AtomPtr n = read(in, linenum);
+            if (!n) {
+                if (in.eof()) {
+                    error("unexpected EOF while reading array literal", elems);
+                } else continue;
+            }
+            if (n->type == SYMBOL && n->lexeme == "]") break;
+            elems->tail.push_back(n);
+        }
+        if (elems->tail.empty()) {
+            return make_atom();
+        }
+        AtomPtr l = make_atom();
+        l->tail.push_back(make_atom("array"));
+        for (auto& e : elems->tail) {
+            l->tail.push_back(e);
         }
         return l;
     } else if (token == "\'") {
@@ -918,6 +967,22 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 	} 
 	return l;
 }
+static std::string get_home_directory() {
+    std::string home;
+#ifdef _WIN32
+    if (const char* up = std::getenv("USERPROFILE")) {
+        home = up;
+    } else {
+        const char* hd = std::getenv("HOMEDRIVE");
+        const char* hp = std::getenv("HOMEPATH");
+        if (hd && hp) home = std::string(hd) + hp;
+    }
+#else // POSIX
+    if (const char* h = std::getenv("HOME")) home = h;
+#endif
+    if (home.empty()) home = ".";
+    return home;
+}
 AtomPtr load (const std::string&fname, AtomPtr env) {
     std::ifstream in (fname);
 	if (!in.good ()) {
@@ -927,7 +992,12 @@ AtomPtr load (const std::string&fname, AtomPtr env) {
 			in.open (longname.c_str());
 			if (in.good ()) break;
 		}
-		if (!in.good ()) error ("cannot open input file", make_atom(fname));
+		if (!in.good ()){
+			std::string longname = get_home_directory();
+			longname += "/.musil/" + fname;
+			in.open (longname.c_str());
+			if (!in.good ()) error ("cannot open input file", make_atom(fname));
+		}
 	}	
     AtomPtr r;
     unsigned linenum = 0;

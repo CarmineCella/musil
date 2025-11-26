@@ -7,7 +7,7 @@
 (print "=== udp_sender.scm ===\n")
 (print "Sending a UDP message to 127.0.0.1:9000\n\n")
 
-(def ok (udpsend "127.0.0.1" (array 9000) "hello from Musil!"))
+(def ok (udpsend "127.0.0.1" 9000 "hello from Musil!"))
 
 (if ok
     (print "send OK\n")

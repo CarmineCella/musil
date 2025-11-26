@@ -22,6 +22,42 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>
 
+static std::string get_musilrc_path() {
+    std::string home = get_home_directory();
+    if (!home.empty() && home.back() != '/' && home.back() != '\\') {
+        home += '/';
+    }
+    return home + ".musilrc";
+}
+void load_env_paths (AtomPtr env) {
+    std::ifstream in(get_musilrc_path());
+    if (!in) return;
+    std::string line;
+    while (std::getline(in, line)) {
+        auto begin = line.find_first_not_of(" \t\r\n");
+        if (begin == std::string::npos) continue;
+        auto end = line.find_last_not_of(" \t\r\n");
+        std::string path = line.substr(begin, end - begin + 1);
+
+        if (path.empty() || path[0] == '#') continue; // allow comments
+        auto it = std::find(env->paths.begin(), env->paths.end(), path);
+        if (it == env->paths.end()) {
+            env->paths.push_back(path);
+        }    
+    }
+}
+void save_env_paths (AtomPtr env) {
+    std::ofstream out(get_musilrc_path());
+    if (!out) {
+        error ("cannot write on", make_atom (get_musilrc_path()));
+        return;
+    }
+    for (const auto &p : env->paths) {
+        out << p << '\n';
+    }
+    out.close ();
+}
+
 AtomPtr fn_schedule(AtomPtr node, AtomPtr env) {
     args_check(node, 2);
     AtomPtr thunk     = type_check(node->tail.at(0), LAMBDA);
@@ -97,7 +133,7 @@ AtomPtr fn_getvar (AtomPtr params, AtomPtr env) {
     else return make_atom("");
 }
 AtomPtr fn_addpaths (AtomPtr params, AtomPtr env) {
-    if (params->tail.size () == 0) {
+    if (params->tail.size () == 0) { // no params: lists all paths
         AtomPtr list = make_atom ();
         for (unsigned i = 0; i < env->paths.size (); ++i) {
             AtomPtr s =make_atom (env->paths.at (i));
@@ -105,15 +141,27 @@ AtomPtr fn_addpaths (AtomPtr params, AtomPtr env) {
             list->tail.push_back (s);
         }
         return list;
-    } else {
+    } else { // add without duplications
         for (unsigned i = 0; i < params->tail.size (); ++i) {
-            env->paths.push_back (type_check (params->tail.at (i), STRING)->lexeme);
+            std::string s = type_check (params->tail.at (i), STRING)->lexeme;
+            auto it = std::find(env->paths.begin(), env->paths.end(), s);
+            if (it == env->paths.end()) {
+                env->paths.push_back(s);
+            }            
         }
-        return make_atom (params->tail.size ());
+        return make_atom (env->paths.size ());
     }
 }
 AtomPtr fn_clearpaths (AtomPtr params, AtomPtr env) {
-    env->paths.resize (1); // keep home folder
+    env->paths.clear ();
+    return make_atom (env->paths.size ());
+}
+AtomPtr fn_savepaths (AtomPtr params, AtomPtr env) {
+    save_env_paths (env);
+    return make_atom (env->paths.size ());
+}
+AtomPtr fn_loadpaths (AtomPtr params, AtomPtr env) {
+    load_env_paths (env);
     return make_atom (env->paths.size ());
 }
 #define MESSAGE_SIZE 4096
@@ -214,6 +262,8 @@ AtomPtr add_system (AtomPtr env) {
     add_op ("filestat", &fn_filestat, 1, env);
     add_op ("getvar", &fn_getvar, 1, env);
     add_op ("addpaths", &fn_addpaths, 0, env);
+    add_op ("loadpaths", &fn_loadpaths, 0, env);
+    add_op ("savepaths", &fn_savepaths, 0, env);
     add_op ("clearpaths", &fn_clearpaths, 0, env);
     add_op ("udpsend", &fn_udpsend, 3, env);
     add_op ("udprecv", &fn_udprecv, 2, env);

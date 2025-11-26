@@ -3,14 +3,14 @@
 		"fileversion" : 1,
 		"appversion" : 		{
 			"major" : 8,
-			"minor" : 5,
-			"revision" : 2,
+			"minor" : 6,
+			"revision" : 4,
 			"architecture" : "x64",
 			"modernui" : 1
 		}
 ,
 		"classnamespace" : "box",
-		"rect" : [ 66.0, 99.0, 651.0, 823.0 ],
+		"rect" : [ 166.0, 125.0, 651.0, 823.0 ],
 		"bglocked" : 0,
 		"openinpresentation" : 0,
 		"default_fontsize" : 12.0,
@@ -70,8 +70,8 @@
 					"maxclass" : "comment",
 					"numinlets" : 1,
 					"numoutlets" : 0,
-					"patching_rect" : [ 331.0, 64.0, 150.0, 20.0 ],
-					"text" : "f8 - OSC-like messages"
+					"patching_rect" : [ 331.0, 64.0, 153.0, 20.0 ],
+					"text" : "Musil - OSC-like messages"
 				}
 
 			}

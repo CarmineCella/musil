@@ -13,20 +13,19 @@
 (def watched-file "target.txt")
 
 ;; function: check file and schedule itself again
-(function watch-once ()
-  (begin
+(function watch-once () {
     (def st (filestat watched-file))     ;; (exists size nlink perms)
     (def exists (lindex st (array 0)))
-    (if exists
-        (begin
+    (if exists {
           (def size (lindex st (array 1)))
           (def perms (lindex st (array 3)))
           (print "[watch] file exists: " watched-file
-                 ", size = " size ", perms = " perms "\n"))
+                 ", size = " size ", perms = " perms "\n")}
         (print "[watch] file does not exist: " watched-file "\n"))
     ;; schedule next check in 2000 ms
     (sleep 2000)
-    (schedule (watch-once) (array 2000))))
+    (schedule (watch-once) (array 2000))
+  })
 
 ;; start the loop by scheduling first call
 (schedule (watch-once) (array 0))

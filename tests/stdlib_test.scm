@@ -11,28 +11,31 @@
 ;; Test framework (same pattern as core_test.scm)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def total  (array 0))
-(def failed (array 0))
+(def total  [0])
+(def failed [0])
 
 (def test
   (lambda (expr expected)
-    (begin
-      (= total (+ total (array 1)))
+    {
+      (= total (+ total [1]))
       (def value (eval expr))
       (def ok (== value expected))
-      (if (== ok (array 1))
+      (if (== ok [1])
           (print "PASS: " expr "\n")
-          (begin
-            (= failed (+ failed (array 1)))
-            (print "FAIL: " expr " => " value ", expected " expected "\n"))))))
+          {
+            (= failed (+ failed [1]))
+            (print "FAIL: " expr " => " value ", expected " expected "\n")
+          })
+    }))
 
 (def report
   (lambda ()
-    (begin
+    {
       (print "Total tests: " total ", failed: " failed "\n")
-      (if (== failed (array 0))
+      (if (== failed [0])
           (print "ALL TESTS PASSED\n")
-          (print "SOME TESTS FAILED\n")))))
+          (print "SOME TESTS FAILED\n"))
+    }))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Macro tests: function, let, when, unless, schedule
@@ -45,16 +48,16 @@
 (function add2 (x)
   (+ x 2))
 
-(test '(add2 (array 3)) (array 5))
+(test '(add2 [3]) [5])
 
 (function addxy (x y)
   (+ x y))
 
-(test '(addxy (array 2) (array 3)) (array 5))
+(test '(addxy [2] [3]) [5])
 
 ;; partial application: (addxy 2) returns a closure
-(def add2b (addxy (array 2)))
-(test '(add2b (array 5)) (array 7))
+(def add2b (addxy [2]))
+(test '(add2b [5]) [7])
 
 ;; typeof for function macro itself (it should be a macro)
 (test '(info 'typeof function) '(macro))
@@ -64,23 +67,23 @@
 ;; ---------------------------------------------------------------------------
 
 ;; simple let
-(test '(let ((x (array 1))
-             (y (array 2)))
+(test '(let ((x [1])
+             (y [2]))
          (+ x y))
-      (array 3))
+      [3])
 
 ;; let with shadowing of outer variable
-(def x (array 10))
-(test '(let ((x (array 5)))
-         (+ x (array 1)))
-      (array 6))
+(def x [10])
+(test '(let ((x [5]))
+         (+ x [1]))
+      [6])
 
 ;; let with more bindings
-(test '(let ((a (array 1))
-             (b (array 2))
-             (c (array 3)))
+(test '(let ((a [1])
+             (b [2])
+             (c [3]))
          (+ a (+ b c)))
-      (array 6))
+      [6])
 
 ;; typeof let (macro)
 (test '(info 'typeof let) '(macro))
@@ -89,17 +92,19 @@
 ;; when
 ;; ---------------------------------------------------------------------------
 
-(def w1 (array 0))
-(when (> (array 1) (array 0))
-  (begin
-    (= w1 (array 1))))
-(test 'w1 (array 1))
+(def w1 [0])
+(when (> [1] [0])
+  {
+    (= w1 [1])
+  })
+(test 'w1 [1])
 
-(def w2 (array 0))
-(when (< (array 1) (array 0))
-  (begin
-    (= w2 (array 1))))
-(test 'w2 (array 0))
+(def w2 [0])
+(when (< [1] [0])
+  {
+    (= w2 [1])
+  })
+(test 'w2 [0])
 
 ;; typeof when (macro)
 (test '(info 'typeof when) '(macro))
@@ -108,17 +113,19 @@
 ;; unless
 ;; ---------------------------------------------------------------------------
 
-(def u1 (array 0))
-(unless (< (array 1) (array 0))
-  (begin
-    (= u1 (array 1))))
-(test 'u1 (array 1))
+(def u1 [0])
+(unless (< [1] [0])
+  {
+    (= u1 [1])
+  })
+(test 'u1 [1])
 
-(def u2 (array 0))
-(unless (> (array 1) (array 0))
-  (begin
-    (= u2 (array 1))))
-(test 'u2 (array 0))
+(def u2 [0])
+(unless (> [1] [0])
+  {
+    (= u2 [1])
+  })
+(test 'u2 [0])
 
 ;; typeof unless (macro)
 (test '(info 'typeof unless) '(macro))
@@ -205,10 +212,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; getval / setval
-(def v (array 10 20 30))
-(test '(getval v 1)              (array 20))
-(setval v (array 99) 1)
-(test 'v                         (array 10 99 30))
+(def v [10 20 30])
+(test '(getval v 1)              [20])
+(setval v [99] 1)
+(test 'v                         [10 99 30])
 
 (test '(succ 3)                  4)
 (test '(pred 3)                  2)
@@ -224,53 +231,53 @@
 (test '(round 3.7)               4)
 
 ;; mean / stddev / standard / normal
-(test '(mean (array 1 2 3))      2)
-(test '(stddev (array 1 2 3))    1)
+(test '(mean [1 2 3])            2)
+(test '(stddev [1 2 3])          1)
 
-(test '(standard (array 1 2 3))  (array -1 0 1))
+(test '(standard [1 2 3])        [-1 0 1])
 
-(test '(normal (array 1 2 3))
-      (array 0.3333333333 0.6666666667 1))
+(test '(normal [1 2 3])
+      [0.3333333333 0.6666666667 1])
 
 ;; dot / ortho / norm / diff
-(test '(dot (array 1 2 3) (array 4 5 6)) 32)
+(test '(dot [1 2 3] [4 5 6])     32)
 
-(test '(ortho (array 1 -1) (array 1 1))  1)
+(test '(ortho [1 -1] [1 1])      1)
 
-(test '(norm (array 3 4))                5)
+(test '(norm [3 4])              5)
 
-(test '(diff (array 1 2 4))              (array 1 2))
+(test '(diff [1 2 4])            [1 2])
 
 ;; factorial, fib, ack (small values)
-(test '(fac 5)                           120)
+(test '(fac 5)                   120)
 
-(test '(fib 1)                           1)
-(test '(fib 2)                           1)
-(test '(fib 5)                           5)
+(test '(fib 1)                   1)
+(test '(fib 2)                   1)
+(test '(fib 5)                   5)
 
-(test '(ack 0 0)                         1)
-(test '(ack 1 0)                         2)
-(test '(ack 1 1)                         3)
+(test '(ack 0 0)                 1)
+(test '(ack 1 0)                 2)
+(test '(ack 1 1)                 3)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; List-based numeric operators: sign, compare, dot-operator (.)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(test '(sign '(-2 0 3))                  '(-1 1 1))
+(test '(sign '(-2 0 3))          '(-1 1 1))
 
-(test '(compare < '(3 1 2))              1)   ; min
-(test '(compare > '(3 1 2))              3)   ; max
+(test '(compare < '(3 1 2))      1)   ; min
+(test '(compare > '(3 1 2))      3)   ; max
 
-(test '(. + '(1 2) '(10 20))             '(11 22))
+(test '(. + '(1 2) '(10 20))     '(11 22))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Constants
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(test 'TWOPI                           6.2831853072)
-(test 'SQRT2                           1.4142135624)
-(test 'LOG2                            0.3010299957)
-(test 'E                               2.7182818284)
+(test 'TWOPI                     6.2831853072)
+(test 'SQRT2                     1.4142135624)
+(test 'LOG2                      0.3010299957)
+(test 'E                         2.7182818284)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Final report

@@ -23,8 +23,8 @@
 
 (udpsend "127.0.0.1" 10000 "/osc/dur 1" true)
 
-(while (< i 50)
-  (begin
+(while (< i 50) 
+  {
     (def freq (+ 220 (* i 10)))
     (def arg  (tostr "/osc/freq " freq))
     (print arg "\n")
@@ -36,7 +36,8 @@
     (udpsend "127.0.0.1" 10000 arg true)
     (sleep del)
     (print arg "\n")
-    (= i (+ i 1))))
+    (= i (+ i 1))
+  })
 
 ;; eof
 

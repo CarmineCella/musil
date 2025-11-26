@@ -27,14 +27,14 @@
 (= x (+ x 5))
 (print "after (= x (+ x 5)), x = " x "\n\n")
 
-;; arrays (valarrays of Real)
-(def a (array 1 2 3))
-(def b (array 10 20 30))
+;; arrays
+(def a [1 2 3])
+(def b [10 20 30])
 
 (print "a = " a "\n")
 (print "b = " b "\n")
 (print "a + b = " (+ a b) "\n")
-(print "2 * a = " (* (array 2) a) "\n")
+(print "2 * a = " (* 2 a) "\n")
 (print "size of a = " (size a) "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -166,22 +166,22 @@
 
 ;; simple if
 (if (> v 5)
-    (begin
+    {
       (= v (+ v 10))
-      (print "v is now " v " (because it was > 5)\n"))
-    (begin
-      (print "this branch is not executed\n")))
+      (print "v is now " v " (because it was > 5)\n")
+    }
+    (print "this branch is not executed\n"))
 
 (print "\nwhile loop with break at 5:\n")
 
-(while (> v 0)
-  (begin
+(while (> v 0) 
+  {
     (= v (- v 1))
     (if (== v 5)
-        (begin
-          (print "here we stop at " v "\n")
-          (break))  ;; uses BreakException internally
-        (print v "\n"))))
+        {(print "here we stop at " v "\n")
+        (break)}  
+        (print v "\n"))
+  })
 
 (print "\n")
 
@@ -258,7 +258,7 @@
 
 (print "** arrays & numeric utilities **\n\n")
 
-(def sig (array 1 2 3 4 5))
+(def sig [1 2 3 4 5])
 
 (print "sig = " sig "\n")
 (print "mean(sig) = " (mean sig) "\n")
@@ -269,13 +269,13 @@
 (print "norm(sig) = " (norm sig) "\n")
 (print "diff(sig) = " (diff sig) "\n\n")
 
-(print "sin over (array 0 TWOPI) = " (sin (array 0 TWOPI)) "\n")
-(print "cos over (array 0 TWOPI) = " (cos (array 0 TWOPI)) "\n")
+(print "sin over [0 TWOPI] = " (sin [0 TWOPI]) "\n")
+(print "cos over [0 TWOPI] = " (cos [0 TWOPI]) "\n")
 (print "slice sig 1 3 = " (slice sig 1 3) "\n")
 
-(def sig2 (array 0 0 0 0 0))
-(assign sig2 (array 9 9) 2 2)
-(print "assign (array 9 9) into sig2 at 2 len 2 => " sig2 "\n\n")
+(def sig2 [0 0 0 0 0])
+(assign sig2 [9 9] 2 2)
+(print "assign [9 9] into sig2 at 2 len 2 => " sig2 "\n\n")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 8. Macros: simple examples (inc!, function, when, unless, let)
@@ -297,42 +297,44 @@
 
 ;; function macro (already in stdlib)
 (function add2 (x)
-  (+ x (array 2)))
+  (+ x 2))
 
-(print "add2 10 => " (add2 (array 10)) "\n\n")
+(print "add2 10 => " (add2  10) "\n\n")
 
 ;; when / unless macros
-(def x (array 5))
+(def x 5)
 
-(when (> x (array 0))
-  (begin
+(when (> x 0) 
+  {
     (print "x is positive\n")
-    (print "and we are in a when\n")))
+    (print "and we are in a when\n")
+  })
 
-(unless (> x (array 10))
+(unless (> x 10)
   (print "x is not greater than 10\n"))
 
 (print "\nlet examples:\n")
 
 ;; simple let
 (print "(let ((x [1]) (y [2])) (+ x y)) => "
-       (let ((x (array 1))
-             (y (array 2)))
+       (let ((x 1)
+             (y 2))
          (+ x y))
        "\n")
 
-;; multiple forms via begin
-(print "(let ((x [10])) ...) with begin => "
-       (let ((x (array 10)))
-         (begin
+;; multiple forms via {}
+(print "(let ((x 10)) ...) with {} => "
+       (let ((x 10)) 
+        {
            (print "inside let, x = " x "\n")
-           (+ x (array 5))))
+           (+ x 5)
+        })
        "\n")
 
 ;; nested let
 (print "nested let => "
-       (let ((x (array 1)))
-         (let ((y (array 2)))
+       (let ((x 1))
+         (let ((y 2))
            (+ x y)))
        "\n\n")
 

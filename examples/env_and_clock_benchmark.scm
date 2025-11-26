@@ -14,13 +14,13 @@
 
 (def start (clock))
 
-(def i   (array 0))
-(def sum (array 0))
+(def i   0)
+(def sum 0)
 
-(while (< i (array 1000000))
-  (begin
-    (= sum (+ sum i))
-    (= i (+ i (array 1)))))
+(while (< i 1000000) {
+  (= sum (+ sum i))
+  (= i (+ i 1))
+})
 
 (def stop (clock))
 
