@@ -2,8 +2,8 @@
 
 *A minimal language for sound, signals, and computational composition.*
 
-**Musil** is a tiny, expressive language for generating and transforming audio signals.  
-**Musil** is a hybrid dialect of Lisp, Scheme and TCL, powered by efficient C++ `valarray` operations; for more info, please see the [genealogy](docs/musil_anchestors.png).
+**Musil** is a tiny, expressive language for generating and transforming audio signals. 
+It is a hybrid dialect of Lisp, Scheme and TCL, powered by efficient C++ `valarray` operations; for more info, please see the [genealogy](docs/musil_anchestors.png).
 
 It has been designed to be small, easy to expand and easy to embed in host applications. **Musil** is a tool for people who cross boundaries —  
 for musicians who code, coders who compose, and thinkers who move fluidly between algorithms and aesthetics.
