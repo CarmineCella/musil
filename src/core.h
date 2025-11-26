@@ -86,7 +86,7 @@ bool is_nil (AtomPtr e) {
 	return (e == nullptr || (e->type == LIST && e->tail.size () == 0));
 }
 
-// helpers
+// lexing, parsing, evaluation
 bool is_string (const std::string& l) {
 	if (l.size () > 1 && l.at (0) == '\"') return true;
 	return false;
@@ -189,7 +189,6 @@ AtomPtr type_check (AtomPtr node, AtomType t) {
 	return node;
 }
 
-// lexing, parsing, evaluation
 std::string next (std::istream &in, unsigned& linenum) {
     std::stringstream accum;
     while (!in.eof ()) {
@@ -565,7 +564,6 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 }
 
 // functors
-// helper: collect all variable names from env (current + parents)
 void browse_env(AtomPtr env, AtomPtr vars) {
     for (unsigned i = 1; i < env->tail.size(); ++i) {
         AtomPtr binding = env->tail.at(i);
@@ -581,7 +579,6 @@ AtomPtr fn_info(AtomPtr b, AtomPtr env) {
     std::string cmd = type_check(b->tail.at(0), SYMBOL)->lexeme;
     AtomPtr l = make_atom();
     std::regex r;
-
     if (cmd == "vars") {
         // (info vars) or (info vars "regex")
         std::string pattern = ".*";
@@ -591,10 +588,8 @@ AtomPtr fn_info(AtomPtr b, AtomPtr env) {
             pattern = pat->lexeme;
         }
         r.assign(pattern);
-
         AtomPtr vars = make_atom();
         browse_env(env, vars);
-
         for (unsigned i = 0; i < vars->tail.size(); ++i) {
             std::string k = vars->tail.at(i)->lexeme;
             if (std::regex_match(k, r)) {

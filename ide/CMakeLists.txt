@@ -59,7 +59,7 @@ target_compile_features(musil_ide PRIVATE cxx_std_17)
 # -------------------------------------------------------------------
 if(APPLE)
     set_target_properties(musil_ide PROPERTIES
-        MACOSX_BUNDLE_BUNDLE_NAME            "MusilIDE"
+        MACOSX_BUNDLE_BUNDLE_NAME            "Musil IDE"
         MACOSX_BUNDLE_GUI_IDENTIFIER         "com.carminecella.musilide"
         MACOSX_BUNDLE_INFO_STRING            "Musil IDE"
         MACOSX_BUNDLE_LONG_VERSION_STRING    "1.0"

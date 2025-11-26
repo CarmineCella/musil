@@ -9,7 +9,6 @@
 using namespace std;
 
 // TODO: scientific + esempi + tests, signals + esempi + tests, plotting + esempi
-// 		 GUI
 // 	     sparkle, bconv, maple, orchieda, sound-types
 //		 granulatore orchestrale
 // 		 parte simbolica (note, midi, musicxml, generatori algoritmici)

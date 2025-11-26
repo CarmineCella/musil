@@ -1,16 +1,5 @@
 // musil_ide.cpp
 //
-// Musil IDE with FLTK:
-//  - Top: text editor for Musil scripts
-//  - Middle: single-line "listener" input (REPL)
-//  - Bottom: console text display for evaluation output
-//  - Draggable splitter between editor and bottom pane (listener+console)
-//  - Musil-oriented syntax highlighting (comments, strings, parens, keywords)
-//  - Zoom in/out (View/Zoom In, View/Zoom Out)
-//  - Evaluate/Run Script (Cmd+R) and Evaluate/Run Selection (Cmd+E)
-//
-// Requires: FLTK, musil.h in ../src
-//
 
 #include <FL/Fl.H>
 #include <FL/Fl_Double_Window.H>
@@ -30,6 +19,7 @@
 #include <FL/Fl_Hold_Browser.H>
 #include <FL/Fl_Select_Browser.H>
 #include <FL/Fl_Button.H>
+#include <FL/Fl_Sys_Menu_Bar.H>
 
 #include <iostream>
 #include <sstream>
@@ -40,6 +30,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <cctype>
+#include <vector>
+#include <algorithm>
 
 #include <filesystem>
 #include <system_error>
@@ -87,12 +79,29 @@ int g_font_size = 16;
 // Style buffer for syntax highlighting
 Fl_Text_Buffer *app_style_buffer = nullptr;
 
+// Dynamic keyword + vars infrastructure
+std::vector<std::string> g_builtin_keywords;  // static core keywords
+std::vector<std::string> g_env_symbols;       // symbols from (info 'vars)
+std::vector<AtomType> g_env_kinds;
+std::vector<std::string> g_browser_symbols;
+
+// Right-side browser showing current variables
+Fl_Select_Browser *app_var_browser = nullptr;
+
 Fl_Preferences g_prefs(Fl_Preferences::USER,
                        "carminecella",   // vendor / org
                        "musil_ide");     // app name
 
+std::vector<std::string> g_listener_history;
+int g_listener_history_pos = -1; // index into history, or history.size() when "at end"
+
 int g_paren_pos1 = -1;
 int g_paren_pos2 = -1;
+
+Fl_Window    *g_find_win      = nullptr;
+Fl_Input     *g_find_input    = nullptr;
+Fl_Input     *g_replace_input = nullptr;
+bool          g_find_case     = false;
 
 // -----------------------------------------------------------------------------
 // Small helper to capture std::cout output
@@ -213,6 +222,8 @@ void listener_eval_line();
 // Musil environment initialization
 // -----------------------------------------------------------------------------
 
+void init_base_keywords();
+void update_keywords_from_env_and_browser();
 void init_musil_env() {
     musil_env = make_env();
     
@@ -227,7 +238,12 @@ void init_musil_env() {
     out << "(c) " << COPYRIGHT << ", www.carminecella.com" << std::endl << std::endl;
 
     console_append(out.str ().c_str ());
+
+    // Initialize builtin keywords once and pull current vars
+    init_base_keywords();
+    update_keywords_from_env_and_browser();
 }
+
 
 // -----------------------------------------------------------------------------
 // File-related helpers
@@ -477,13 +493,33 @@ void menu_delete_callback(Fl_Widget*, void*) {
         Fl_Text_Editor::kf_delete(0, (Fl_Text_Editor*)e);
 }
 
+void create_find_dialog();
+int editor_find_next(bool);
+void editor_replace_one();
+void  editor_replace_all();
+
+void menu_find_dialog_callback(Fl_Widget*, void*) {
+    create_find_dialog();
+}
+
+void menu_find_next_callback(Fl_Widget*, void*) {
+    editor_find_next(false);
+}
+
+void menu_replace_one_callback(Fl_Widget*, void*) {
+    editor_replace_one();
+}
+
+void menu_replace_all_callback(Fl_Widget*, void*) {
+    editor_replace_all();
+}
+
 // -----------------------------------------------------------------------------
 // Evaluate (Musil) helpers
 // -----------------------------------------------------------------------------
 
 void eval_string_in_musil(const std::string &code, bool is_script = false) {
     CoutRedirect redirect;
-
     try {
         std::istringstream in(code);
         unsigned linenum = 0;
@@ -514,10 +550,12 @@ void eval_string_in_musil(const std::string &code, bool is_script = false) {
     } catch (...) {
         std::cout << "fatal unknown error\n";
     }
-
     std::string out = redirect.str();
     if (!out.empty())
         console_append(out);
+
+    // Environment may have changed (new defs, sets, etc.)
+    update_keywords_from_env_and_browser();
 }
 
 void menu_run_script_callback(Fl_Widget*, void*) {
@@ -591,7 +629,6 @@ void menu_install_libraries_callback(Fl_Widget*, void*) {
 // Listener input widget
 // -----------------------------------------------------------------------------
 
-
 void update_paren_match() {
     if (!app_text_buffer || !app_style_buffer || !app_editor) return;
 
@@ -601,11 +638,10 @@ void update_paren_match() {
         return;
     }
 
-    // 1. Revert previous matches (F -> E for parens)
     auto restore_style_at = [](int pos) {
         if (pos < 0) return;
         if (pos >= app_style_buffer->length()) return;
-        char buf[2] = {'E', '\0'};
+        char buf[2] = {'E', '\0'};   // back to normal paren style
         app_style_buffer->replace(pos, pos + 1, buf);
     };
 
@@ -613,7 +649,6 @@ void update_paren_match() {
     restore_style_at(g_paren_pos2);
     g_paren_pos1 = g_paren_pos2 = -1;
 
-    // 2. Get text and cursor position
     char* text = app_text_buffer->text();
     if (!text) return;
 
@@ -623,11 +658,14 @@ void update_paren_match() {
         return;
     }
 
-    // Look at character before cursor, or at cursor if needed
     int paren_pos = -1;
-    if (cursor > 0 && (text[cursor - 1] == '(' || text[cursor - 1] == ')')) {
+    if (cursor > 0 &&
+        (text[cursor - 1] == '(' || text[cursor - 1] == ')' ||
+         text[cursor - 1] == '{' || text[cursor - 1] == '}')) {
         paren_pos = cursor - 1;
-    } else if (cursor < len && (text[cursor] == '(' || text[cursor] == ')')) {
+    } else if (cursor < len &&
+               (text[cursor] == '(' || text[cursor] == ')' ||
+                text[cursor] == '{' || text[cursor] == '}')) {
         paren_pos = cursor;
     }
 
@@ -638,34 +676,42 @@ void update_paren_match() {
     }
 
     char c = text[paren_pos];
-    if (c != '(' && c != ')') {
+    if (c != '(' && c != ')' && c != '{' && c != '}') {
         free(text);
         app_editor->redisplay_range(0, len);
         return;
     }
 
-    // 3. Find matching paren
     int match_pos = -1;
+
+    auto match_forward = [&](char open_c, char close_c, int start) {
+        int depth = 1;
+        for (int i = start; i < len; ++i) {
+            if (text[i] == open_c) depth++;
+            else if (text[i] == close_c) depth--;
+            if (depth == 0) return i;
+        }
+        return -1;
+    };
+
+    auto match_backward = [&](char open_c, char close_c, int start) {
+        int depth = 1;
+        for (int i = start; i >= 0; --i) {
+            if (text[i] == close_c) depth++;
+            else if (text[i] == open_c) depth--;
+            if (depth == 0) return i;
+        }
+        return -1;
+    };
+
     if (c == '(') {
-        int depth = 1;
-        for (int i = paren_pos + 1; i < len; ++i) {
-            if (text[i] == '(') depth++;
-            else if (text[i] == ')') depth--;
-            if (depth == 0) {
-                match_pos = i;
-                break;
-            }
-        }
-    } else { // c == ')'
-        int depth = 1;
-        for (int i = paren_pos - 1; i >= 0; --i) {
-            if (text[i] == ')') depth++;
-            else if (text[i] == '(') depth--;
-            if (depth == 0) {
-                match_pos = i;
-                break;
-            }
-        }
+        match_pos = match_forward('(', ')', paren_pos + 1);
+    } else if (c == ')') {
+        match_pos = match_backward('(', ')', paren_pos - 1);
+    } else if (c == '{') {
+        match_pos = match_forward('{', '}', paren_pos + 1);
+    } else if (c == '}') {
+        match_pos = match_backward('{', '}', paren_pos - 1);
     }
 
     if (match_pos < 0) {
@@ -674,11 +720,10 @@ void update_paren_match() {
         return;
     }
 
-    // 4. Highlight both positions with style 'F'
     auto set_match_style = [](int pos) {
         if (pos < 0) return;
         if (pos >= app_style_buffer->length()) return;
-        char buf[2] = {'F', '\0'};
+        char buf[2] = {'F', '\0'}; // match style
         app_style_buffer->replace(pos, pos + 1, buf);
     };
 
@@ -701,43 +746,201 @@ public:
         : Fl_Input(X, Y, W, H, L) {}
 
     int handle(int ev) override {
-        if (ev == FL_KEYDOWN && Fl::event_key() == FL_Enter) {
-            listener_eval_line();
-            return 1; // we handled it
+        if (ev == FL_KEYDOWN) {
+            int key = Fl::event_key();
+
+            // ENTER → evaluate the line
+            if (key == FL_Enter) {
+                listener_eval_line();
+                return 1;
+            }
+
+            // ↑ (history up)
+            if (key == FL_Up) {
+                if (!g_listener_history.empty()) {
+                    if (g_listener_history_pos < 0 ||
+                        g_listener_history_pos > (int)g_listener_history.size())
+                        g_listener_history_pos = (int)g_listener_history.size();
+
+                    if (g_listener_history_pos > 0) {
+                        g_listener_history_pos--;
+                        value(g_listener_history[g_listener_history_pos].c_str());
+                        insert_position(size());
+                    }
+                }
+                return 1;
+            }
+
+            // ↓ (history down)
+            if (key == FL_Down) {
+                if (!g_listener_history.empty()) {
+                    if (g_listener_history_pos < 0)
+                        g_listener_history_pos = (int)g_listener_history.size();
+
+                    if (g_listener_history_pos < (int)g_listener_history.size() - 1) {
+                        g_listener_history_pos++;
+                        value(g_listener_history[g_listener_history_pos].c_str());
+                    } else {
+                        // Past last entry → empty line
+                        g_listener_history_pos = (int)g_listener_history.size();
+                        value("");
+                    }
+                    insert_position(size());
+                }
+                return 1;
+            }
         }
+
         return Fl_Input::handle(ev);
     }
 };
+void listener_eval_line() {
+    if (!app_listener) return;
 
+    std::string line = app_listener->value();
+    if (line.empty()) {
+        app_listener->value("");
+        return;
+    }
+
+    // Add to history unless duplicate of last
+    if (g_listener_history.empty() || g_listener_history.back() != line) {
+        g_listener_history.push_back(line);
+    }
+    g_listener_history_pos = (int)g_listener_history.size();
+
+    // Echo to console
+    console_append(">> " + line + "\n");
+
+    // Evaluate using Musil interpreter
+    eval_string_in_musil(line);
+
+    // Print a separating newline
+    console_append("\n");
+
+    // Clear the input
+    app_listener->value("");
+}
+
+std::vector<std::string> autocomplete_candidates(const std::string& prefix) {
+    std::vector<std::string> res;
+    if (prefix.empty()) return res;
+
+    auto add_if_match = [&](const std::string& s) {
+        if (s.size() >= prefix.size() &&
+            s.compare(0, prefix.size(), prefix) == 0) {
+            res.push_back(s);
+        }
+    };
+
+    for (const auto& k : g_builtin_keywords) add_if_match(k);
+    for (const auto& k : g_env_symbols)      add_if_match(k);
+
+    std::sort(res.begin(), res.end());
+    res.erase(std::unique(res.begin(), res.end()), res.end());
+    return res;
+}
+
+bool is_ident_char(char c);
 class MusilEditor : public Fl_Text_Editor {
 public:
     MusilEditor(int X, int Y, int W, int H, const char* L = 0)
         : Fl_Text_Editor(X, Y, W, H, L) {}
 
+    void do_autocomplete() {
+        int pos = insert_position();
+        if (pos <= 0) return;
+
+        // Get word start
+        int start = pos - 1;
+        char *txt = app_text_buffer->text();
+        if (!txt) return;
+        while (start >= 0 && is_ident_char(txt[start])) {
+            --start;
+        }
+        start++; // first ident char
+        if (start >= pos) {
+            free(txt);
+            return;
+        }
+
+        std::string prefix(txt + start, txt + pos);
+        free(txt);
+
+        auto cand = autocomplete_candidates(prefix);
+        if (cand.empty()) return;
+
+        if (cand.size() == 1) {
+            // Single match → inline complete
+            const std::string& full = cand[0];
+            if (full.size() > prefix.size()) {
+                std::string extra = full.substr(prefix.size());
+                app_text_buffer->insert(pos, extra.c_str());
+                insert_position(pos + (int)extra.size());
+            }
+            return;
+        }
+
+        // Multiple candidates → popup menu at caret
+        int cx, cy;
+        this->position_to_xy(pos, &cx, &cy);
+
+        int sx = this->x() + cx;
+        int sy = this->y() + cy + this->textsize() + 4;
+
+        Fl_Menu_Button popup(sx, sy, 0, 0);
+        popup.type(Fl_Menu_Button::POPUP3);
+
+        std::vector<Fl_Menu_Item> items;
+        items.reserve(cand.size() + 1);
+        for (const auto& s : cand) {
+            Fl_Menu_Item mi = { s.c_str(), 0, 0, 0, 0, 0, 0, 0, 0 };
+            items.push_back(mi);
+        }
+        Fl_Menu_Item terminator = { nullptr, 0, 0, 0, 0, 0, 0, 0, 0 };
+        items.push_back(terminator);
+
+        popup.menu(items.data());
+        popup.position(Fl::event_x_root(), Fl::event_y_root());
+        const Fl_Menu_Item* picked = popup.popup();
+        if (picked && picked->text) {
+            std::string full = picked->text;
+            if (full.size() > prefix.size()) {
+                std::string extra = full.substr(prefix.size());
+                app_text_buffer->insert(pos, extra.c_str());
+                insert_position(pos + (int)extra.size());
+            }
+        }
+    }
+
     int handle(int ev) override {
         int ret = Fl_Text_Editor::handle(ev);
-        // After key / mouse navigation, update paren match
+
+        if (ev == FL_KEYDOWN) {
+            if (Fl::event_key() == FL_Tab && (Fl::event_state() & FL_CTRL)) {
+                // Ctrl+Tab? If you prefer Ctrl+Space, see below
+                do_autocomplete();
+                return 1;
+            }
+            if (Fl::event_key() == ' ' && (Fl::event_state() & FL_CTRL)) {
+                // Ctrl+Space = autocomplete
+                do_autocomplete();
+                return 1;
+            }
+        }
+
+        // paren/brace match logic
         if (ev == FL_KEYDOWN || ev == FL_KEYUP ||
             ev == FL_FOCUS   || ev == FL_UNFOCUS ||
             ev == FL_PUSH    || ev == FL_DRAG   ||
             ev == FL_RELEASE) {
             update_paren_match();
         }
+
         return ret;
     }
 };
 
-void listener_eval_line() {
-    if (!app_listener) return;
-    const char* text = app_listener->value();
-    std::string line = text ? text : "";
-    if (line.empty()) return;
-
-    app_listener->value("");
-    console_append(">> " + line + "\n");
-    eval_string_in_musil(line);
-    console_append("\n");
-}
 
 // -----------------------------------------------------------------------------
 // Musil-oriented syntax highlighting
@@ -758,11 +961,11 @@ Fl_Text_Display::Style_Table_Entry styletable[] = {
     { FL_DARK_RED,   FL_SCREEN_BOLD, 16 }, // D - keywords
     { FL_DARK_BLUE,  FL_SCREEN_BOLD, 16 }, // E - parens
     { FL_RED,        FL_SCREEN_BOLD, 16 }  // F - matching parens
-};
+}; 
 const int N_STYLES = sizeof(styletable) / sizeof(styletable[0]);
 
-// Musil-ish keywords (extend as you like)
-const char* musil_keywords[] = {
+// Builtin keywords (static); we’ll copy these into g_builtin_keywords once
+static const char* musil_builtin_keywords[] = {
     "%schedule",
     "*",
     "+",
@@ -893,7 +1096,117 @@ const char* musil_keywords[] = {
     "zip"
 };
 
-const int N_KEYWORDS = sizeof(musil_keywords) / sizeof(musil_keywords[0]);
+const int N_BUILTIN_KEYWORDS =
+    sizeof(musil_builtin_keywords) / sizeof(musil_builtin_keywords[0]);
+
+    // Initialize builtin keyword vector once
+void init_base_keywords() {
+    if (!g_builtin_keywords.empty()) return; // already done
+    g_builtin_keywords.reserve(N_BUILTIN_KEYWORDS);
+    for (int i = 0; i < N_BUILTIN_KEYWORDS; ++i) {
+        g_builtin_keywords.emplace_back(musil_builtin_keywords[i]);
+    }
+}
+
+void update_keywords_from_env_and_browser() {
+    if (!musil_env) return;
+
+    g_env_symbols.clear();
+    g_env_kinds.clear();
+    g_browser_symbols.clear();
+
+    struct Named {
+        std::string name;
+        AtomType    kind;
+    };
+
+    std::vector<Named> ops;
+    std::vector<Named> lambdas;
+    std::vector<Named> others;
+
+    // Collect symbols from top-level env
+    for (unsigned i = 1; i < musil_env->tail.size(); ++i) {
+        AtomPtr binding = musil_env->tail.at(i);
+        if (is_nil(binding) || binding->tail.size() < 2) continue;
+
+        AtomPtr sym = binding->tail.at(0);
+        AtomPtr val = binding->tail.at(1);
+        if (is_nil(sym) || sym->type != SYMBOL) continue;
+
+        Named n{ sym->lexeme, val->type };
+
+        switch (val->type) {
+            case OP:
+                ops.push_back(n);
+                break;
+            case LAMBDA:
+            case MACRO:
+                lambdas.push_back(n);
+                break;
+            default:
+                others.push_back(n);
+                break;
+        }
+    }
+
+    auto by_name = [](const Named& a, const Named& b) {
+        return a.name < b.name;
+    };
+    std::sort(ops.begin(),     ops.end(),     by_name);
+    std::sort(lambdas.begin(), lambdas.end(), by_name);
+    std::sort(others.begin(),  others.end(),  by_name);
+
+    if (app_var_browser) {
+        app_var_browser->clear();
+        app_var_browser->format_char('@'); // enable FLTK markup
+
+        // Header: gray background, black text, non-clickable
+        auto add_header = [&](const char* title) {
+            std::ostringstream oss;
+            // @Bnnn = background color, @Cnnn = text color
+            oss << "@B" << (int)FL_GRAY << "@C" << (int)FL_BLACK
+                << " " << title;
+            app_var_browser->add(oss.str().c_str());
+            g_browser_symbols.push_back(""); // header → non-clickable
+        };
+
+        // Symbol entries, colored by kind (clickable)
+        auto add_symbol = [&](const Named& n) {
+            Fl_Color color;
+            switch (n.kind) {
+                case OP:                 color = FL_DARK_BLUE; break;
+                case LAMBDA:
+                case MACRO:              color = FL_BLUE;      break;
+                default:                 color = FL_DARK_GREEN;       break;
+            }
+
+            std::ostringstream oss;
+            oss << "@C" << (int)color << "  " << n.name;
+            app_var_browser->add(oss.str().c_str());
+            g_browser_symbols.push_back(n.name);
+
+            // also add for syntax highlighting
+            g_env_symbols.push_back(n.name);
+            g_env_kinds.push_back(n.kind);
+        };
+
+        // Order: Others → Lambdas & Macros → Operators
+        if (!others.empty()) {
+            add_header("Data/lists");
+            for (const auto& n : others) add_symbol(n);
+        }
+        if (!lambdas.empty()) {
+            add_header("Lambdas/Macros");
+            for (const auto& n : lambdas) add_symbol(n);
+        }
+        if (!ops.empty()) {
+            add_header("Operators");
+            for (const auto& n : ops) add_symbol(n);
+        }
+
+        app_var_browser->redraw();
+    }
+}
 
 bool is_ident_start(char c) {
     return std::isalpha((unsigned char)c) || c == '_' || c == '!';
@@ -908,8 +1221,13 @@ bool is_ident_char(char c) {
 }
 
 bool is_keyword(const std::string& s) {
-    for (int i = 0; i < N_KEYWORDS; ++i) {
-        if (s == musil_keywords[i]) return true;
+    // Builtins
+    for (const auto &k : g_builtin_keywords) {
+        if (s == k) return true;
+    }
+    // Vars from env
+    for (const auto &k : g_env_symbols) {
+        if (s == k) return true;
     }
     return false;
 }
@@ -963,6 +1281,11 @@ void style_parse_musil(const char* text, char* style, int length) {
             continue;
         }
 
+        if (c == '{' || c == '}') {
+            style[i] = 'E';
+            ++i;
+            continue;
+        }
         if (is_ident_start(c)) {
             int start = i;
             int j = i + 1;
@@ -1060,6 +1383,10 @@ void apply_font_size() {
         app_listener->textsize(g_font_size);
         app_listener->redraw();
     }
+    if (app_var_browser) {
+        app_var_browser->textsize(g_font_size);
+        app_var_browser->redraw();
+    }
 }
 
 void menu_zoom_in_callback(Fl_Widget*, void*) {
@@ -1135,6 +1462,115 @@ static void paths_close_cb(Fl_Widget *w, void *userdata) {
 // Building UI
 // -----------------------------------------------------------------------------
 
+void var_browser_cb(Fl_Widget *w, void *) {
+    if (!musil_env) return;
+    auto *browser = static_cast<Fl_Select_Browser*>(w);
+    int line = browser->value();
+    if (line <= 0) return;
+
+    if (line > (int)g_browser_symbols.size()) return;
+    const std::string& name = g_browser_symbols[line - 1];
+
+    // Headers / empty lines are non-clickable
+    if (name.empty()) return;
+
+    std::string code = name;
+    console_append(">> " + code + "\n");
+    eval_string_in_musil(code);
+    console_append("\n");
+}
+
+void create_find_dialog() {
+    if (g_find_win) { g_find_win->show(); return; }
+
+    g_find_win = new Fl_Window(320, 130, "Find / Replace");
+    g_find_input    = new Fl_Input(80, 10, 230, 25, "Find:");
+    g_replace_input = new Fl_Input(80, 40, 230, 25, "Replace:");
+
+    Fl_Button* btn_find_next = new Fl_Button(10, 80, 90, 25, "Find next");
+    Fl_Button* btn_replace   = new Fl_Button(110, 80, 90, 25, "Replace");
+    Fl_Button* btn_all       = new Fl_Button(210, 80, 90, 25, "Replace all");
+
+    btn_find_next->callback([](Fl_Widget*, void*) {
+        // simulate "find next"
+        extern void menu_find_next_callback(Fl_Widget*, void*);
+        menu_find_next_callback(nullptr, nullptr);
+    });
+
+    btn_replace->callback([](Fl_Widget*, void*) {
+        extern void menu_replace_one_callback(Fl_Widget*, void*);
+        menu_replace_one_callback(nullptr, nullptr);
+    });
+
+    btn_all->callback([](Fl_Widget*, void*) {
+        extern void menu_replace_all_callback(Fl_Widget*, void*);
+        menu_replace_all_callback(nullptr, nullptr);
+    });
+
+    g_find_win->end();
+    g_find_win->set_non_modal();
+    g_find_win->show();
+}
+
+int editor_find_next(bool from_start) {
+    if (!app_text_buffer || !g_find_input) return -1;
+    const char* needle = g_find_input->value();
+    if (!needle || !*needle) return -1;
+
+    int start = from_start ? 0 : app_editor->insert_position();
+    int found = app_text_buffer->search_forward(start, needle, &start);
+    if (found) {
+        int len = (int)strlen(needle);
+        app_editor->insert_position(start + len);
+        app_editor->show_insert_position();
+        app_text_buffer->select(start, start + len);
+        return start;
+    }
+    return -1;
+}
+
+void editor_replace_one() {
+    if (!app_text_buffer || !g_find_input || !g_replace_input) return;
+
+    const char* needle = g_find_input->value();
+    const char* repl   = g_replace_input->value();
+    if (!needle || !*needle) return;
+
+    int start = 0, end = 0;
+    int has_sel = app_text_buffer->selection_position(&start, &end);
+
+    if (has_sel && end > start) {
+        // Replace current selection
+        app_text_buffer->replace_selection(repl ? repl : "");
+    } else {
+        // No selection → find next, then replace that
+        if (editor_find_next(false) >= 0) {
+            app_text_buffer->replace_selection(repl ? repl : "");
+        }
+    }
+}
+
+void editor_replace_all() {
+    if (!app_text_buffer || !g_find_input || !g_replace_input) return;
+    const char* needle = g_find_input->value();
+    const char* repl   = g_replace_input->value();
+    if (!needle || !*needle) return;
+
+    int pos = 0;
+    int len = (int)strlen(needle);
+    int count = 0;
+
+    app_editor->insert_position(0);
+
+    while (app_text_buffer->search_forward(pos, needle, &pos)) {
+        app_text_buffer->select(pos, pos + len);
+        app_text_buffer->replace_selection(repl ? repl : "");
+        pos += (int)strlen(repl ? repl : "");
+        ++count;
+    }
+}
+
+
 void build_paths_dialog() {
     PathsDialog *dlg = new PathsDialog;
 
@@ -1181,7 +1617,6 @@ void build_paths_dialog() {
     dlg->win->show();
 }
 
-
 void build_app_window() {
     // std::stringstream title;
     // title <<"musil, ver. " << VERSION;
@@ -1190,7 +1625,14 @@ void build_app_window() {
 
 void build_app_menu_bar() {
     app_window->begin();
+    
+    #ifdef __APPLE__
+    // Use system menu bar on macOS
+    app_menu_bar = new Fl_Sys_Menu_Bar(0, 0, app_window->w(), 25);
+#else
+    // Use regular menu bar on other platforms
     app_menu_bar = new Fl_Menu_Bar(0, 0, app_window->w(), 25);
+#endif
 
     // File
     app_menu_bar->add("File/New",         FL_COMMAND + 'n', menu_new_callback);
@@ -1205,7 +1647,11 @@ void build_app_menu_bar() {
     app_menu_bar->add("Edit/Cut",    FL_COMMAND + 'x', menu_cut_callback);
     app_menu_bar->add("Edit/Copy",   FL_COMMAND + 'c', menu_copy_callback);
     app_menu_bar->add("Edit/Paste",  FL_COMMAND + 'v', menu_paste_callback);
-    app_menu_bar->add("Edit/Delete", 0,                menu_delete_callback);
+    app_menu_bar->add("Edit/Delete", 0,                menu_delete_callback, nullptr, FL_MENU_DIVIDER);
+    app_menu_bar->add("Edit/Find...",       FL_COMMAND + 'f', menu_find_dialog_callback);
+    app_menu_bar->add("Edit/Find next",     FL_COMMAND + 'g', menu_find_next_callback);
+    app_menu_bar->add("Edit/Replace...",    FL_COMMAND + 'h', menu_find_dialog_callback);
+
 
     // Evaluate
     app_menu_bar->add("Evaluate/Run script",     FL_COMMAND + 'r', menu_run_script_callback);
@@ -1223,34 +1669,90 @@ void build_app_menu_bar() {
     app_window->callback(menu_quit_callback);
     app_window->end();
 }
-
 void build_main_editor_console_listener() {
-    int menu_h = app_menu_bar->h();
     int win_w  = app_window->w();
     int win_h  = app_window->h();
 
+    int menu_h = 0;
+#ifdef __APPLE__
+    // Native system menu bar; it does not live inside the window
+    menu_h = 0;
+#else
+    menu_h = app_menu_bar ? app_menu_bar->h() : 0;
+#endif
+
+    int toolbar_h = 28; // height for the top toolbar
+
     app_window->begin();
 
-    // Text buffer
+    // -----------------------------------------------------------------
+    // Text buffer for editor
+    // -----------------------------------------------------------------
     app_text_buffer = new Fl_Text_Buffer();
     app_text_buffer->add_modify_callback(text_changed_callback, nullptr);
 
-    // Tile: splits editor (top) and bottom pane (listener+console)
-    app_tile = new Fl_Tile(0, menu_h, win_w, win_h - menu_h);
+    // -----------------------------------------------------------------
+    // Toolbar (Run, Run selection, Reset env, Clear console) with icons
+    // -----------------------------------------------------------------
+    Fl_Group* toolbar = new Fl_Group(0, menu_h, win_w, toolbar_h);
+    toolbar->box(FL_FLAT_BOX);
+    Fl_Color toolbar_col = fl_rgb_color(230, 230, 230);
+    toolbar->color(toolbar_col);
 
-    // Editor: top half (initial)
-    int editor_h = (app_tile->h() * 3) / 5; // more space for editor
-    // app_editor = new Fl_Text_Editor(app_tile->x(), app_tile->y(),
-    //                                 app_tile->w(), editor_h);
-    // 
+    int bx = 6;
+    int by = menu_h + 4;
+    int bw = 26;            // small square-ish buttons
+    int bh = toolbar_h - 8;
+
+    // Common helper for icon buttons
+    auto make_icon_button = [&](const char* sym, const char* tip,
+                                Fl_Callback* cb) -> Fl_Button* {
+        Fl_Button* b = new Fl_Button(bx, by, bw, bh);
+        b->box(FL_FLAT_BOX);
+        b->color(toolbar_col);
+        b->selection_color(fl_color_average(FL_BLACK, toolbar_col, 0.1)); // subtle pressed color
+        b->label(sym);
+        b->labeltype(FL_SYMBOL_LABEL);
+        b->labelcolor(FL_DARK3); // gray icon
+        b->callback(cb);
+        if (tip) b->tooltip(tip);
+        bx += bw + 4;
+        return b;
+    };
+
+    // Play / run script
+    make_icon_button("@>", "Run script", menu_run_script_callback);
+
+    // Play selection (double arrow)
+    make_icon_button("@<->", "Run selection", menu_run_selection_callback);
+
+    // Reset env (we'll use a circular-ish symbol)
+    make_icon_button("@reload", "Reset environment", menu_clear_env_callback);
+    // If '@reload' is not recognized by your FLTK version, fall back to "@circle"
+
+    // Clear console (use an 'X'-like symbol)
+    make_icon_button("X", "Clear console", menu_clear_console_callback);
+
+    toolbar->end();
+
+    // -----------------------------------------------------------------
+    // Main tile: editor (top) + listener+console (bottom)
+    // -----------------------------------------------------------------
+    int tile_y  = menu_h + toolbar_h;
+    int tile_h  = win_h - tile_y;
+    int right_panel_w = 200;
+
+    app_tile = new Fl_Tile(0, tile_y, win_w - right_panel_w, tile_h);
+
+    // Editor: top portion of the tile
+    int editor_h = (app_tile->h() * 3) / 5; // give more space to editor
+
     app_editor = new MusilEditor(app_tile->x(), app_tile->y(),
-                             app_tile->w(), editor_h);
-
+                                 app_tile->w(), editor_h);
     app_editor->buffer(app_text_buffer);
     app_editor->textfont(FL_SCREEN);
     app_editor->textsize(g_font_size);
-    app_editor->cursor_style (Fl_Text_Display::HEAVY_CURSOR);
-    app_editor->linenumber_width (50);
+    app_editor->linenumber_width(50);
     app_tile->add(app_editor);
 
     // Bottom group: listener + console
@@ -1285,12 +1787,27 @@ void build_main_editor_console_listener() {
 
     app_tile->add(bottom_group);
 
-    // Make tile resizable & set ranges so split behaves
+    // Make the editor the resizable part within the tile
     app_tile->resizable(app_editor);
-    app_tile->size_range(0, 50, 50); // min height for editor
-    app_tile->size_range(1, 50, 50); // min height for bottom group
     app_tile->end();
 
+    // -----------------------------------------------------------------
+    // Right-side variables browser
+    // -----------------------------------------------------------------
+    int right_x = app_tile->x() + app_tile->w();
+    int right_y = tile_y;
+    int right_w = win_w - app_tile->w();
+    int right_h = win_h - right_y;
+
+    app_var_browser = new Fl_Select_Browser(right_x, right_y, right_w, right_h, "Vars");
+    app_var_browser->textfont(FL_SCREEN);
+    app_var_browser->textsize(8);
+    app_var_browser->when(FL_WHEN_RELEASE);
+    app_var_browser->callback(var_browser_cb);
+
+    // -----------------------------------------------------------------
+    // Window resizable region
+    // -----------------------------------------------------------------
     app_window->resizable(app_tile);
     app_window->end();
     app_tile->init_sizes();
@@ -1303,11 +1820,10 @@ void build_main_editor_console_listener() {
 int main(int argc, char **argv) {
     try {
         Fl::scheme("oxy");   // set global scheme
-        // Add VS Code dark theme:
-        Fl::set_color(FL_BACKGROUND_COLOR,  30,  30,  30);   // Dark gray
-        Fl::set_color(FL_BACKGROUND2_COLOR, 45,  45,  48);   // Slightly lighter
-        Fl::set_color(FL_FOREGROUND_COLOR, 212, 212, 212);   // Light text
-        Fl::set_color(FL_SELECTION_COLOR,   14,  99, 156);   // Blue selection        
+        // Fl::set_color(FL_BACKGROUND_COLOR,  30,  30,  30);   // Dark gray
+        // Fl::set_color(FL_BACKGROUND2_COLOR, 45,  45,  48);   // Slightly lighter
+        // Fl::set_color(FL_FOREGROUND_COLOR, 212, 212, 212);   // Light text
+        // Fl::set_color(FL_SELECTION_COLOR,   14,  99, 156);   // Blue selection        
 
         Fl::args_to_utf8(argc, argv);
 
@@ -1342,9 +1858,9 @@ int main(int argc, char **argv) {
         // Turn on syntax highlighting by default
         {
             // mark menu item checked
-            Fl_Menu_Item* item = const_cast<Fl_Menu_Item*>(
-                app_menu_bar->find_item("View/Syntax Highlighting"));
-            if (item) item->set();
+            // Fl_Menu_Item* item = const_cast<Fl_Menu_Item*>(
+            //     app_menu_bar->find_item("View/Syntax Highlighting"));
+            // if (item) item->set();
             style_init();
             app_editor->highlight_data(app_style_buffer, styletable,
                                        N_STYLES,
