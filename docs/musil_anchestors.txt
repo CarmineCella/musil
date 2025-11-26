@@ -1,0 +1,26 @@
+digraph {
+	node [shape=box]
+	
+	"IPL" -> "Lisp"
+	"Lisp" -> "Scheme"
+	"Lisp" -> "TCL"
+	"Awk" -> "TCL"
+	"Algol" -> "C"
+	"Algol" -> "CPL"
+	"B" -> "C"
+	"BCPL" -> "B"
+	"PL/I" -> "B"
+	"Algol" -> "PL/I"
+	"Cobol" -> "PL/I"
+	"Fortran" -> "PL/I"
+	"CPL" -> "BCPL"
+	"BCPL" -> "C"
+	"C" -> "Awk"
+	"TCL" -> "musil" [style = bold]
+	"Algol" -> "Scheme"
+	"Lisp" -> "MDL"
+	"MDL" -> "Scheme"
+	"Scheme" -> "TCL"
+	"Scheme" -> "musil" [style = bold]
+	"Lisp" -> "musil" [style = bold]
+}

@@ -2,13 +2,13 @@
 
 *A minimal language for sound, signals, and computational composition.*
 
-****Musil** is a tiny, expressive language for generating and transforming audio signals.  
-**Built on a Scheme-like syntax and powered by efficient C++ `valarray` operations, **Musil** is a hybrid dialect of Lisp, Scheme and TCL; for more info, please see the [genealogy](docs/musil_anchestors.png).
+**Musil** is a tiny, expressive language for generating and transforming audio signals.  
+**Musil** is a hybrid dialect of Lisp, Scheme and TCL, powered by efficient C++ `valarray` operations; for more info, please see the [genealogy](docs/musil_anchestors.png).
 
 It has been designed to be small, easy to expand and easy to embed in host applications. **Musil** is a tool for people who cross boundaries —  
 for musicians who code, coders who compose, and thinkers who move fluidly between algorithms and aesthetics.
 
-The core of the language is made of a single [C++ header](src/musil.h) (~ 1000 loc in total) and a [standard library](src/stdlib.scm) written in **Musil**.
+The core of the language is made of a single [C++ header](src/core.h) (~ 1000 loc in total) and a [standard library](src/stdlib.scm) written in **Musil**.
 
 **Musil** includes several features:
 
@@ -50,7 +50,7 @@ To compile, from *root* folder type:
 
 `make`
 
-To build the IDE, use `cmake .. -DBUILD_MUSIL_IDE=ON`. This requires FLTK to be installed (https://[www.fltk-lib.org](https://www.fltk.org)).
+To build the IDE, use `cmake .. -DBUILD_MUSIL_IDE=ON`. This requires FLTK to be installed ([www.fltk-lib.org](https://www.fltk.org)).
 
 # Licensing
 
