@@ -37,6 +37,7 @@ struct StackGuard {
 };
 #define make_atom(a)(std::make_shared<Atom> (a))
 enum AtomType {LIST, SYMBOL, STRING, ARRAY, LAMBDA, MACRO, OP};
+enum class ParseMode { SCHEME, COMMAND };
 const char* ATOM_NAMES[] = {"list", "symbol", "string", "array", "lambda", "macro", "op"};
 bool is_string (const std::string& l);
 void error (const std::string& msg, AtomPtr n);
@@ -188,138 +189,214 @@ AtomPtr type_check (AtomPtr node, AtomType t) {
 	if (node->type != t) error (err.str (), node);
 	return node;
 }
-std::string next (std::istream &in, unsigned& linenum) {
+struct Token {
+    std::string value;
+    bool is_newline;
+    bool is_eof;
+    Token(std::string v = "", bool nl = false, bool eof = false)
+        : value(v), is_newline(nl), is_eof(eof) {}
+};
+Token next_enhanced(std::istream &in, unsigned& linenum) {
     std::stringstream accum;
-    while (!in.eof ()) {
-        char c = in.get ();
+    while (!in.eof()) {
+        char c = in.get();
         switch (c) {
-            case ';':  // comment until end of line
-                do { c = in.get (); } while (c != '\n' && !in.eof ());
-                ++linenum;
-                break;
-            case '(': case ')': case '{': case '}': case '[': case ']': // single-character tokens
-            case '\'':
-                if (accum.str ().size ()) {
-                    in.putback (c);
-                    return accum.str ();
-                } else {
-                    accum << c;
-                    return accum.str ();
-                }
-                break;
-            case '\t': case '\n': case '\r': case ' ':
-                if (c == '\n') ++linenum;
-                if (accum.str ().size ()) return accum.str ();
-                else continue;
-                break;
-            case '\"':
+            case ';':  // comment
                 if (accum.str().size()) {
                     in.putback(c);
-                    return accum.str();
-                } else {
-                    accum << c;  // opening quote
-                    bool closed = false;
-                    while (!in.eof()) {
-                        in.get(c);
-                        if (c == '\n') ++linenum;
-                        if (c == '\"') {
-                            closed = true;
-                            break;
-                        } else if (c == '\\') {
-                            c = in.get();
-                            if (c == 'n')       accum << '\n';
-                            else if (c == 'r')  accum << '\r';
-                            else if (c == 't')  accum << '\t';
-                            else if (c == '\"') accum << "\"";
-                            else if (c == '\\') accum << '\\';
-                        } else {
-                            accum << c;
-                        }
-                    }
-                    if (!closed) {
-                        throw std::runtime_error("unterminated string literal");
-                    }
-                    return accum.str();
+                    return Token(accum.str());
                 }
-                break;
-
+                do { c = in.get(); } while (c != '\n' && !in.eof());
+                ++linenum;
+                return Token("", true);  // newline token         
+            case '\n':
+                ++linenum;
+                if (accum.str().size()) {
+                    return Token(accum.str());
+                }
+                return Token("", true);  // newline token
+                
+            case '(': case ')': case '{': case '}': case '[': case ']':
+            case '\'':
+                if (accum.str().size()) {
+                    in.putback(c);
+                    return Token(accum.str());
+                }
+                accum << c;
+                return Token(accum.str());
+            case '\t': case '\r': case ' ':
+                if (accum.str().size()) return Token(accum.str());
+                continue; 
+            case '\"': {
+                if (accum.str().size()) {
+                    in.putback(c);
+                    return Token(accum.str());
+                }
+                accum << c;
+                bool closed = false;
+                while (!in.eof()) {
+                    in.get(c);
+                    if (c == '\n') ++linenum;
+                    if (c == '\"') {
+                        closed = true;
+                        break;
+                    } else if (c == '\\') {
+                        c = in.get();
+                        if (c == 'n')       accum << '\n';
+                        else if (c == 'r')  accum << '\r';
+                        else if (c == 't')  accum << '\t';
+                        else if (c == '\"') accum << "\"";
+                        else if (c == '\\') accum << '\\';
+                    } else {
+                        accum << c;
+                    }
+                }
+                if (!closed) throw std::runtime_error("unterminated string");
+                return Token(accum.str());
+			}
             default:
                 if (c > 0) accum << c;
                 break;
         }
     }
-    return accum.str ();
+    if (accum.str().size()) return Token(accum.str());
+    return Token("", false, true);  // EOF
 }
-AtomPtr read (std::istream& in, unsigned& linenum) {
-    std::string token = next(in, linenum);
-    if (!token.size()) return nullptr; // EOF sentinel
-    if (token == "(") {
-        AtomPtr l = make_atom();
-        while (true) {
-            AtomPtr n = read(in, linenum);
-            if (!n) {
-                if (in.eof()) {
-                    error("unexpected EOF while reading list", l);
-                } else continue;
-            }
-            if (n->type == SYMBOL && n->lexeme == ")") break;
-            l->tail.push_back(n);
+class Parser {
+    std::istream& in;
+    unsigned& linenum;
+    Token lookahead;
+    bool has_lookahead;
+public:
+    Parser(std::istream& i, unsigned& ln) 
+        : in(i), linenum(ln), has_lookahead(false) {}
+    Token peek() {
+        if (!has_lookahead) {
+            lookahead = next_enhanced(in, linenum);
+            has_lookahead = true;
         }
-        return l;
-    } else if (token == "{") {
-        AtomPtr body = make_atom(); // temporary list of block forms
-        while (true) {
-            AtomPtr n = read(in, linenum);
-            if (!n) {
-                if (in.eof()) {
-                    error("unexpected EOF while reading block", body);
-                } else continue;
-            }
-            if (n->type == SYMBOL && n->lexeme == "}") break;
-            body->tail.push_back(n);
-        }
-        if (body->tail.empty()) return make_atom();
-        AtomPtr l = make_atom();
-        l->tail.push_back(make_atom("begin"));
-        for (auto& e : body->tail) {
-            l->tail.push_back(e);
-        }
-        return l;
-    } else if (token == "[") {
-        AtomPtr elems = make_atom(); // temporary list of elements
-        while (true) {
-            AtomPtr n = read(in, linenum);
-            if (!n) {
-                if (in.eof()) {
-                    error("unexpected EOF while reading array literal", elems);
-                } else continue;
-            }
-            if (n->type == SYMBOL && n->lexeme == "]") break;
-            elems->tail.push_back(n);
-        }
-        if (elems->tail.empty()) {
-            return make_atom();
-        }
-        AtomPtr l = make_atom();
-        l->tail.push_back(make_atom("array"));
-        for (auto& e : elems->tail) {
-            l->tail.push_back(e);
-        }
-        return l;
-    } else if (token == "\'") {
-        AtomPtr ll = make_atom();
-        ll->tail.push_back(make_atom("quote"));
-        AtomPtr quoted = read(in, linenum);
-        if (!quoted && in.eof()) {
-            error("unexpected EOF after quote", ll);
-        }
-        ll->tail.push_back(quoted);
-        return ll;
-    } else if (is_number(token)) {
-        return make_atom(atof(token.c_str()));
-    } else {
-        return make_atom(token);
+        return lookahead;
     }
+    Token consume() {
+        if (has_lookahead) {
+            has_lookahead = false;
+            return lookahead;
+        }
+        return next_enhanced(in, linenum);
+    }
+    void skip_newlines() {
+        while (peek().is_newline) {
+            consume();
+        }
+    }
+	AtomPtr parse(ParseMode mode) {
+		if (mode == ParseMode::COMMAND) {
+			skip_newlines();
+		}
+		Token tok = consume();
+		if (tok.is_eof) return nullptr;
+		if (tok.is_newline && mode == ParseMode::SCHEME) {
+			return parse(mode);  // skip newlines in SCHEME mode
+		}
+		if (tok.is_newline) return nullptr; 
+		std::string& token = tok.value;
+		if (token == "(") { // lists
+			AtomPtr l = make_atom();
+			while (true) {
+				skip_newlines();  // Allow multiline lists
+				AtomPtr n = parse(ParseMode::SCHEME);
+				if (!n && in.eof()) {
+					error("unexpected EOF in list", l);
+				}
+				if (!n) continue;
+				if (n->type == SYMBOL && n->lexeme == ")") break;
+				l->tail.push_back(n);
+			}
+			return l;
+		}
+		if (token == "{") { // blocks
+			AtomPtr body = make_atom();
+			while (true) {
+				skip_newlines();
+				AtomPtr n = parse(ParseMode::COMMAND);
+				if (!n) {
+					Token next = peek();
+					if (next.value == "}") {
+						consume();
+						break;
+					}
+					if (in.eof()) {
+						error("unexpected EOF in block", body);
+					}
+					continue;
+				}
+				if (n->type == SYMBOL && n->lexeme == "}") break;
+				body->tail.push_back(n);
+			}
+			if (body->tail.empty()) return make_atom();
+			AtomPtr l = make_atom();
+			l->tail.push_back(make_atom("begin"));
+			for (auto& e : body->tail) {
+				l->tail.push_back(e);
+			}
+			return l;
+		}
+		if (token == "[") { // arrays
+			AtomPtr elems = make_atom();
+			while (true) {
+				skip_newlines();
+				AtomPtr n = parse(ParseMode::SCHEME);
+				if (!n && in.eof()) {
+					error("unexpected EOF in array", elems);
+				}
+				if (!n) continue;
+				if (n->type == SYMBOL && n->lexeme == "]") break;
+				elems->tail.push_back(n);
+			}
+			if (elems->tail.empty()) return make_atom();
+			AtomPtr l = make_atom();
+			l->tail.push_back(make_atom("array"));
+			for (auto& e : elems->tail) {
+				l->tail.push_back(e);
+			}
+			return l;
+		}
+		if (token == "\'") {
+			AtomPtr ll = make_atom();
+			ll->tail.push_back(make_atom("quote"));
+			AtomPtr quoted = parse(ParseMode::SCHEME);
+			if (!quoted && in.eof()) {
+				error("unexpected EOF after quote", ll);
+			}
+			ll->tail.push_back(quoted);
+			return ll;
+		}
+		if (token == ")" || token == "}" || token == "]") {
+			return make_atom(token);
+		}
+		if (is_number(token)) {
+			return make_atom(atof(token.c_str()));
+		}
+		if (mode == ParseMode::COMMAND) { // COMMAND MODE: implicit list
+			AtomPtr cmd = make_atom();
+			cmd->tail.push_back(make_atom(token));
+			while (true) {
+				Token next = peek();
+				if (next.is_newline || next.is_eof) break;
+				if (next.value == "}" || next.value == ")" || next.value == "]") break;
+				AtomPtr arg = parse(ParseMode::SCHEME);
+				if (!arg) break;				
+				cmd->tail.push_back(arg);
+			}
+			return cmd;
+		}		
+		// SCHEME MODE: Return as atom
+		return make_atom(token);
+	}
+};
+AtomPtr read(std::istream& in, unsigned& linenum) {
+    Parser parser(in, linenum);
+    return parser.parse(ParseMode::COMMAND);
 }
 bool atom_eq (AtomPtr a, AtomPtr b) {
 	if (is_nil (a) && !is_nil (b)) return false;
@@ -1092,18 +1169,22 @@ AtomPtr add_core (AtomPtr env) {
 	add_op ("exit", &fn_exit, 0, env);
 	return env;
 }
-void repl (std::istream& in, std::ostream& out, AtomPtr env) {
-	unsigned linenum = 0;
-	while (true) {
-		std::cout << ">> " << std::flush;
-		try {
-			print (eval (read (in, linenum), env), std::cout) << std::endl;
-		} catch (std::exception& err) {
-			std::cerr << "error: " << err.what () << std::endl;
-		} catch (...) {
-			std::cerr << "unknown error detected" << std::endl;
-		}
-	}
+void repl(std::istream& in, std::ostream& out, AtomPtr env) {
+    unsigned linenum = 0;
+    Parser parser(in, linenum);   
+    while (true) {
+        std::cout << ">> " << std::flush;
+        try {
+            AtomPtr expr = parser.parse(ParseMode::COMMAND);
+            if (!expr) {
+                if (in.eof()) break;
+                continue;
+            }
+            print(eval(expr, env), std::cout) << std::endl;
+        } catch (std::exception& err) {
+            std::cerr << "error: " << err.what() << std::endl;
+        }
+    }
 }
 
 #endif // CORE_H
