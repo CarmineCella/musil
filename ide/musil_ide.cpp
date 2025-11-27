@@ -122,6 +122,7 @@ YieldFunction g_yield = nullptr;
 // Threading for evaluation
 std::atomic<bool>   g_eval_running{false};
 std::atomic<bool>   g_eval_stop_requested{false};
+std::atomic<bool>   g_keywords_need_update{false};
 std::mutex          g_console_mutex;
 std::queue<std::string> g_console_queue;
 
@@ -1128,6 +1129,7 @@ void eval_code_worker(const std::string code, bool is_script) {
     struct EvalGuard {
         ~EvalGuard() { 
             g_eval_running = false;
+            g_keywords_need_update = true;  // Signal that keywords need updating
         }
     } guard;
     
@@ -1191,13 +1193,8 @@ void eval_code_worker(const std::string code, bool is_script) {
     if (!tail.empty()) {
         console_append_threadsafe(tail);
     }
-
-    // Schedule keyword update in main thread
-    Fl::awake([](void*) {
-        update_keywords_from_env_and_browser();
-    }, nullptr);
     
-    // g_eval_running will be set to false by EvalGuard destructor
+    // g_eval_running and g_keywords_need_update will be set by EvalGuard destructor
 }
 
 void eval_code(const std::string &code, bool is_script) {
@@ -1757,7 +1754,7 @@ void build_app_menu_bar() {
     // Evaluate
     app_menu_bar->add("Evaluate/Run script",         FL_COMMAND + 'r', menu_run_script_callback);
     app_menu_bar->add("Evaluate/Run selection",      FL_COMMAND + 'e', menu_run_selection_callback);
-    app_menu_bar->add("Evaluate/Stop",               FL_COMMAND + '.', menu_stop_callback, nullptr, FL_MENU_DIVIDER);
+    app_menu_bar->add("Evaluate/Stop",               FL_COMMAND + ',', menu_stop_callback, nullptr, FL_MENU_DIVIDER);
     app_menu_bar->add("Evaluate/Reset environment",  FL_COMMAND + 'j', menu_clear_env_callback, nullptr, FL_MENU_DIVIDER);
     app_menu_bar->add("Evaluate/Paths...",           0,                menu_paths_callback);
     app_menu_bar->add("Evaluate/Install libraries...", 0,              menu_install_libraries_callback);
@@ -1816,7 +1813,7 @@ void build_main_editor_console_listener() {
     };
 
     g_btn_run_script = make_icon_button("@>",   "Run script",        menu_run_script_callback);
-    g_btn_run_selection = make_icon_button("@<->", "Run selection",     menu_run_selection_callback);
+    // g_btn_run_selection = make_icon_button("@<->", "Run selection",     menu_run_selection_callback);
     g_btn_stop = make_icon_button("@square", "Stop",  menu_stop_callback);
     make_icon_button("@reload", "Reset environment", menu_clear_env_callback);
     make_icon_button("X",    "Clear console",     menu_clear_console_callback);
@@ -1915,6 +1912,18 @@ void console_timeout_callback(void*) {
     // Always update UI state - this ensures we catch quick completions
     // update_eval_ui_state() is lightweight and idempotent
     update_eval_ui_state();
+    
+    // Check if keywords need updating (after eval completes)
+    if (g_keywords_need_update) {
+        g_keywords_need_update = false;
+        update_keywords_from_env_and_browser();
+        
+        // Refresh syntax highlighting with new keywords
+        if (app_editor && app_text_buffer && app_style_buffer) {
+            style_init();
+            app_editor->redisplay_range(0, app_text_buffer->length());
+        }
+    }
     
     Fl::repeat_timeout(0.1, console_timeout_callback);
 }
