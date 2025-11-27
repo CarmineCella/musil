@@ -17,6 +17,12 @@
 (def i   0)
 (def sum 0)
 
+(print "block 1\n")
+(while (< i 1000000) {
+  (= sum (+ sum i))
+  (= i (+ i 1))
+})
+(print "block 2\n")
 (while (< i 1000000) {
   (= sum (+ sum i))
   (= i (+ i 1))

@@ -168,6 +168,7 @@ void build_main_editor_console_listener();
 // Small helper to capture std::cout
 // -----------------------------------------------------------------------------
 
+// Small helper to capture std::cout output *incrementally*
 struct CoutRedirect {
     std::streambuf*    old_buf;
     std::ostringstream capture;
@@ -175,11 +176,23 @@ struct CoutRedirect {
     CoutRedirect() {
         old_buf = std::cout.rdbuf(capture.rdbuf());
     }
+
     ~CoutRedirect() {
+        // restore original buffer
         std::cout.rdbuf(old_buf);
     }
-    std::string str() const { return capture.str(); }
+
+    // Get everything printed since last consume, then clear the buffer
+    std::string consume() {
+        std::string s = capture.str();
+        if (!s.empty()) {
+            capture.str("");   // clear contents
+            capture.clear();   // reset flags
+        }
+        return s;
+    }
 };
+
 
 // -----------------------------------------------------------------------------
 // Title / filename / change tracking
@@ -983,23 +996,39 @@ void eval_code (const std::string &code, bool is_script) {
                 std::ostringstream oss;
                 print(res, oss);
                 oss << "\n";
-                std::cout << oss.str ();
+                std::cout << oss.str();
             }
         } catch (std::exception &e) {
             if (is_script) {
-                if (app_filename[0]) std::cout << "[" << app_filename << ":" << linenum << "] ";
-                else std::cout << "line " << linenum << ": ";
-            } 
+                if (app_filename[0])
+                    std::cout << "[" << app_filename << ":" << linenum << "] ";
+                else
+                    std::cout << "line " << linenum << ": ";
+            }
             std::cout << e.what() << "\n";
         } catch (...) {
             std::cout << "fatal unknown error\n";
-        } 
-    }
-    std::string out = redirect.str();
-    if (!out.empty()) console_append(out);
+        }
 
-    update_keywords_from_env_and_browser();    
+        // --- flush whatever was printed for THIS expression ---
+        std::string chunk = redirect.consume();
+        if (!chunk.empty()) {
+            console_append(chunk);
+            // Let FLTK process pending redraws/events so text appears now
+            Fl::check();
+        }
+    }
+
+    // One last flush in case something was printed after the last expr
+    std::string tail = redirect.consume();
+    if (!tail.empty()) {
+        console_append(tail);
+        Fl::check();
+    }
+
+    update_keywords_from_env_and_browser();
 }
+
 void menu_run_script_callback(Fl_Widget*, void*) {
     console_append("[Run script]\n");
 
