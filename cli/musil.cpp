@@ -13,6 +13,8 @@ using namespace std;
 //		 granulatore orchestrale
 // 		 parte simbolica (note, midi, musicxml, generatori algoritmici)
 
+YieldFunction g_yield = nullptr;
+
 int main (int argc, char* argv[]) {
 	srand (time (NULL));
 	AtomPtr env = make_env ();

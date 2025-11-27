@@ -107,6 +107,8 @@ Fl_Input  *g_find_input     = nullptr;
 Fl_Input  *g_replace_input  = nullptr;
 bool       g_find_case      = false; // currently unused, kept for future use
 
+YieldFunction g_yield = nullptr;
+
 // -----------------------------------------------------------------------------
 // Forward declarations
 // -----------------------------------------------------------------------------
@@ -178,7 +180,6 @@ struct CoutRedirect {
     }
 
     ~CoutRedirect() {
-        // restore original buffer
         std::cout.rdbuf(old_buf);
     }
 
@@ -193,6 +194,26 @@ struct CoutRedirect {
     }
 };
 
+// -----------------------------------------------------------------------------
+// Yield hook implementation for the IDE
+// -----------------------------------------------------------------------------
+
+// The currently active redirect, set around eval_code()
+static CoutRedirect* g_active_redirect = nullptr;
+
+void console_append(const std::string &s);
+
+// This is what musil_yield() will call (via g_musil_yield)
+static void musil_ide_yield() {
+    if (!g_active_redirect) return;
+
+    std::string chunk = g_active_redirect->consume();
+    if (!chunk.empty()) {
+        console_append(chunk);
+        // Let FLTK process pending events/redraws
+        Fl::check();
+    }
+}
 
 // -----------------------------------------------------------------------------
 // Title / filename / change tracking
@@ -649,7 +670,9 @@ void update_keywords_from_env_and_browser() {
 }
 
 void init_musil_env() {
-    musil_env = make_env();
+    // Install musil_ide_yield as the default yield hook for this env
+    musil_env = make_env(musil_ide_yield);
+
     load_env_paths(musil_env);
 
     std::stringstream out;
@@ -981,6 +1004,12 @@ void listener_eval_line() {
 void eval_code (const std::string &code, bool is_script) {
     CoutRedirect redirect;
 
+    // Install the redirect for the yield hook to use
+    g_active_redirect = &redirect;
+
+    // Install the yield hook into the core (no-op in CLI, active here)
+    set_yield(musil_ide_yield);
+
     std::istringstream in(code);
     unsigned linenum = 0;
 
@@ -1010,14 +1039,17 @@ void eval_code (const std::string &code, bool is_script) {
             std::cout << "fatal unknown error\n";
         }
 
-        // --- flush whatever was printed for THIS expression ---
+        // Per-expression flush, as before (safe but often redundant with yield)
         std::string chunk = redirect.consume();
         if (!chunk.empty()) {
             console_append(chunk);
-            // Let FLTK process pending redraws/events so text appears now
             Fl::check();
         }
     }
+
+    // Reset yield hook and redirect
+    set_yield(nullptr);
+    g_active_redirect = nullptr;
 
     // One last flush in case something was printed after the last expr
     std::string tail = redirect.consume();

@@ -15,7 +15,8 @@
 #define RED     	"\033[31m" 
 #define RESET   	"\033[0m"
 
-AtomPtr make_env () {
+AtomPtr make_env (YieldFunction yield_fn = nullptr) {
+    set_yield (yield_fn);
     AtomPtr env = make_atom ();
     env->tail.push_back (make_atom ()); // no parent env
     add_core (env);

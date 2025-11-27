@@ -21,6 +21,12 @@
 #include <unordered_map>
 #include <cmath>
 
+// yield function
+typedef void (*YieldFunction)();
+extern YieldFunction g_yield;
+inline void call_yield() { if (g_yield) g_yield (); }
+inline void set_yield(YieldFunction fn) { g_yield = fn; }
+
 // ast
 struct Atom;
 typedef std::shared_ptr<Atom> AtomPtr;
@@ -424,6 +430,7 @@ AtomPtr fn_eval (AtomPtr, AtomPtr) { return nullptr; } // dummy
 AtomPtr eval (AtomPtr node, AtomPtr env) {
 	StackGuard guard(node); 
 	while (true) {
+		call_yield ();
 		if (is_nil (node)) return make_atom ();
 		if (node->type == SYMBOL && node->lexeme.size ()) return assoc (node, env);
 		if (node->type != LIST) return node;
@@ -475,6 +482,7 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			args_check(node, 3);
 			AtomPtr r = make_atom();
 			while (type_check(eval(node->tail.at(1), env), ARRAY)->array[0]) {
+				call_yield ();
 				try {
 					r = eval(node->tail.at(2), env);
 				} catch (const BreakException&) {
