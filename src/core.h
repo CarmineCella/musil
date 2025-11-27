@@ -1,4 +1,4 @@
-// core.h -- core language components for Musil
+// core.h -- core language components for Musil (OPTIMIZED VERSION)
 //
 
 #ifndef CORE_H
@@ -66,12 +66,17 @@ struct Atom {
 		type = ARRAY;
 		array = {a};
 	}	
+	Atom (std::valarray<Real>&& a) { // OPTIMIZATION: move constructor for array
+		type = ARRAY;
+		array = std::move(a);
+	}
     Atom (const std::vector<Real>& v) {
 		type = ARRAY;
 		array = std::valarray<Real>(v.data(), v.size());
 	}
 	Atom (AtomPtr ll) {
 		type = LAMBDA;
+		tail.reserve(3); // OPTIMIZATION: it needs 3 elements
 		tail.push_back (ll->tail.at (0)); // vars
 		tail.push_back (ll->tail.at (1)); // body
 		tail.push_back (ll->tail.at (2)); // env
@@ -87,17 +92,19 @@ struct Atom {
 	unsigned minargs;
 	std::vector <AtomPtr> tail;
 	std::vector<std::string> paths;
+	mutable std::unordered_map<std::string, AtomPtr> cache; // OPTIMIZATION: hash map cache for fast symbol lookup
+	mutable bool cache_valid = false;
 };
-bool is_nil (AtomPtr e) {
+inline bool is_nil (AtomPtr e) { // OPTIMIZATION: inline
 	return (e == nullptr || (e->type == LIST && e->tail.size () == 0));
 }
 
 // lexing, parsing, evaluation
-bool is_string (const std::string& l) {
+inline bool is_string (const std::string& l) {
 	if (l.size () > 1 && l.at (0) == '\"') return true;
 	return false;
 }
-bool is_number (const std::string& tt) {
+inline bool is_number (const std::string& tt) {
 	const char* t = tt.c_str ();
 	std::stringstream dummy;
 	dummy << t;
@@ -182,13 +189,13 @@ void error (const std::string& msg, AtomPtr n) {
     }	
 	throw std::runtime_error (err.str ());
 }
-AtomPtr args_check (AtomPtr node, unsigned args) {
+inline AtomPtr args_check (AtomPtr node, unsigned args) {
 	std::stringstream err;
 	err << "insufficient number of arguments (required " << args << ", got " << node->tail.size () << ")";
 	if (node->tail.size () < args) error (err.str (), node);
 	return node;
 }
-AtomPtr type_check (AtomPtr node, AtomType t) {
+inline AtomPtr type_check (AtomPtr node, AtomType t) {
 	std::stringstream err;
 	err << "invalid type (required " << ATOM_NAMES[t] << ", got " << ATOM_NAMES[node->type] << ")";
 	if (node->type != t) error (err.str (), node);
@@ -261,6 +268,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
     if (!token.size()) return nullptr; // EOF sentinel
     if (token == "(") {
         AtomPtr l = make_atom();
+        l->tail.reserve(8); // OPTIMIZATION: reserve typical list size
         while (true) {
             AtomPtr n = read(in, linenum);
             if (!n) {
@@ -274,6 +282,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
         return l;
     } else if (token == "{") {
         AtomPtr body = make_atom(); // temporary list of block forms
+        body->tail.reserve(8); // OPTIMIZATION
         while (true) {
             AtomPtr n = read(in, linenum);
             if (!n) {
@@ -286,6 +295,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
         }
         if (body->tail.empty()) return make_atom();
         AtomPtr l = make_atom();
+        l->tail.reserve(body->tail.size() + 1); // OPTIMIZATION
         l->tail.push_back(make_atom("begin"));
         for (auto& e : body->tail) {
             l->tail.push_back(e);
@@ -293,6 +303,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
         return l;
     } else if (token == "[") {
         AtomPtr elems = make_atom(); // temporary list of elements
+        elems->tail.reserve(16); // OPTIMIZATION: Arrays often larger
         while (true) {
             AtomPtr n = read(in, linenum);
             if (!n) {
@@ -307,6 +318,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
             return make_atom();
         }
         AtomPtr l = make_atom();
+        l->tail.reserve(elems->tail.size() + 1); // OPTIMIZATION
         l->tail.push_back(make_atom("array"));
         for (auto& e : elems->tail) {
             l->tail.push_back(e);
@@ -314,6 +326,7 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
         return l;
     } else if (token == "\'") {
         AtomPtr ll = make_atom();
+        ll->tail.reserve(2); // OPTIMIZATION: quote always has 2 elements
         ll->tail.push_back(make_atom("quote"));
         AtomPtr quoted = read(in, linenum);
         if (!quoted && in.eof()) {
@@ -328,6 +341,9 @@ AtomPtr read (std::istream& in, unsigned& linenum) {
     }
 }
 bool atom_eq (AtomPtr a, AtomPtr b) {
+	// OPTIMIZATION: fast path for identical pointers
+	if (a == b) return true;
+	
 	if (is_nil (a) && !is_nil (b)) return false;
 	if (!is_nil (a) && is_nil (b)) return false;
 	if (is_nil (a) && is_nil (b)) return true;
@@ -359,16 +375,32 @@ bool atom_eq (AtomPtr a, AtomPtr b) {
 	}
 	return false; // dummy
 }
-AtomPtr assoc (AtomPtr node, AtomPtr env) {
-	for (unsigned i = 1; i < env->tail.size (); ++i) {
-		AtomPtr vv = env->tail.at (i);
-		if (atom_eq (node, vv->tail.at (0))) return vv->tail.at(1);
+
+AtomPtr assoc (AtomPtr node, AtomPtr env) { // OPTIMIZATION: hash-map based symbol lookup
+	if (!env->cache_valid) { // build cache on first access to this environment
+		env->cache.clear();
+		for (unsigned i = 1; i < env->tail.size (); ++i) {
+			AtomPtr binding = env->tail.at (i);
+			if (!is_nil(binding) && binding->tail.size() >= 2) {
+				AtomPtr sym = binding->tail.at(0);
+				if (sym->type == SYMBOL) {
+					env->cache[sym->lexeme] = binding->tail.at(1);
+				}
+			}
+		}
+		env->cache_valid = true;
+	}	
+	auto it = env->cache.find(node->lexeme); 	// O(1) hash map lookup instead of O(n) linear search
+	if (it != env->cache.end()) {
+		return it->second;
 	}
 	if (!is_nil (env->tail.at (0))) return assoc (node, env->tail.at (0));
 	error ("unbound identifier", node);
 	return make_atom (); // dummy
 }
+
 AtomPtr extend (AtomPtr node, AtomPtr val, AtomPtr env, bool recurse = false) {
+	env->cache_valid = false; // OPTIMIZATION: invalidate cache when environment changes
 	for (unsigned i = 1; i < env->tail.size (); ++i) {
 		AtomPtr vv = env->tail.at (i);
 		if (atom_eq (node, vv->tail.at (0))) {
@@ -381,6 +413,7 @@ AtomPtr extend (AtomPtr node, AtomPtr val, AtomPtr env, bool recurse = false) {
 		error ("unbound identifier", node);
 	} else {
 		AtomPtr vv = make_atom();
+		vv->tail.reserve(2); // OPTIMIZATION: always 2 elements
 		vv->tail.push_back (node);
 		vv->tail.push_back (val);
 		env->tail.push_back (vv);
@@ -404,12 +437,25 @@ AtomPtr clone_impl(AtomPtr n, std::unordered_map<Atom*, AtomPtr>& seen) {
     r->array   = n->array;
     r->op      = n->op;
     r->minargs = n->minargs;
-    for (auto& t : n->tail) {
-        r->tail.push_back(clone_impl(t, seen));
+    if (!n->tail.empty()) {
+        r->tail.reserve(n->tail.size()); // OPTIMIZATION
+        for (auto& t : n->tail) {
+            r->tail.push_back(clone_impl(t, seen));
+        }
     }
     return r;
 }
-AtomPtr clone(AtomPtr n) {
+AtomPtr clone(AtomPtr n) { 
+    if (!n) return nullptr;
+    if (n->tail.empty()) {  // OPTIMIZATION: Fast path for simple atoms without cycles
+        AtomPtr r = make_atom();
+        r->type = n->type;
+        r->lexeme = n->lexeme;
+        r->array = n->array;
+        r->op = n->op;
+        r->minargs = n->minargs;
+        return r;
+    }
     std::unordered_map<Atom*, AtomPtr> seen;
     return clone_impl(n, seen);
 }
@@ -455,8 +501,10 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 		if (func->op == &fn_lambda || func->op == &fn_macro) {
 			args_check (node, 3);
 			AtomPtr ll = make_atom();
+			ll->tail.reserve(3); // OPTIMIZATION
 			ll->tail.push_back (type_check (node->tail.at (1), LIST)); // vars
 			AtomPtr body = make_atom ();
+			body->tail.reserve(node->tail.size() - 2); // OPTIMIZATION
 			for (unsigned i = 2; i < node->tail.size (); ++i) {
 				body->tail.push_back (node->tail.at (i));
 			}
@@ -500,6 +548,7 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			continue; 
 		}
 		AtomPtr args = make_atom();
+		args->tail.reserve(node->tail.size()); // OPTIMIZATION
 		for (unsigned i = 1; i < node->tail.size (); ++i) {
 			args->tail.push_back ((func->type == MACRO ? node->tail.at (i) : eval (node->tail.at (i), env)));
 		}
@@ -507,6 +556,7 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			AtomPtr vars = func->tail.at(0);
 			AtomPtr body = func->tail.at(1);
 			AtomPtr nenv = make_atom();
+			nenv->tail.reserve(1 + vars->tail.size()); // OPTIMIZATION
 			nenv->tail.push_back(func->tail.at(2)); // parent env (lexical)
 			if (vars->tail.size() < args->tail.size())
 				error("[lambda/macro] too many arguments", node);
@@ -519,10 +569,12 @@ AtomPtr eval (AtomPtr node, AtomPtr env) {
 			// Currying / partial application
 			if (vars->tail.size() > args->tail.size()) {
 				AtomPtr vars_rest = make_atom();
+				vars_rest->tail.reserve(vars->tail.size() - minargs); // OPTIMIZATION
 				for (unsigned i = minargs; i < vars->tail.size(); ++i) {
 					vars_rest->tail.push_back(vars->tail.at(i));
 				}
 				AtomPtr new_lambda = make_atom();
+				new_lambda->tail.reserve(3); // OPTIMIZATION
 				new_lambda->tail.push_back(vars_rest);
 				new_lambda->tail.push_back(body);
 				new_lambda->tail.push_back(nenv);
@@ -597,6 +649,7 @@ AtomPtr fn_info(AtomPtr b, AtomPtr env) {
         r.assign(pattern);
         AtomPtr vars = make_atom();
         browse_env(env, vars);
+        l->tail.reserve(vars->tail.size()); // OPTIMIZATION
         for (unsigned i = 0; i < vars->tail.size(); ++i) {
             std::string k = vars->tail.at(i)->lexeme;
             if (std::regex_match(k, r)) {
@@ -606,6 +659,7 @@ AtomPtr fn_info(AtomPtr b, AtomPtr env) {
         }
     } else if (cmd == "exists") {
         // (info exists 'a 'b ...)
+        l->tail.reserve(b->tail.size()); // OPTIMIZATION
         for (unsigned i = 1; i < b->tail.size(); ++i) {
             AtomPtr key = type_check(b->tail.at(i), SYMBOL);
             Real ans = 1;
@@ -618,6 +672,7 @@ AtomPtr fn_info(AtomPtr b, AtomPtr env) {
             l->tail.push_back(make_atom(ans));
         }
     } else if (cmd == "typeof") {
+        l->tail.reserve(b->tail.size()); // OPTIMIZATION
         for (unsigned i = 1; i < b->tail.size(); ++i) {
             AtomPtr v = b->tail.at(i);
             l->tail.push_back(make_atom(std::string(ATOM_NAMES[v->type])));
@@ -669,6 +724,7 @@ AtomPtr fn_lrange (AtomPtr params, AtomPtr env) {
 	if (len < i) len = i;
 	if (end > l->tail.size ()) end = l->tail.size ();
 	AtomPtr nl = make_atom();
+	nl->tail.reserve((end - i) / stride + 1); // OPTIMIZATION
 	for (int j = i; j < end; j += stride) nl->tail.push_back(l->tail.at (j));
 	return nl;
 }
@@ -715,12 +771,14 @@ void list2array (AtomPtr list, std::vector<Real>& out) {
 }
 AtomPtr fn_array (AtomPtr node, AtomPtr env) {
 	std::vector<Real> res;
+	res.reserve(node->tail.size() * 4); // OPTIMIZATION: estimate array size
 	list2array (node, res);
 	std::valarray<Real> f (res.data (), res.size ());
-	return make_atom (f);
+	return make_atom (std::move(f)); // OPTIMIZATION: move instead of copy
 }
 AtomPtr array2list (const std::valarray<Real>& out) {
 	AtomPtr list = make_atom ();
+	list->tail.reserve(out.size()); // OPTIMIZATION
 	for (unsigned i = 0; i < out.size (); ++i) {
 		list->tail.push_back (make_atom (out[i]));
 	}
@@ -740,7 +798,7 @@ AtomPtr fn_eq (AtomPtr node, AtomPtr env) {
 			if (a.size () == 1) res = res op a[0]; \
 			else res = res op a; \
 		} \
-		return make_atom (res); \
+		return make_atom (std::move(res)); \
 	} \
 
 MAKE_ARRAYBINOP (+, fn_add);
@@ -763,7 +821,7 @@ MAKE_ARRAYBINOP (/, fn_div);
 		} \
 		std::valarray<Real> res_r (res.size ()); \
 		for (unsigned i = 0; i < res.size (); ++i) res_r[i] = (Real) res[i]; \
-		return make_atom (res_r); \
+		return make_atom (std::move(res_r)); \
 	} \
 
 MAKE_ARRAYCMPOP (>, fn_greater);
@@ -776,7 +834,7 @@ MAKE_ARRAYCMPOP (<=, fn_lesseq);
 		for (unsigned i = 0; i < n->tail.size (); ++i) { \
 			res[i] = (type_check (n->tail.at (i), ARRAY)->array.op ()); \
 		}\
-		return make_atom (res);\
+		return make_atom (std::move(res));\
 	}\
 
 MAKE_ARRAYMETHODS (min, fn_min);
@@ -786,9 +844,10 @@ MAKE_ARRAYMETHODS (size, fn_size);
 #define MAKE_ARRAYSINGOP(op,name)									\
 	AtomPtr name (AtomPtr n, AtomPtr env) {						\
 		AtomPtr res = make_atom (); \
+		res->tail.reserve(n->tail.size()); \
 		for (unsigned i = 0; i < n->tail.size (); ++i) { \
 			std::valarray<Real> v = op (type_check (n->tail.at (i), ARRAY)->array); \
-			res->tail.push_back (make_atom (v)); \
+			res->tail.push_back (make_atom (std::move(v))); \
 		}\
 		return res->tail.size () == 1 ? res->tail.at (0) : res; \
 	}\
@@ -809,20 +868,22 @@ MAKE_ARRAYSINGOP (cosh, fn_cosh);
 MAKE_ARRAYSINGOP (tanh, fn_tanh);
 AtomPtr fn_neg (AtomPtr n, AtomPtr env) {						
 	AtomPtr res = make_atom (); 
+	res->tail.reserve(n->tail.size()); // OPTIMIZATION
 	for (unsigned i = 0; i < n->tail.size (); ++i) { 
 		std::valarray<Real> v = -(type_check (n->tail.at (i), ARRAY)->array); 
-		res->tail.push_back (make_atom (v)); 
+		res->tail.push_back (make_atom (std::move(v))); 
 	}
 	return res->tail.size () == 1 ? res->tail.at (0) : res; 
 }
 AtomPtr fn_floor (AtomPtr n, AtomPtr env) {						
 	AtomPtr res = make_atom (); 
+	res->tail.reserve(n->tail.size()); // OPTIMIZATION
 	for (unsigned i = 0; i < n->tail.size (); ++i) { 
 		std::valarray<Real> v (type_check (n->tail.at (i), ARRAY)->array.size ());
 		for (unsigned j = 0; j < n->tail.at (i)->array.size (); ++j) {
 			v[j] = floor (n->tail.at (i)->array[j]); 
 		} 
-		res->tail.push_back (make_atom (v)); 
+		res->tail.push_back (make_atom (std::move(v))); 
 	}
 	return res->tail.size () == 1 ? res->tail.at (0) : res; 
 }
@@ -844,7 +905,7 @@ AtomPtr fn_slice (AtomPtr node, AtomPtr env) {
 		++ct;
 	}
 	std::valarray<Real> s = input[std::slice (i, ct, stride)];
-	return make_atom (s);
+	return make_atom (std::move(s)); // OPTIMIZATION: Move
 }    
 AtomPtr fn_assign (AtomPtr node, AtomPtr env) {
 	std::valarray<Real>& v1 = type_check (node->tail.at (0), ARRAY)->array;
@@ -896,6 +957,7 @@ AtomPtr fn_read (AtomPtr node, AtomPtr env) {
         std::ifstream in (type_check (node->tail.at (0), STRING)->lexeme);
         if (!in.good ()) error ("[read] cannot open input file", node);
         AtomPtr r = make_atom ();
+        r->tail.reserve(32); // OPTIMIZATION: typical file has multiple expressions
         while (true) {
             AtomPtr l = read(in, linenum);
             if (!l && in.eof()) break;
@@ -953,6 +1015,7 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 		char sep =  type_check (node->tail.at(2), STRING)->lexeme[0];
 		std::vector<std::string> tokens = split (tmp, sep);
 		AtomPtr l = make_atom ();
+		l->tail.reserve(tokens.size()); // OPTIMIZATION
 		for (unsigned i = 0; i < tokens.size (); ++i) l->tail.push_back (make_atom ((std::string) "\"" + tokens[i]));
 		return l;
 	} else if (cmd == "regex") {
@@ -962,6 +1025,7 @@ AtomPtr fn_string (AtomPtr node, AtomPtr env) {
 		std::smatch m; 
 		std::regex_search(str, m, r);
 		AtomPtr l = make_atom();
+		l->tail.reserve(m.size()); // OPTIMIZATION
 		for(auto v: m) {
 			l->tail.push_back (make_atom ((std::string) "\"" + v.str()));
 		}
