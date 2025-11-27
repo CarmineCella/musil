@@ -1,10 +1,9 @@
-// musil_ide.cpp
+// musil_ide.cpp - WITH THREADING SUPPORT
 
 // TODO:
 //  - go to line
 //  - improved About
 //  - tab 4 chars
-//  - eval in different thread
 //
 
 #include <FL/Fl.H>
@@ -42,6 +41,12 @@
 #include <filesystem>
 #include <system_error>
 
+// Threading support
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <queue>
+
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <limits.h>
@@ -73,6 +78,11 @@ class ListenerInput;
 ListenerInput    *app_listener       = nullptr;
 
 Fl_Select_Browser *app_var_browser   = nullptr;
+
+// Toolbar buttons
+Fl_Button* g_btn_run_script = nullptr;
+Fl_Button* g_btn_run_selection = nullptr;
+Fl_Button* g_btn_stop = nullptr;
 
 bool  text_changed = false;
 char  app_filename[FL_PATH_MAX] = "";
@@ -109,6 +119,12 @@ bool       g_find_case      = false; // currently unused, kept for future use
 
 YieldFunction g_yield = nullptr;
 
+// Threading for evaluation
+std::atomic<bool>   g_eval_running{false};
+std::atomic<bool>   g_eval_stop_requested{false};
+std::mutex          g_console_mutex;
+std::queue<std::string> g_console_queue;
+
 // -----------------------------------------------------------------------------
 // Forward declarations
 // -----------------------------------------------------------------------------
@@ -134,6 +150,7 @@ void menu_replace_all_callback(Fl_Widget*, void*);
 
 void menu_run_script_callback(Fl_Widget*, void*);
 void menu_run_selection_callback(Fl_Widget*, void*);
+void menu_stop_callback(Fl_Widget*, void*);
 void menu_clear_env_callback(Fl_Widget*, void*);
 void menu_paths_callback(Fl_Widget*, void*);
 void menu_install_libraries_callback(Fl_Widget*, void*);
@@ -166,11 +183,13 @@ void build_app_window();
 void build_app_menu_bar();
 void build_main_editor_console_listener();
 
+// UI state
+void update_eval_ui_state();
+
 // -----------------------------------------------------------------------------
 // Small helper to capture std::cout
 // -----------------------------------------------------------------------------
 
-// Small helper to capture std::cout output *incrementally*
 struct CoutRedirect {
     std::streambuf*    old_buf;
     std::ostringstream capture;
@@ -202,16 +221,20 @@ struct CoutRedirect {
 static CoutRedirect* g_active_redirect = nullptr;
 
 void console_append(const std::string &s);
+void console_append_threadsafe(const std::string &s);
 
 // This is what musil_yield() will call (via g_musil_yield)
 static void musil_ide_yield() {
+    // Check if stop was requested
+    if (g_eval_stop_requested) {
+        throw std::runtime_error("Evaluation stopped by user");
+    }
+    
     if (!g_active_redirect) return;
 
     std::string chunk = g_active_redirect->consume();
     if (!chunk.empty()) {
-        console_append(chunk);
-        // Let FLTK process pending events/redraws
-        Fl::check();
+        console_append_threadsafe(chunk);
     }
 }
 
@@ -254,15 +277,43 @@ void set_filename(const char *new_filename) {
 }
 
 // -----------------------------------------------------------------------------
-// Console helpers
+// Console helpers (thread-safe)
 // -----------------------------------------------------------------------------
 
+// Thread-safe console append - can be called from any thread
+void console_append_threadsafe(const std::string &s) {
+    std::lock_guard<std::mutex> lock(g_console_mutex);
+    g_console_queue.push(s);
+    Fl::awake();  // Wake up main thread to process queue
+}
+
+// Main thread only - processes queued console output
+void process_console_queue() {
+    std::lock_guard<std::mutex> lock(g_console_mutex);
+    while (!g_console_queue.empty()) {
+        const std::string& s = g_console_queue.front();
+        if (app_console_buffer) {
+            app_console_buffer->append(s.c_str());
+            app_console->insert_position(app_console_buffer->length());
+            app_console->show_insert_position();
+            app_console->redraw();
+        }
+        g_console_queue.pop();
+    }
+}
+
+// Wrapper for direct use (main thread only)
 void console_append(const std::string &s) {
-    if (!app_console_buffer) return;
-    app_console_buffer->append(s.c_str());
-    app_console->insert_position(app_console_buffer->length());
-    app_console->show_insert_position();
-    app_console->redraw();
+    if (g_eval_running) {
+        console_append_threadsafe(s);
+    } else {
+        if (app_console_buffer) {
+            app_console_buffer->append(s.c_str());
+            app_console->insert_position(app_console_buffer->length());
+            app_console->show_insert_position();
+            app_console->redraw();
+        }
+    }
 }
 
 void console_clear() {
@@ -275,6 +326,78 @@ void console_clear() {
 
 void menu_clear_console_callback(Fl_Widget*, void*) {
     console_clear();
+}
+
+// -----------------------------------------------------------------------------
+// UI State Management
+// -----------------------------------------------------------------------------
+
+void update_eval_ui_state() {
+    bool running = g_eval_running;
+    
+    // Find menu items
+    const Fl_Menu_Item* run_script_item = app_menu_bar->find_item("Evaluate/Run script");
+    const Fl_Menu_Item* run_sel_item = app_menu_bar->find_item("Evaluate/Run selection");
+    const Fl_Menu_Item* stop_item = app_menu_bar->find_item("Evaluate/Stop");
+    
+    if (run_script_item) {
+        int idx = app_menu_bar->find_index(run_script_item);
+        if (running) app_menu_bar->mode(idx, FL_MENU_INACTIVE);
+        else app_menu_bar->mode(idx, 0);
+    }
+    if (run_sel_item) {
+        int idx = app_menu_bar->find_index(run_sel_item);
+        if (running) app_menu_bar->mode(idx, FL_MENU_INACTIVE);
+        else app_menu_bar->mode(idx, 0);
+    }
+    if (stop_item) {
+        int idx = app_menu_bar->find_index(stop_item);
+        if (running) app_menu_bar->mode(idx, 0);
+        else app_menu_bar->mode(idx, FL_MENU_INACTIVE);
+    }
+    
+    // Update toolbar buttons - be very explicit
+    if (g_btn_run_script) {
+        if (running) {
+            if (g_btn_run_script->active()) {
+                g_btn_run_script->deactivate();
+            }
+        } else {
+            if (!g_btn_run_script->active()) {
+                g_btn_run_script->activate();
+            }
+        }
+        g_btn_run_script->redraw();
+    }
+    
+    if (g_btn_run_selection) {
+        if (running) {
+            if (g_btn_run_selection->active()) {
+                g_btn_run_selection->deactivate();
+            }
+        } else {
+            if (!g_btn_run_selection->active()) {
+                g_btn_run_selection->activate();
+            }
+        }
+        g_btn_run_selection->redraw();
+    }
+    
+    if (g_btn_stop) {
+        if (running) {
+            if (!g_btn_stop->active()) {
+                g_btn_stop->activate();
+            }
+        } else {
+            if (g_btn_stop->active()) {
+                g_btn_stop->deactivate();
+            }
+        }
+        g_btn_stop->redraw();
+    }
+    
+    // Force FLTK to process the changes
+    Fl::check();
 }
 
 // -----------------------------------------------------------------------------
@@ -997,67 +1120,104 @@ void listener_eval_line() {
 }
 
 // -----------------------------------------------------------------------------
-// Evaluate helpers / menu handlers
+// Threaded evaluation
 // -----------------------------------------------------------------------------
 
-void eval_code (const std::string &code, bool is_script) {
+void eval_code_worker(const std::string code, bool is_script) {
+    // RAII guard to ensure g_eval_running is reset even if exceptions occur
+    struct EvalGuard {
+        ~EvalGuard() { 
+            g_eval_running = false;
+        }
+    } guard;
+    
     CoutRedirect redirect;
-
-    // Install the redirect for the yield hook to use
     g_active_redirect = &redirect;
-
-    // Install the yield hook into the core (no-op in CLI, active here)
     set_yield(musil_ide_yield);
 
     std::istringstream in(code);
     unsigned linenum = 0;
 
-    while (true) {
-        try {
-            AtomPtr expr = read(in, linenum);
-            if (!expr && in.eof()) break;
-            if (!expr) continue;
-
-            AtomPtr res = eval(expr, musil_env);
-
-            if (!is_script) {
-                std::ostringstream oss;
-                print(res, oss);
-                oss << "\n";
-                std::cout << oss.str();
+    try {
+        while (true) {
+            if (g_eval_stop_requested) {
+                console_append_threadsafe("[Evaluation stopped]\n");
+                break;
             }
-        } catch (std::exception &e) {
-            if (is_script) {
-                if (app_filename[0])
-                    std::cout << "[" << app_filename << ":" << linenum << "] ";
-                else
-                    std::cout << "line " << linenum << ": ";
-            }
-            std::cout << e.what() << "\n";
-        } catch (...) {
-            std::cout << "fatal unknown error\n";
-        }
 
-        // Per-expression flush, as before (safe but often redundant with yield)
-        std::string chunk = redirect.consume();
-        if (!chunk.empty()) {
-            console_append(chunk);
-            Fl::check();
+            try {
+                AtomPtr expr = read(in, linenum);
+                if (!expr && in.eof()) break;
+                if (!expr) continue;
+
+                AtomPtr res = eval(expr, musil_env);
+
+                if (!is_script) {
+                    std::ostringstream oss;
+                    print(res, oss);
+                    oss << "\n";
+                    std::cout << oss.str();
+                }
+            } catch (std::exception &e) {
+                if (is_script) {
+                    if (app_filename[0])
+                        std::cout << "[" << app_filename << ":" << linenum << "] ";
+                    else
+                        std::cout << "line " << linenum << ": ";
+                }
+                std::cout << e.what() << "\n";
+                
+                // If it's the stop exception, break the loop
+                if (std::string(e.what()).find("stopped by user") != std::string::npos) {
+                    break;
+                }
+            } catch (...) {
+                std::cout << "fatal unknown error\n";
+            }
+
+            std::string chunk = redirect.consume();
+            if (!chunk.empty()) {
+                console_append_threadsafe(chunk);
+            }
         }
+    } catch (std::exception &e) {
+        console_append_threadsafe(std::string("[Error] ") + e.what() + "\n");
     }
 
-    // Reset yield hook and redirect
     set_yield(nullptr);
     g_active_redirect = nullptr;
 
-    // One last flush in case something was printed after the last expr
     std::string tail = redirect.consume();
     if (!tail.empty()) {
-        console_append(tail);
-        Fl::check();
+        console_append_threadsafe(tail);
     }
 
-    update_keywords_from_env_and_browser();
+    // Schedule keyword update in main thread
+    Fl::awake([](void*) {
+        update_keywords_from_env_and_browser();
+    }, nullptr);
+    
+    // g_eval_running will be set to false by EvalGuard destructor
+}
+
+void eval_code(const std::string &code, bool is_script) {
+    if (g_eval_running) {
+        fl_alert("Evaluation is already running.\nPlease wait or click Stop.");
+        return;
+    }
+
+    g_eval_running = true;
+    g_eval_stop_requested = false;
+    update_eval_ui_state();
+    
+    // Force FLTK to process pending events to ensure UI updates immediately
+    Fl::check();
+
+    // Launch detached thread - no need to join
+    std::thread worker([code, is_script]() {
+        eval_code_worker(code, is_script);
+    });
+    worker.detach();
 }
 
 void menu_run_script_callback(Fl_Widget*, void*) {
@@ -1095,6 +1255,16 @@ void menu_run_selection_callback(Fl_Widget*, void*) {
     console_append("[Run selection]\n");
     eval_code(code, false);
     console_append("\n");
+}
+
+void menu_stop_callback(Fl_Widget*, void*) {
+    if (!g_eval_running) {
+        fl_message("No evaluation is currently running.");
+        return;
+    }
+    
+    g_eval_stop_requested = true;
+    console_append("\n[Stop requested...]\n");
 }
 
 void menu_clear_env_callback(Fl_Widget*, void*) {
@@ -1211,6 +1381,27 @@ void menu_quit_callback(Fl_Widget *, void *) {
         if (r == 1) {
             menu_save_as_callback(nullptr, nullptr);
             return;
+        }
+    }
+
+    // Stop any running evaluation and wait for it to finish
+    if (g_eval_running) {
+        g_eval_stop_requested = true;
+        console_append("[Waiting for evaluation to stop...]\n");
+        
+        // Wait for the thread to finish (with timeout)
+        int wait_count = 0;
+        while (g_eval_running && wait_count < 50) {  // 5 seconds max
+            Fl::wait(0.1);
+            process_console_queue();
+            wait_count++;
+        }
+        
+        if (g_eval_running) {
+            int r = fl_choice("Evaluation is still running.\n"
+                            "Force quit anyway?",
+                            "Cancel", "Force Quit", nullptr);
+            if (r == 0) return;
         }
     }
 
@@ -1565,7 +1756,8 @@ void build_app_menu_bar() {
 
     // Evaluate
     app_menu_bar->add("Evaluate/Run script",         FL_COMMAND + 'r', menu_run_script_callback);
-    app_menu_bar->add("Evaluate/Run selection",      FL_COMMAND + 'e', menu_run_selection_callback, nullptr, FL_MENU_DIVIDER);
+    app_menu_bar->add("Evaluate/Run selection",      FL_COMMAND + 'e', menu_run_selection_callback);
+    app_menu_bar->add("Evaluate/Stop",               FL_COMMAND + '.', menu_stop_callback, nullptr, FL_MENU_DIVIDER);
     app_menu_bar->add("Evaluate/Reset environment",  FL_COMMAND + 'j', menu_clear_env_callback, nullptr, FL_MENU_DIVIDER);
     app_menu_bar->add("Evaluate/Paths...",           0,                menu_paths_callback);
     app_menu_bar->add("Evaluate/Install libraries...", 0,              menu_install_libraries_callback);
@@ -1623,8 +1815,9 @@ void build_main_editor_console_listener() {
         return b;
     };
 
-    make_icon_button("@>",   "Run script",        menu_run_script_callback);
-    make_icon_button("@<->", "Run selection",     menu_run_selection_callback);
+    g_btn_run_script = make_icon_button("@>",   "Run script",        menu_run_script_callback);
+    g_btn_run_selection = make_icon_button("@<->", "Run selection",     menu_run_selection_callback);
+    g_btn_stop = make_icon_button("@square", "Stop",  menu_stop_callback);
     make_icon_button("@reload", "Reset environment", menu_clear_env_callback);
     make_icon_button("X",    "Clear console",     menu_clear_console_callback);
 
@@ -1713,6 +1906,20 @@ void menu_about_callback(Fl_Widget*, void*) {
 }
 
 // -----------------------------------------------------------------------------
+// Timeout callback for processing console queue and UI state
+// -----------------------------------------------------------------------------
+
+void console_timeout_callback(void*) {
+    process_console_queue();
+    
+    // Always update UI state - this ensures we catch quick completions
+    // update_eval_ui_state() is lightweight and idempotent
+    update_eval_ui_state();
+    
+    Fl::repeat_timeout(0.1, console_timeout_callback);
+}
+
+// -----------------------------------------------------------------------------
 // main
 // -----------------------------------------------------------------------------
 
@@ -1753,7 +1960,13 @@ int main(int argc, char **argv) {
         }
 
         apply_font_size();
-        update_title ();
+        update_title();
+        
+        // Initial UI state
+        update_eval_ui_state();
+
+        // Set up console queue processing
+        Fl::add_timeout(0.1, console_timeout_callback);
 
         return Fl::run();
     } catch (std::exception &e) {
@@ -1766,4 +1979,3 @@ int main(int argc, char **argv) {
 }
 
 // eof
-
