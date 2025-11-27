@@ -1040,7 +1040,6 @@ void menu_run_script_callback(Fl_Widget*, void*) {
 
     std::string code(text);
     free(text);
-    console_append("here\n");
     eval_code(code, true);
     console_append("\n");
 }
