@@ -37,7 +37,7 @@ struct StackGuard {
     StackGuard(AtomPtr node) {
         eval_stack.push_back(node);
     }
-    ~StackGuard() {
+    virtual ~StackGuard() {
         eval_stack.pop_back();
     }
 };
