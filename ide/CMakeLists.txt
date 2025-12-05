@@ -16,6 +16,7 @@ endif()
 set(MUSIL_STDLIB_SCM "${CMAKE_SOURCE_DIR}/src/stdlib.scm")
 set(MUSIL_CORE_SCM   "${CMAKE_SOURCE_DIR}/src/core.scm")
 set(MUSIL_SCI_SCM   "${CMAKE_SOURCE_DIR}/src/scientific.scm")
+set(MUSIL_PLOT_SCM   "${CMAKE_SOURCE_DIR}/src/plotting.scm")
 
 # musil.icns is in the same folder as musil_ide.cpp
 set(MUSIL_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/musil.icns")
@@ -55,7 +56,10 @@ if(APPLE)
             "${MUSIL_RESOURCES_DIR}/core.scm"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${MUSIL_SCI_SCM}"
-            "${MUSIL_RESOURCES_DIR}/scientific.scm"            
+            "${MUSIL_RESOURCES_DIR}/scientific.scm"        
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MUSIL_PLOT_SCM}"
+            "${MUSIL_RESOURCES_DIR}/plotting.scm"                        
         COMMENT "Copying libraries into Musil IDE.app Resources"
     )
 
@@ -75,7 +79,10 @@ else()
             "$<TARGET_FILE_DIR:musil_ide>/core.scm"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${MUSIL_SCI_SCM}"
-            "$<TARGET_FILE_DIR:musil_ide>/scientific.scm"            
+            "$<TARGET_FILE_DIR:musil_ide>/scientific.scm"       
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MUSIL_PLOT_SCM}"
+            "$<TARGET_FILE_DIR:musil_ide>/plotting.scm"                     
         COMMENT "Copying libraries next to musil_ide executable"
     )
 endif()
