@@ -4,6 +4,7 @@
 // System library for Musil
 
 #include "core.h"
+#include "system/csv_tools.h"
 
 #include <fstream>
 #include <vector>
@@ -258,6 +259,94 @@ AtomPtr fn_udpsend (AtomPtr n, AtomPtr env) {
     return  make_atom (1);
 }
 
+// I/O
+AtomPtr fn_readcsv(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    if (node->tail.size() < 1) {
+        error("[readcsv] filename argument required", node);
+    }
+
+    std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        error("[readcsv] cannot open file", node);
+    }
+
+    std::vector<std::vector<std::string>> table = readCSV(file);
+
+    AtomPtr result = make_atom();  // LIST
+
+    for (const auto& row_vec : table) {
+        AtomPtr row_atom = make_atom(); // LIST
+
+        for (const auto& cell_str_raw : row_vec) {
+            std::string cell_str = cell_str_raw;
+
+            if (is_number (cell_str)) {
+                Real v = static_cast<Real>(std::stod(cell_str));
+                std::valarray<Real> arr((Real)0, 1);
+                arr[0] = v;
+                row_atom->tail.push_back(make_atom(arr));
+            } else {
+                cell_str = (std::string) "\"" + cell_str;
+                row_atom->tail.push_back(make_atom(cell_str));
+            }
+        }
+
+        result->tail.push_back(row_atom);
+    }
+
+    return result;
+}
+AtomPtr fn_writecsv(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    if (node->tail.size() < 2) {
+        error("[writecsv] expects filename and table", node);
+    }
+
+    std::string filename = type_check(node->tail.at(0), STRING)->lexeme;
+    AtomPtr table = type_check(node->tail.at(1), LIST);
+
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        error("[writecsv] cannot open file for writing", node);
+    }
+
+    for (const auto& row : table->tail) {
+        AtomPtr r = type_check(row, LIST);
+
+        for (std::size_t i = 0; i < r->tail.size(); ++i) {
+            AtomPtr cell = r->tail[i];
+            std::string s;
+
+            if (cell->type == ARRAY) {
+                // Only support scalar arrays cleanly
+                if (cell->array.size() == 1) {
+                    std::ostringstream oss;
+                    oss << cell->array[0];
+                    s = oss.str();
+                } else {
+                    error("[writecsv] ARRAY cell must be scalar (length 1)", cell);
+                }
+            } else {
+                std::ostringstream oss;
+                print(cell, oss);
+                s = oss.str();
+            }
+
+            file << csv_escape_field(s);
+            if (i + 1 < r->tail.size()) {
+                file << ",";
+            }
+        }
+        file << "\n";
+    }
+
+    return make_atom(""); // unit
+}
+
 // interface
 AtomPtr add_system (AtomPtr env) {
     add_op ("%schedule", &fn_schedule, 2, env);
@@ -272,6 +361,8 @@ AtomPtr add_system (AtomPtr env) {
     add_op ("clearpaths", &fn_clearpaths, 0, env);
     add_op ("udpsend", &fn_udpsend, 3, env);
     add_op ("udprecv", &fn_udprecv, 2, env);
+    add_op("readcsv",  fn_readcsv,  1, env);
+    add_op("writecsv", fn_writecsv, 2, env);    
     return env;
 }
 

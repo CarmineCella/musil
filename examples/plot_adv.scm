@@ -215,8 +215,6 @@
 ;; Median filter with window order 10
 (def y (median x (array 10)))
 
-(print (size y) " " (size x) "\n")
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Plot noisy vs filtered signal
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

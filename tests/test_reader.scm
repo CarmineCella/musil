@@ -111,6 +111,38 @@
 
 (test '(quote (foo "bar" 42))
       '(foo "bar" 42))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; CSV read/write tests (list of lists)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Small pure-numeric table
+(def CSV_TBL_NUM
+  (list
+    (list 1 2 3)
+    (list 4 5 6)))
+
+;; Numeric + string table
+(def CSV_TBL_MIX
+  (list
+    (list 1     "foo"  3.5)
+    (list 2     "bar"  7.0)
+    (list -1.25 "baz"  0)))
+
+;; Helper: write then read back
+(def csv_roundtrip
+  (lambda (fname table)
+    {
+      (writecsv fname table)
+      (readcsv fname)
+    }))
+
+;; Pure numeric round-trip
+(test (quote (csv_roundtrip "tmp_csv_num.csv" CSV_TBL_NUM))
+      CSV_TBL_NUM)
+
+;; Mixed round-trip
+(test (quote (csv_roundtrip "tmp_csv_mix.csv" CSV_TBL_MIX))
+      CSV_TBL_MIX)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; end report

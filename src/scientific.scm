@@ -47,7 +47,13 @@
 (def mat*
   (lambda (A B) (matmul A B)))
 
-
+;; Convert a list-of-lists into a list-of-arrays (matrix)
+(def list2mat
+  (lambda (rows)
+    (map (lambda (row)
+           (array row))   ;; row is a list → array flattens it
+         rows)))
+         
 ;; ------------------------------------------------------------
 ;; Linear regression (normal equations)
 ;; ------------------------------------------------------------

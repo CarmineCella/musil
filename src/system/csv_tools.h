@@ -76,53 +76,6 @@ inline std::vector<std::vector<std::string>> readCSV(std::istream &in) {
     return table;
 }
 
-// ------------------------------------------------------------------
-// Helpers: numeric detection & CSV escaping (still fully generic)
-// ------------------------------------------------------------------
-
-// Simple numeric-string test: allows spaces, optional sign, one dot.
-inline bool is_number_string(const std::string& s) {
-    std::size_t i = 0;
-    std::size_t n = s.size();
-
-    // skip leading spaces
-    while (i < n && std::isspace(static_cast<unsigned char>(s[i]))) {
-        ++i;
-    }
-    if (i == n) return false;
-
-    // optional sign
-    if (s[i] == '+' || s[i] == '-') {
-        ++i;
-        if (i == n) return false;
-    }
-
-    bool has_digit = false;
-    bool has_dot   = false;
-
-    for (; i < n; ++i) {
-        unsigned char c = static_cast<unsigned char>(s[i]);
-        if (std::isdigit(c)) {
-            has_digit = true;
-        } else if (c == '.') {
-            if (has_dot) return false;
-            has_dot = true;
-        } else if (std::isspace(c)) {
-            // allow trailing spaces only
-            for (std::size_t j = i + 1; j < n; ++j) {
-                if (!std::isspace(static_cast<unsigned char>(s[j]))) {
-                    return false;
-                }
-            }
-            break;
-        } else {
-            return false;
-        }
-    }
-
-    return has_digit;
-}
-
 // Escape a field for CSV: add quotes if needed and double internal quotes.
 inline std::string csv_escape_field(const std::string& s) {
     bool needs_quotes = false;
