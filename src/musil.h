@@ -19,7 +19,7 @@ AtomPtr make_env (YieldFunction yield_fn = nullptr) {
     add_core (env);
     add_system (env);
     add_scientific (env);
-    add_plotting (env);    
+    add_plotting (env);
     // add_signals (env);
     return env;
 }

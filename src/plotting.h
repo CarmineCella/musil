@@ -35,8 +35,7 @@ inline std::string atom_to_string_for_plot(AtomPtr a) {
 inline std::string plotting_do_plot(const std::string& title,
                                     const std::vector<svg_tools::Series<Real>>& series,
                                     char style,
-                                    bool scatter_mode)
-{
+                                    bool scatter_mode) {
     // Just delegate to svg_tools and pass the filename back.
     // svg_tools::save_svg_plot should:
     //   - save into std::filesystem::current_path()

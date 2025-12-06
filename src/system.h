@@ -46,7 +46,7 @@ void load_env_paths (AtomPtr env) {
         auto it = std::find(env->paths.begin(), env->paths.end(), path);
         if (it == env->paths.end()) {
             env->paths.push_back(path);
-        }    
+        }
     }
 }
 void save_env_paths (AtomPtr env) {
@@ -151,7 +151,7 @@ AtomPtr fn_addpaths (AtomPtr params, AtomPtr env) {
             auto it = std::find(env->paths.begin(), env->paths.end(), s);
             if (it == env->paths.end()) {
                 env->paths.push_back(s);
-            }            
+            }
         }
         return make_atom (env->paths.size ());
     }
@@ -183,13 +183,13 @@ AtomPtr fn_udprecv (AtomPtr n, AtomPtr env) {
     server.sin_family = AF_INET;
     server.sin_port = htons((long)type_check (n->tail.at(1), ARRAY)->array[0]);
 
-if(::bind(sock,(struct sockaddr *)&server , sizeof(server)) < 0) {
+    if(::bind(sock,(struct sockaddr *)&server, sizeof(server)) < 0) {
         return make_atom(0);
     }
     int c = sizeof(struct sockaddr_in);
-    if (recvfrom(sock, client_message, MESSAGE_SIZE, 0, 
-        (struct sockaddr *) &client, (socklen_t*) &c) < 0) {
-        return  make_atom(0);   
+    if (recvfrom(sock, client_message, MESSAGE_SIZE, 0,
+                 (struct sockaddr *) &client, (socklen_t*) &c) < 0) {
+        return  make_atom(0);
     }
 
     ::close (sock);
@@ -197,12 +197,14 @@ if(::bind(sock,(struct sockaddr *)&server , sizeof(server)) < 0) {
 }
 class OSCstring {
 public:
-    OSCstring () { osc_msg = 0; }
+    OSCstring () {
+        osc_msg = 0;
+    }
     ~OSCstring () {
         if (osc_msg) delete [] osc_msg;
     }
     const char* encode (const std::string& msg, size_t& out_sz) {
-        size_t in_sz = msg.size (); 
+        size_t in_sz = msg.size ();
         int pad = (padding (in_sz) == 0 ? 4 : padding (in_sz));
         out_sz = in_sz + pad + 4;
         if (osc_msg) delete [] osc_msg;
@@ -236,7 +238,7 @@ AtomPtr fn_udpsend (AtomPtr n, AtomPtr env) {
     if (sock == -1) {
         return  make_atom(0);
     }
-    
+
     server.sin_addr.s_addr = inet_addr(type_check (n->tail.at (0), STRING)->lexeme.c_str ());
     server.sin_family = AF_INET;
     server.sin_port = htons((long)type_check (n->tail.at(1), ARRAY)->array[0]);
@@ -250,9 +252,9 @@ AtomPtr fn_udpsend (AtomPtr n, AtomPtr env) {
         OSCstring enc;
         size_t sz = 0;
         const char* out = enc.encode (nf.str ().c_str (), sz);
-        res = sendto(sock, out, sz, 0, (struct sockaddr *)&server , sizeof(server));
+        res = sendto(sock, out, sz, 0, (struct sockaddr *)&server, sizeof(server));
     } else {
-        res = sendto(sock, nf.str ().c_str (), nf.str ().size (), 0, (struct sockaddr *)&server , sizeof(server));
+        res = sendto(sock, nf.str ().c_str (), nf.str ().size (), 0, (struct sockaddr *)&server, sizeof(server));
     }
     if (res < 0) return  make_atom(0);
     ::close (sock);
@@ -362,7 +364,7 @@ AtomPtr add_system (AtomPtr env) {
     add_op ("udpsend", &fn_udpsend, 3, env);
     add_op ("udprecv", &fn_udprecv, 2, env);
     add_op("readcsv",  fn_readcsv,  1, env);
-    add_op("writecsv", fn_writecsv, 2, env);    
+    add_op("writecsv", fn_writecsv, 2, env);
     return env;
 }
 

@@ -17,7 +17,7 @@
 #include "scientific/KNN.h"
 #include "scientific/Matrix.h"
 #include "scientific/PCA.h"
-#include "scientific/BPF.h" 
+#include "scientific/BPF.h"
 
 #include <valarray>
 #include <string>
@@ -154,13 +154,13 @@ AtomPtr fn_matget(AtomPtr node, AtomPtr env) {
 
     if (MODE == 0) { // rows
         if (start < 0 || start >= (int)a.rows() ||
-            end   < 0 || end   >= (int)a.rows() || end < start) {
+                end   < 0 || end   >= (int)a.rows() || end < start) {
             error("[getrows] invalid row selection", node);
         }
         b = a.get_rows(start, end);
     } else { // cols
         if (start < 0 || start >= (int)a.cols() ||
-            end   < 0 || end   >= (int)a.cols() || end < start) {
+                end   < 0 || end   >= (int)a.cols() || end < start) {
             error("[getcols] invalid col selection", node);
         }
         b = a.get_cols(start, end);
@@ -755,8 +755,8 @@ AtomPtr fn_kmeans(AtomPtr node, AtomPtr env) {
     }
 
     int K = static_cast<int>(
-        type_check(node->tail.at(1), ARRAY)->array[0]
-    );
+                type_check(node->tail.at(1), ARRAY)->array[0]
+            );
 
     const int n = static_cast<int>(X.rows());
     const int m = static_cast<int>(X.cols());
@@ -898,14 +898,14 @@ AtomPtr add_scientific(AtomPtr env) {
 
     // Matrix/array construction / decomposition
     add_op("eye",      fn_eye,      1, env);
-    add_op("rand",     fn_rand,     1, env); 
-    add_op("bpf",      fn_bpf,      3, env);  
+    add_op("rand",     fn_rand,     1, env);
+    add_op("bpf",      fn_bpf,      3, env);
     add_op("inv",      fn_inv,      1, env);
     add_op("det",      fn_det,      1, env);
     add_op("diag",     fn_diag,     1, env);
     add_op("rank",     fn_rank,     1, env);
     add_op("solve",    fn_solve,    2, env);
-    add_op("matcol",   fn_matcol,   2, env); 
+    add_op("matcol",   fn_matcol,   2, env);
     add_op("stack2",   fn_stack2,   2, env);
 
     // Statistics / filters
@@ -919,7 +919,7 @@ AtomPtr add_scientific(AtomPtr env) {
     // ML-style tools
     add_op("pca",      fn_pca,      1, env);
     add_op("kmeans",   fn_kmeans,   2, env);
-	add_op("knn", fn_knn, 3, env);
+    add_op("knn", fn_knn, 3, env);
 
 
     return env;
