@@ -178,16 +178,29 @@
 ;;   X (n x d) * V_k^T (d x k) = scores (n x k)
 ;;
 ;; where V_k is the d x k matrix of first k eigenvectors (as columns).
+; (def pca_scores
+;   (lambda (X k)
+;     {
+;       (def dec     (pca_decompose X))
+;       (def eigvecs (lindex dec (array 1)))          ;; d x d
+;       (def end_idx (- k 1))
+;       (def V_k (getcols eigvecs (array 0) (array end_idx))) ;; d x k
+;       (def V_k_T (transpose V_k))
+;       (matmul X V_k_T)
+;     }))
+
 (def pca_scores
   (lambda (X k)
     {
       (def dec     (pca_decompose X))
-      (def eigvecs (lindex dec (array 1)))          ;; d x d
+      (def eigvecs (lindex dec (array 1)))          ;; d x d, eigenvectors in columns
       (def end_idx (- k 1))
-      (def V_k (getcols eigvecs (array 0) (array end_idx))) ;; d x k
-      (def V_k_T (transpose V_k))
-      (matmul X V_k_T)
+      ;; First k principal components as columns: d x k
+      (def V_k (getcols eigvecs (array 0) (array end_idx)))
+      ;; scores: n x d  *  d x k  -> n x k
+      (matmul X V_k)
     }))
+    
 
 ;; ------------------------------------------------------------
 ;; K-means helpers

@@ -332,8 +332,8 @@
 (function ortho (a b)
   (eq (dot a b) 0))
 
-(function norm (x)
-  (sqrt (sum (* x x))))
+; (function norm (x)
+;   (sqrt (sum (* x x))))
 
 (function diff (x)
   (- (slice x 1 (size x)) x))

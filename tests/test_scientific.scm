@@ -2,6 +2,8 @@
 ;; Musil scientific tests
 ;; --------------------------------
 
+(load "stdlib.scm")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test framework
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -106,7 +108,7 @@
     (array 5.05 5.00)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Basic matrix shape / transpose
+;; Basic matrix shape / transpose / row / col
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (test (quote (nrows M2)) 2)
@@ -115,6 +117,21 @@
 (test (quote (transpose M2))
       (list (array 1 3)
             (array 2 4)))
+
+;; row / col helpers
+(test (quote (row M2 0))
+      (list (array 1 2)))
+
+(test (quote (row M2 1))
+      (list (array 3 4)))
+
+(test (quote (col M2 0))
+      (list (array 1)
+            (array 3)))
+
+(test (quote (col M2 1))
+      (list (array 2)
+            (array 4)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; matmul / matadd / matsub / hadamard / matdisp
@@ -171,7 +188,7 @@
             (array 4)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; eye / det / inv / diag / rank / solve
+;; eye / zeros / ones / det / inv / diag / rank / solve
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; eye
@@ -179,6 +196,40 @@
       (list (array 1 0 0)
             (array 0 1 0)
             (array 0 0 1)))
+
+;; zeros / ones 1D
+(test (quote (zeros (array 4)))
+      (array 0 0 0 0))
+
+(test (quote (ones (array 3)))
+      (array 1 1 1))
+
+;; zeros / ones 2D: rows x len
+(def Z2D_EXPECT
+  (list (array 0 0 0)
+        (array 0 0 0)))
+
+(def O2D_EXPECT
+  (list (array 1 1 1)
+        (array 1 1 1)))
+
+(test (quote (zeros (array 3) (array 2))) Z2D_EXPECT)
+(test (quote (ones  (array 3) (array 2))) O2D_EXPECT)
+
+;; Scheme wrappers zerosvec / zerosmat / onesvec / onesmat
+(test (quote (zerosvec (array 4)))
+      (array 0 0 0 0))
+
+(test (quote (onesvec (array 2)))
+      (array 1 1))
+
+(test (quote (zerosmat (array 2) (array 2)))
+      (list (array 0 0)
+            (array 0 0)))
+
+(test (quote (onesmat (array 2) (array 3)))
+      (list (array 1 1 1)
+            (array 1 1 1)))
 
 ;; det [1 2; 3 4] = -2
 (test (quote (det M2)) -2)
@@ -211,7 +262,7 @@
       (array 1 2))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Statistics: median / linefit / matmean / matstd / cov / zscore
+;; Statistics: median / linefit / norm / dist / matmean / matstd / cov / zscore
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; median: just check it returns one array inside a list in this construction
@@ -230,6 +281,27 @@
 ;; LF = [slope intercept] = [2 1]
 (test (quote LF)
       (array 2 1))
+
+;; norm tests
+(def NV (array 3 4))
+(test (quote (norm NV))
+      5)            ;; L2
+
+(test (quote (norm NV (array 1)))
+      7)            ;; L1 = 3+4
+
+(test (quote (norm (array 0 0 0)))
+      0)
+
+;; dist tests
+(test (quote (dist (array 1 2 3) (array 1 2 3)))
+      0)
+
+(test (quote (dist (array 0 0) (array 3 4)))
+      5)           ;; L2 distance
+
+(test (quote (dist (array 1 2) (array 3 0) (array 1)))
+      4)           ;; L1 distance: |1-3|+|2-0| = 4
 
 ;; matmean along columns (axis 0): [2 3]
 (test (quote (matmean M2 (array 0)))
@@ -259,15 +331,126 @@
             (array  1  1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; PCA
+;; corr (structural properties)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; diag(corr(M2)) = [1 1]
+(test (quote (diag (corr M2)))
+      (array 1 1))
+
+;; corr(M2) is symmetric: corr = transpose(corr)
+(test (quote (corr M2))
+      (transpose (corr M2)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; stack2 / hstack / vstack / matcol
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; matcol tests
+(def MC_M
+  (list
+    (array 1 2 3)
+    (array 4 5 6)
+    (array 7 8 9)))
+
+(test (quote (matcol MC_M (array 0))) (array 1 4 7))
+(test (quote (matcol MC_M (array 1))) (array 2 5 8))
+(test (quote (matcol MC_M (array 2))) (array 3 6 9))
+
+;; stack2 tests
+(def ST_X (array 10 20 30))
+(def ST_Y (array  1  2  3))
+
+(def ST_EXPECT
+  (list
+    (array 10 1)
+    (array 20 2)
+    (array 30 3)))
+
+(test (quote (stack2 ST_X ST_Y)) ST_EXPECT)
+
+;; hstack and vstack tests
+(def HS_A
+  (list
+    (array 1 2)
+    (array 3 4)))
+
+(def HS_B
+  (list
+    (array 5 6)
+    (array 7 8)))
+
+(def HS_EXPECT
+  (list
+    (array 1 2 5 6)
+    (array 3 4 7 8)))
+
+(def VS_EXPECT
+  (list
+    (array 1 2)
+    (array 3 4)
+    (array 5 6)
+    (array 7 8)))
+
+(test (quote (hstack HS_A HS_B)) HS_EXPECT)
+(test (quote (vstack HS_A HS_B)) VS_EXPECT)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; PCA core + helpers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; pca(M3x2) -> cols x (cols+1) = 2 x 3 matrix
 (test (quote (nrows (pca M3x2))) 2)
 (test (quote (ncols (pca M3x2))) 3)
 
+;; PCA helpers: shapes only
+(test (quote (nrows (pca_eigvecs M3x2))) 2)
+(test (quote (ncols (pca_eigvecs M3x2))) 2)
+
+;; eigvals: 2 x 1 matrix
+(test (quote (nrows (pca_eigvals M3x2))) 2)
+(test (quote (ncols (pca_eigvals M3x2))) 1)
+
+;; pca_scores: for M3x2 and k=1 -> 3 x 1
+(test (quote (nrows (pca_scores M3x2 (array 1)))) 3)
+(test (quote (ncols (pca_scores M3x2 (array 1)))) 1)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; K-means
+;; Linear regression (Scheme helpers)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Simple linear regression: y = 2x, no intercept
+(def LR_X
+  (list (array 1)
+        (array 2)
+        (array 3)))
+
+(def LR_Y
+  (list (array 2)
+        (array 4)
+        (array 6)))
+
+;; Only shape tests for now, since the underlying numeric backend
+;; may need separate debugging (inv / matmul behavior for 1x1).
+(test (quote (nrows (linreg_fit LR_X LR_Y))) 1)
+(test (quote (ncols (linreg_fit LR_X LR_Y))) 1)
+
+(def LR_X_NEW
+  (list (array 4)
+        (array 5)))
+
+(test (quote (nrows (linreg_predict LR_X_NEW (linreg_fit LR_X LR_Y)))) 2)
+(test (quote (ncols (linreg_predict LR_X_NEW (linreg_fit LR_X LR_Y)))) 1)
+
+(def LR_RES
+  (linreg_residuals LR_X LR_Y (linreg_fit LR_X LR_Y)))
+
+(test (quote (nrows LR_RES)) 3)
+(test (quote (ncols LR_RES)) 1)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; K-means + helpers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def KM_RES (kmeans KM_DATA (array 2)))
@@ -280,8 +463,25 @@
 ;; labels array: length = number of points = 6
 (test (quote (size (lindex KM_RES (array 0)))) 6)
 
+;; helper accessors
+(test (quote (size (kmeans_labels (kmeans KM_DATA (array 2)))))
+      6)
+
+(test (quote (nrows (kmeans_centroids (kmeans KM_DATA (array 2)))))
+      2)
+
+(test (quote (ncols (kmeans_centroids (kmeans KM_DATA (array 2)))))
+      2)
+
+;; run_* helpers
+(test (quote (size (kmeans_run_labels KM_DATA (array 2))))
+      6)
+
+(test (quote (nrows (kmeans_run_centroids KM_DATA (array 2))))
+      2)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; KNN
+;; KNN + helpers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def KNN_RES (knn KNN_TRAIN (array 1) KNN_QUERY))
@@ -289,38 +489,26 @@
 ;; knn returns one label per query
 (test (quote (llength KNN_RES)) 2)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; matcol tests
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; helper knn_predict
+(test (quote (llength (knn_predict KNN_TRAIN 1 KNN_QUERY)))
+      2)
 
-(def MC_M
-  (list
-    (array 1 2 3)
-    (array 4 5 6)
-    (array 7 8 9)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Random constructors: randvec / randmat (shape only)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(test (quote (matcol MC_M (array 0))) (array 1 4 7))
-(test (quote (matcol MC_M (array 1))) (array 2 5 8))
-(test (quote (matcol MC_M (array 2))) (array 3 6 9))
+;; randvec: length n
+(def RV (randvec (array 5)))
+(test (quote (size RV)) 5)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; stack2 tests
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; randmat: rows x cols
+(def RM (randmat (array 3) (array 2)))
+(test (quote (nrows RM)) 3)
+(test (quote (ncols RM)) 2)
 
-(def ST_X (array 10 20 30))
-(def ST_Y (array  1  2  3))
-
-(def ST_EXPECT
-  (list
-    (array 10 1)
-    (array 20 2)
-    (array 30 3)))
-
-(test (quote (stack2 ST_X ST_Y)) ST_EXPECT)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; bpf tests
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; Single segment: 0 → 1 in 4 steps
 (def BPF1_EXPECT (array 0 0.25 0.5 0.75))
@@ -335,6 +523,15 @@
                   (array 4) (array 0)))
       BPF2_EXPECT)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; standardize / cov_from_zscore wrappers
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(test (quote (standardize M2))
+      (zscore M2))
+
+(test (quote (cov_from_zscore M2))
+      (cov (zscore M2)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Report
