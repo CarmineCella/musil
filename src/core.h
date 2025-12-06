@@ -107,7 +107,7 @@ inline bool is_nil (AtomPtr e) { // OPTIMIZATION: inline
 
 // lexing, parsing, evaluation
 inline bool is_string (const std::string& l) {
-    if (l.size () > 1 && l.at (0) == '\"') return true;
+    if (l.size () > 0 && l.at (0) == '\"') return true;
     return false;
 }
 inline bool is_number (const std::string& tt) {
