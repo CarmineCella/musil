@@ -23,7 +23,7 @@ private:
         std::ostringstream strs;
         strs << n;
         return strs.str().size();
-    }	 
+    }
     Matrix remove_row_col(int r, int c) { // remove rth row and cth col
         assert(r < _rows && c < _cols);
         Matrix temp(_rows-1, _cols-1);
@@ -42,8 +42,8 @@ private:
             }
         }
         return temp;
-    }    
-    void clear () { 
+    }
+    void clear () {
         if (!_m) {
             return;
         }
@@ -54,14 +54,14 @@ private:
         _m = NULL;
         _rows = 0;
         _cols = 0;
-    }    
+    }
 public:
     Matrix() {
         _rows = 0;
         _cols = 0;
         _m = NULL;
     }
-    Matrix(int r, int c, T num = 0) { 
+    Matrix(int r, int c, T num = 0) {
         _rows = r;
         _cols = c;
         _m = new T*[r];
@@ -91,18 +91,34 @@ public:
                 _m[i][j] = rhs._m[i][j];
             }
         }
-    } 
+    }
     virtual ~Matrix () {
         clear ();
-    }     
-    int rows () const { return _rows; }
-    int cols () const { return _cols; }         
-    T& operator()(int r, int c) { return _m[r][c]; }
-    const T& operator()(int r, int c) const { return _m[r][c]; }
-    T* operator[](int r) { return _m[r]; }
-    const T* operator[](int r) const { return _m[r]; }    
-    T** data () { return _m; }
-    const T** data () const { return _m; }
+    }
+    int rows () const {
+        return _rows;
+    }
+    int cols () const {
+        return _cols;
+    }
+    T& operator()(int r, int c) {
+        return _m[r][c];
+    }
+    const T& operator()(int r, int c) const {
+        return _m[r][c];
+    }
+    T* operator[](int r) {
+        return _m[r];
+    }
+    const T* operator[](int r) const {
+        return _m[r];
+    }
+    T** data () {
+        return _m;
+    }
+    const T** data () const {
+        return _m;
+    }
     std::vector<T> flatten_row_major() const {
         std::vector<T> out;
         out.reserve(_rows * _cols);
@@ -113,8 +129,8 @@ public:
             }
         }
         return out;
-    } 
-    Matrix get_rows(int start, int end) { 
+    }
+    Matrix get_rows(int start, int end) {
         assert(start < _rows && end < _rows);
         Matrix temp(end-start+1, _cols);
         for (int i = start; i <= end; i++) { // end included
@@ -124,7 +140,7 @@ public:
         }
         return temp;
     }
-    Matrix get_cols(int start, int end) { 
+    Matrix get_cols(int start, int end) {
         assert(start < _cols && end < _cols);
         Matrix temp(_rows, end - start + 1);
         for (int i = 0; i < _rows; i++) {
@@ -133,7 +149,7 @@ public:
             }
         }
         return temp;
-    }    
+    }
     std::ostream& print (std::ostream& out) {
         out << "[" << std::endl;
         std::vector<int> max_len_per_col;
@@ -144,7 +160,7 @@ public:
                 int num_length = number_of_digits(_m[i][j]);
                 if (num_length > max_len) {
                     max_len = num_length;
-                }	
+                }
             }
             max_len_per_col.push_back (max_len);
         }
@@ -165,7 +181,7 @@ public:
         }
         out << "\n]\n";
         return out;
-    }       
+    }
     void null () {
         for (unsigned i = 0; i < _rows; ++i) {
             for (unsigned j = 0; j < _cols; ++j) {
@@ -177,7 +193,7 @@ public:
         if (_rows != _cols) throw std::runtime_error ("identity matrices must be square");
         null ();
         for (unsigned i = 0; i < _rows; ++i) _m[i][i] = 1;
-    }    
+    }
     Matrix operator+(const Matrix & rhs) const { // sum two same sized matrices
         assert(_rows == rhs.rows() && _cols == rhs.cols());
         Matrix res(_rows, _cols);
@@ -227,7 +243,7 @@ public:
         }
         return *this;
     }
-    Matrix operator*(T rhs)const { 
+    Matrix operator*(T rhs)const {
         Matrix temp(*this);
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -236,7 +252,7 @@ public:
         }
         return temp;
     }
-    Matrix operator+(T rhs)const { 
+    Matrix operator+(T rhs)const {
         Matrix temp(*this);
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -245,7 +261,7 @@ public:
         }
         return temp;
     }
-    Matrix operator-(T rhs)const { 
+    Matrix operator-(T rhs)const {
         Matrix temp(*this);
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -254,7 +270,7 @@ public:
         }
         return temp;
     }
-    Matrix operator/(T rhs)const { 
+    Matrix operator/(T rhs)const {
         Matrix temp(*this);
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -263,7 +279,7 @@ public:
         }
         return temp;
     }
-    bool operator==(const Matrix & rhs)const { 
+    bool operator==(const Matrix & rhs)const {
         assert(_rows == rhs.rows() && _cols == rhs.cols());
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -274,10 +290,10 @@ public:
         }
         return true;
     }
-    bool operator!=(const Matrix & rhs)const { 
+    bool operator!=(const Matrix & rhs)const {
         return !(*this == rhs);
     }
-    Matrix transpose () { 
+    Matrix transpose () {
         Matrix temp(_cols, _rows);
         for (int i = 0; i < _rows; i++) {
             for (int j = 0; j < _cols; j++) {
@@ -286,7 +302,7 @@ public:
         }
         return temp;
     }
-    T det() { 
+    T det() {
         assert(_rows == _cols);
         if (_rows == 1) { // trivial case
             return _m[0][0];
@@ -330,7 +346,7 @@ public:
         Matrix inv = cofactor().transpose()/d; // 1/det(A) * cofactor(A)^T
         return inv;
     }
-    Matrix sum(int axis) { 
+    Matrix sum(int axis) {
         Matrix temp;
         if (axis == 0) {
             temp = Matrix(_rows,1);

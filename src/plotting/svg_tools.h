@@ -91,9 +91,9 @@ inline std::string sanitize_filename(const std::string& title) {
     for (char c : title) {
         // allowed: letters, digits, '.', '-', '_'
         if ((c >= 'a' && c <= 'z') ||
-            (c >= 'A' && c <= 'Z') ||
-            (c >= '0' && c <= '9') ||
-            c == '.' || c == '-' || c == '_') {
+                (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '.' || c == '-' || c == '_') {
             out.push_back(c);
         } else if (c == ' ') {
             out.push_back('_');
@@ -120,8 +120,7 @@ inline std::string sanitize_filename(const std::string& title) {
 // E.g. base="plot", ext=".svg":
 //   "plot.svg", "plot_1.svg", "plot_2.svg", ...
 inline std::string make_unique_filename(const std::string& base,
-                                        const std::string& ext)
-{
+                                        const std::string& ext) {
     std::string candidate = base + ext;
     if (!file_exists(candidate)) {
         return candidate;
@@ -202,8 +201,7 @@ template <typename T>
 std::string save_svg_plot(const std::string& title,
                           const std::vector<Series<T>>& series,
                           char style,
-                          bool scatter_mode)
-{
+                          bool scatter_mode) {
     const int width  = 800;
     const int height = 600;
     const int margin_left   = 70;
@@ -249,7 +247,7 @@ std::string save_svg_plot(const std::string& title,
 
     // Compose final path
     fs::path fullpath = base_dir / local_name;
-    std::string filename = fullpath.string();    
+    std::string filename = fullpath.string();
 
     std::cout << base << " " << local_name << " " << filename << std::endl;
     std::ofstream out(filename.c_str());
@@ -259,7 +257,7 @@ std::string save_svg_plot(const std::string& title,
 
     out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     out << "<svg xmlns=\"http://www.w3.org/2000/svg\" "
-           "width=\"" << width << "\" height=\"" << height
+        "width=\"" << width << "\" height=\"" << height
         << "\" viewBox=\"0 0 " << width << " " << height << "\">\n";
 
     // Background
@@ -271,7 +269,7 @@ std::string save_svg_plot(const std::string& title,
         out << "  <text x=\"" << (width / 2)
             << "\" y=\"" << (margin_top / 2)
             << "\" text-anchor=\"middle\" "
-               "font-family=\"sans-serif\" font-size=\"18\">"
+           "font-family=\"sans-serif\" font-size=\"18\">"
             << title << "</text>\n";
     }
 
@@ -307,7 +305,7 @@ std::string save_svg_plot(const std::string& title,
 
         out << "  <text x=\"" << px << "\" y=\"" << fy(static_cast<T>(0)) + 18
             << "\" text-anchor=\"middle\" "
-               "font-family=\"sans-serif\" font-size=\"10\">"
+           "font-family=\"sans-serif\" font-size=\"10\">"
             << std::fixed << std::setprecision(2) << tx << "</text>\n";
 
         // Y ticks
@@ -317,7 +315,7 @@ std::string save_svg_plot(const std::string& title,
 
         out << "  <text x=\"" << fx(static_cast<T>(0)) - 8 << "\" y=\"" << py + 3
             << "\" text-anchor=\"end\" "
-               "font-family=\"sans-serif\" font-size=\"10\">"
+           "font-family=\"sans-serif\" font-size=\"10\">"
             << std::fixed << std::setprecision(2) << ty << "</text>\n";
     }
 

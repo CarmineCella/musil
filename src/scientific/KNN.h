@@ -30,8 +30,7 @@ template <typename T>
 class KNN {
 public:
     KNN(int k, int n_features)
-        : m_k(k), m_n_features(n_features)
-    {
+        : m_k(k), m_n_features(n_features) {
         if (m_k <= 0) {
             throw std::invalid_argument("[KNN] k must be > 0");
         }
@@ -87,9 +86,9 @@ public:
         std::nth_element(dists.begin(),
                          dists.begin() + k_eff,
                          dists.end(),
-                         [](const auto& a, const auto& b) {
-                             return a.first < b.first;
-                         });
+        [](const auto& a, const auto& b) {
+            return a.first < b.first;
+        });
 
         // Vote among k nearest neighbors
         std::unordered_map<std::string, int> votes;

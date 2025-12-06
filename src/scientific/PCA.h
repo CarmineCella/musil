@@ -29,8 +29,7 @@ void PCA(const T* data,
          int cols,
          int rows,
          int max_iter = 50,
-         T tol = static_cast<T>(1e-9))
-{
+         T tol = static_cast<T>(1e-9)) {
     if (!data || !eig_out) {
         throw std::invalid_argument("[PCA] null pointer argument");
     }
@@ -162,7 +161,9 @@ void PCA(const T* data,
     for (int i = 0; i < cols; ++i) idx[i] = i;
 
     std::sort(idx.begin(), idx.end(),
-              [&](int a, int b) { return eigval[a] > eigval[b]; });
+    [&](int a, int b) {
+        return eigval[a] > eigval[b];
+    });
 
     // Fill eig_out as rows:
     // row i: [ eigenvector_i (size cols), eigenvalue_i ]

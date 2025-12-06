@@ -99,8 +99,7 @@ void kmeans(const T* data,
             int k,
             T tol,
             int* labels,
-            T* centroids)
-{
+            T* centroids) {
     if (!data || !labels || !centroids) {
         throw std::invalid_argument("[kmeans] null pointer argument");
     }
