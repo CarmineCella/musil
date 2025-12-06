@@ -22,6 +22,9 @@
 #include <iomanip>
 #include <cmath>
 
+
+namespace fs = std::filesystem;
+
 namespace svg_tools {
 
 template <typename T>
@@ -51,7 +54,23 @@ inline const std::vector<std::string>& svg_palette() {
 // Filename utilities
 // ------------------------------------------------------------
 
-// Very simple file existence check (no <filesystem> required)
+static std::string get_home_directory() {
+    std::string home;
+#ifdef _WIN32
+    if (const char* up = std::getenv("USERPROFILE")) {
+        home = up;
+    } else {
+        const char* hd = std::getenv("HOMEDRIVE");
+        const char* hp = std::getenv("HOMEPATH");
+        if (hd && hp) home = std::string(hd) + hp;
+    }
+#else // POSIX
+    if (const char* h = std::getenv("HOME")) home = h;
+#endif
+    if (home.empty()) home = ".";
+    return home;
+}
+
 inline bool file_exists(const std::string& path) {
     std::ifstream f(path.c_str(), std::ios::in | std::ios::binary);
     return f.good();
@@ -212,8 +231,27 @@ std::string save_svg_plot(const std::string& title,
 
     // Title-based filename (sanitized + unique, .svg)
     std::string base = sanitize_filename(title);
-    std::string filename = make_unique_filename(base, ".svg");
+    std::string local_name = make_unique_filename(base, ".svg");
 
+    // Get current working dir, with a safe fallback.
+    fs::path cwd;
+    try {
+        cwd = fs::current_path();
+    } catch (...) {
+        cwd = fs::path(get_home_directory());
+    }
+
+    // Decide the base directory:
+    // - if cwd is a root path ( "/" or "C:\\" etc.), use home
+    // - otherwise, use cwd as-is
+    fs::path home = fs::path(get_home_directory());
+    fs::path base_dir = (cwd == cwd.root_path()) ? home : cwd;
+
+    // Compose final path
+    fs::path fullpath = base_dir / local_name;
+    std::string filename = fullpath.string();    
+
+    std::cout << base << " " << local_name << " " << filename << std::endl;
     std::ofstream out(filename.c_str());
     if (!out) {
         return std::string();

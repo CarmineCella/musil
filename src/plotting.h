@@ -10,7 +10,9 @@
 //   "-" : line only
 //
 // Plot files are saved as SVG using svg_tools.h.
-// Under BUILD_MUSIL_IDE you can additionally display them via FLTK.
+//
+// The important semantic: BOTH plot and scatter RETURN the filename (string)
+// of the generated SVG. They do NOT print anything by themselves.
 
 #ifndef PLOTTING_H
 #define PLOTTING_H
@@ -29,24 +31,22 @@ inline std::string atom_to_string_for_plot(AtomPtr a) {
     return ss.str();
 }
 
-// Common entry point: CLI vs IDE behaviour
-inline void plotting_do_plot(const std::string& title,
-                             const std::vector<svg_tools::Series<Real>>& series,
-                             char style,
-                             bool scatter_mode)
+// Common entry point: returns the SVG filename
+inline std::string plotting_do_plot(const std::string& title,
+                                    const std::vector<svg_tools::Series<Real>>& series,
+                                    char style,
+                                    bool scatter_mode)
 {
-#ifdef BUILD_MUSIL_IDE
-    // For now just save SVG; here you can add FLTK display if you want
-    std::string fname = svg_tools::save_svg_plot<Real>(title, series, style, scatter_mode);
-    (void)fname;
-#else
-    std::string fname = svg_tools::save_svg_plot<Real>(title, series, style, scatter_mode);
-    (void)fname;
-#endif
+    // Just delegate to svg_tools and pass the filename back.
+    // svg_tools::save_svg_plot should:
+    //   - save into std::filesystem::current_path()
+    //   - return a non-empty filename on success.
+    return svg_tools::save_svg_plot<Real>(title, series, style, scatter_mode);
 }
 
 // ---------------------------------------------------------------------
 // (plot "title" y1 "legend1" y2 "legend2" ... style)
+// Returns: string with SVG filename
 // ---------------------------------------------------------------------
 AtomPtr fn_plot(AtomPtr node, AtomPtr env) {
     (void)env;
@@ -115,13 +115,16 @@ AtomPtr fn_plot(AtomPtr node, AtomPtr env) {
         error("[plot] no data series provided", node);
     }
 
-    plotting_do_plot(title, series, style_ch, /*scatter_mode=*/false);
+    // Core: do the plot and get the filename
+    std::string fname = plotting_do_plot(title, series, style_ch, /*scatter_mode=*/false);
 
-    return make_atom(""); // unit
+    // Return filename as string atom (language-level contract)
+    return make_atom(fname);
 }
 
 // ---------------------------------------------------------------------
 // (scatter "title" x1 y1 "legend1" x2 y2 "legend2" ... style)
+// Returns: string with SVG filename
 // ---------------------------------------------------------------------
 AtomPtr fn_scatter(AtomPtr node, AtomPtr env) {
     (void)env;
@@ -192,9 +195,10 @@ AtomPtr fn_scatter(AtomPtr node, AtomPtr env) {
         error("[scatter] no (x,y) datasets provided", node);
     }
 
-    plotting_do_plot(title, series, style_ch, /*scatter_mode=*/true);
+    std::string fname = plotting_do_plot(title, series, style_ch, /*scatter_mode=*/true);
 
-    return make_atom("");
+    // Return filename as string atom
+    return make_atom(fname);
 }
 
 // Registration helper
@@ -205,6 +209,4 @@ inline AtomPtr add_plotting(AtomPtr env) {
 }
 
 #endif // PLOTTING_H
-
 // eof
-
