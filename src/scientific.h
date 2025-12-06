@@ -80,14 +80,14 @@ AtomPtr fn_matdisp(AtomPtr node, AtomPtr env) {
     // Return the empty string just as a sentinel "unit" value
     return make_atom("");
 }
-#define MAKE_MATBINOP(op, name, tag) \
+#define MAKE_MATMUL_BINOP(op, name, tag) \
 AtomPtr name(AtomPtr node, AtomPtr env) { \
     if (node->tail.size() < 2) { \
         error("[" tag "] at least two matrices required", node); \
     } \
     Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST)); \
     for (unsigned i = 1; i < node->tail.size(); ++i) { \
-        Matrix<Real> b = list2matrix(type_check(node->tail.at(i), LIST));\
+        Matrix<Real> b = list2matrix(type_check(node->tail.at(i), LIST)); \
         if (a.cols() != b.rows()) { \
             error("[" tag "] nonconformant arguments", node); \
         } \
@@ -96,9 +96,25 @@ AtomPtr name(AtomPtr node, AtomPtr env) { \
     return matrix2list(a); \
 }
 
-MAKE_MATBINOP (+, fn_matadd, "matadd");
-MAKE_MATBINOP (*, fn_matmul, "matmul");
-MAKE_MATBINOP (-, fn_matsub, "matsub");
+#define MAKE_MATSAME_BINOP(op, name, tag) \
+AtomPtr name(AtomPtr node, AtomPtr env) { \
+    if (node->tail.size() < 2) { \
+        error("[" tag "] at least two matrices required", node); \
+    } \
+    Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST)); \
+    for (unsigned i = 1; i < node->tail.size(); ++i) { \
+        Matrix<Real> b = list2matrix(type_check(node->tail.at(i), LIST)); \
+        if (a.rows() != b.rows() || a.cols() != b.cols()) { \
+            error("[" tag "] nonconformant arguments (shape mismatch)", node); \
+        } \
+        a = a op b; \
+    }  \
+    return matrix2list(a); \
+}
+
+MAKE_MATSAME_BINOP(+, fn_matadd, "matadd");
+MAKE_MATMUL_BINOP(*, fn_matmul, "matmul");
+MAKE_MATSAME_BINOP(-, fn_matsub, "matsub");
 
 AtomPtr fn_hadamard(AtomPtr node, AtomPtr env) {// Element-wise product: hadamard / .*
     if (node->tail.size() < 2) {

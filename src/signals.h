@@ -202,18 +202,6 @@ AtomPtr fn_conv (AtomPtr n, AtomPtr env) {
 	}
 	return make_atom (out);
 }
-AtomPtr fn_noise (AtomPtr n, AtomPtr env) {
-	int len = (int) type_check (n->tail.at (0), ARRAY)->array[0];
-	int rows = 1;
-	if (n->tail.size () == 2) rows = (int) type_check (n->tail.at (1), ARRAY)->array[0];
-	AtomPtr l = make_atom ();
-	for (unsigned j = 0; j < rows; ++j) {
-		std::valarray<Real> out (len);
-		for (unsigned i = 0; i < len; ++i) out[i] = ((Real) rand () / RAND_MAX) * 2. - 1;
-		l->tail.push_back (make_atom (out));
-	}
-	return l->tail.size () == 1 ? l->tail.at (0) : l;
-}
 AtomPtr fn_window (AtomPtr n, AtomPtr env) {
 	int N = type_check (n->tail.at (0), ARRAY)->array[0];
 	Real a0 =  type_check (n->tail.at (1), ARRAY)->array[0];
@@ -295,7 +283,6 @@ AtomPtr add_signals (AtomPtr env) {
 	add_op ("car2pol", fn_car2pol, 1, env);
 	add_op ("pol2car", fn_pol2car, 1, env);
 	add_op ("conv", fn_conv, 3, env);
-	add_op ("noise", fn_noise, 1, env);
 	add_op ("window", fn_window, 4, env);
 	add_op ("speccent", fn_speccent, 2, env);
 	add_op ("specspread", fn_specspread, 3, env);
@@ -309,6 +296,6 @@ AtomPtr add_signals (AtomPtr env) {
 	add_op ("zcr", fn_zcr, 1, env);		
 	return env;
 }
-#endif	// ARRAY_H 
+#endif	// SIGNALS_H 
 
 // EOF
