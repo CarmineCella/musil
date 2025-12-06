@@ -11,6 +11,7 @@
 #include "system.h"
 #include "scientific.h"
 #include "plotting.h"
+#include "signals.h"
 
 AtomPtr make_env (YieldFunction yield_fn = nullptr) {
     set_yield (yield_fn);
@@ -20,7 +21,7 @@ AtomPtr make_env (YieldFunction yield_fn = nullptr) {
     add_system (env);
     add_scientific (env);
     add_plotting (env);
-    // add_signals (env);
+    add_signals (env);
     return env;
 }
 #endif // MUSIL_H

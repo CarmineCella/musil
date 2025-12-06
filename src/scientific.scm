@@ -53,7 +53,24 @@
     (map (lambda (row)
            (array row))   ;; row is a list → array flattens it
          rows)))
-         
+
+(def zerosvec
+  (lambda (n)
+    (zeros n)))
+
+(def zerosmat
+  (lambda (rows cols)
+    (zeros cols rows)))
+
+(def onesvec
+  (lambda (n)
+    (ones n)))
+
+(def onesmat
+  (lambda (rows cols)
+    (ones cols rows)))
+
+
 ;; ------------------------------------------------------------
 ;; Linear regression (normal equations)
 ;; ------------------------------------------------------------

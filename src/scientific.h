@@ -214,6 +214,77 @@ AtomPtr fn_rand(AtomPtr node, AtomPtr env) {
         return l;
     }
 }
+AtomPtr fn_zeros(AtomPtr node, AtomPtr env) {
+    (void)env;
+    const std::size_t nargs = node->tail.size();
+    if (nargs < 1 || nargs > 2) {
+        error("[zeros] expects 1 or 2 numeric arguments", node);
+    }
+
+    AtomPtr len_atom = type_check(node->tail.at(0), ARRAY);
+    int len = static_cast<int>(len_atom->array[0]);
+    if (len <= 0) {
+        error("[zeros] length must be positive", node);
+    }
+
+    int rows = 1;
+    if (nargs == 2) {
+        AtomPtr rows_atom = type_check(node->tail.at(1), ARRAY);
+        rows = static_cast<int>(rows_atom->array[0]);
+        if (rows <= 0) {
+            error("[zeros] number of rows must be positive", node);
+        }
+    }
+
+    if (rows == 1) {
+        // 1D vector
+        std::valarray<Real> out((Real)0, (std::size_t)len);
+        return make_atom(out);
+    } else {
+        // rows x len matrix → LIST of ARRAY rows
+        AtomPtr l = make_atom(); // LIST
+        for (int j = 0; j < rows; ++j) {
+            std::valarray<Real> out((Real)0, (std::size_t)len);
+            l->tail.push_back(make_atom(out));
+        }
+        return l;
+    }
+}
+
+AtomPtr fn_ones(AtomPtr node, AtomPtr env) {
+    (void)env;
+    const std::size_t nargs = node->tail.size();
+    if (nargs < 1 || nargs > 2) {
+        error("[ones] expects 1 or 2 numeric arguments", node);
+    }
+
+    AtomPtr len_atom = type_check(node->tail.at(0), ARRAY);
+    int len = static_cast<int>(len_atom->array[0]);
+    if (len <= 0) {
+        error("[ones] length must be positive", node);
+    }
+
+    int rows = 1;
+    if (nargs == 2) {
+        AtomPtr rows_atom = type_check(node->tail.at(1), ARRAY);
+        rows = static_cast<int>(rows_atom->array[0]);
+        if (rows <= 0) {
+            error("[ones] number of rows must be positive", node);
+        }
+    }
+
+    if (rows == 1) {
+        std::valarray<Real> out((Real)1, (std::size_t)len);
+        return make_atom(out);
+    } else {
+        AtomPtr l = make_atom(); // LIST
+        for (int j = 0; j < rows; ++j) {
+            std::valarray<Real> out((Real)1, (std::size_t)len);
+            l->tail.push_back(make_atom(out));
+        }
+        return l;
+    }
+}
 AtomPtr fn_bpf(AtomPtr node, AtomPtr env) {
     (void)env;
 
@@ -467,6 +538,82 @@ AtomPtr fn_stack2(AtomPtr node, AtomPtr env) {
 
     return matrix2list(m);
 }
+AtomPtr fn_hstack(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    if (node->tail.size() < 2) {
+        error("[hstack] expects at least two matrices", node);
+    }
+
+    Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST));
+    const std::size_t rows = a.rows();
+    std::size_t total_cols = a.cols();
+
+    // accumulate columns from subsequent matrices
+    std::vector<Matrix<Real>> mats;
+    mats.push_back(a);
+
+    for (unsigned i = 1; i < node->tail.size(); ++i) {
+        Matrix<Real> m = list2matrix(type_check(node->tail.at(i), LIST));
+        if (m.rows() != rows) {
+            error("[hstack] all matrices must have the same number of rows", node);
+        }
+        total_cols += m.cols();
+        mats.push_back(m);
+    }
+
+    Matrix<Real> out(rows, total_cols);
+    std::size_t col_offset = 0;
+
+    for (const auto& m : mats) {
+        for (std::size_t r = 0; r < rows; ++r) {
+            for (std::size_t c = 0; c < m.cols(); ++c) {
+                out(r, col_offset + c) = m(r, c);
+            }
+        }
+        col_offset += m.cols();
+    }
+
+    return matrix2list(out);
+}
+
+AtomPtr fn_vstack(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    if (node->tail.size() < 2) {
+        error("[vstack] expects at least two matrices", node);
+    }
+
+    Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST));
+    const std::size_t cols = a.cols();
+    std::size_t total_rows = a.rows();
+
+    std::vector<Matrix<Real>> mats;
+    mats.push_back(a);
+
+    for (unsigned i = 1; i < node->tail.size(); ++i) {
+        Matrix<Real> m = list2matrix(type_check(node->tail.at(i), LIST));
+        if (m.cols() != cols) {
+            error("[vstack] all matrices must have the same number of columns", node);
+        }
+        total_rows += m.rows();
+        mats.push_back(m);
+    }
+
+    Matrix<Real> out(total_rows, cols);
+    std::size_t row_offset = 0;
+
+    for (const auto& m : mats) {
+        for (std::size_t r = 0; r < m.rows(); ++r) {
+            for (std::size_t c = 0; c < cols; ++c) {
+                out(row_offset + r, c) = m(r, c);
+            }
+        }
+        row_offset += m.rows();
+    }
+
+    return matrix2list(out);
+}
 
 // simple statistics
 AtomPtr fn_median(AtomPtr node, AtomPtr env) {
@@ -519,6 +666,115 @@ AtomPtr fn_linefit(AtomPtr node, AtomPtr env) {
     line.get_params(slope, intercept);
     std::valarray<Real> l({slope, intercept});
     return make_atom(l);
+}
+AtomPtr fn_norm(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    const std::size_t nargs = node->tail.size();
+    if (nargs < 1 || nargs > 2) {
+        error("[norm] expects 1 or 2 arguments: vector, [p]", node);
+    }
+
+    std::valarray<Real>& v = type_check(node->tail.at(0), ARRAY)->array;
+
+    int p = 2; // default L2
+    if (nargs == 2) {
+        std::valarray<Real>& parr = type_check(node->tail.at(1), ARRAY)->array;
+        if (parr.size() < 1) {
+            error("[norm] p must be a scalar array", node);
+        }
+        p = static_cast<int>(parr[0]);
+        if (p <= 0) {
+            error("[norm] p must be positive (typically 1 or 2)", node);
+        }
+    }
+
+    if (v.size() == 0) {
+        return make_atom((Real)0);
+    }
+
+    Real result = 0;
+    if (p == 1) {
+        // L1 norm
+        Real s = 0;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            s += std::fabs(v[i]);
+        }
+        result = s;
+    } else if (p == 2) {
+        // L2 norm
+        Real s = 0;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            s += v[i] * v[i];
+        }
+        result = std::sqrt(s);
+    } else {
+        // Generic Lp
+        Real s = 0;
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            s += std::pow(std::fabs(v[i]), (Real)p);
+        }
+        result = std::pow(s, (Real)1.0 / (Real)p);
+    }
+
+    return make_atom(result);
+}
+
+AtomPtr fn_dist(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    const std::size_t nargs = node->tail.size();
+    if (nargs < 2 || nargs > 3) {
+        error("[dist] expects 2 or 3 arguments: x, y, [p]", node);
+    }
+
+    std::valarray<Real>& x = type_check(node->tail.at(0), ARRAY)->array;
+    std::valarray<Real>& y = type_check(node->tail.at(1), ARRAY)->array;
+
+    if (x.size() != y.size()) {
+        error("[dist] x and y must have the same length", node);
+    }
+
+    int p = 2; // default L2
+    if (nargs == 3) {
+        std::valarray<Real>& parr = type_check(node->tail.at(2), ARRAY)->array;
+        if (parr.size() < 1) {
+            error("[dist] p must be a scalar array", node);
+        }
+        p = static_cast<int>(parr[0]);
+        if (p <= 0) {
+            error("[dist] p must be positive (typically 1 or 2)", node);
+        }
+    }
+
+    if (x.size() == 0) {
+        return make_atom((Real)0);
+    }
+
+    Real result = 0;
+    if (p == 1) {
+        Real s = 0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            s += std::fabs(x[i] - y[i]);
+        }
+        result = s;
+    } else if (p == 2) {
+        Real s = 0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            Real d = x[i] - y[i];
+            s += d * d;
+        }
+        result = std::sqrt(s);
+    } else {
+        Real s = 0;
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            Real d = std::fabs(x[i] - y[i]);
+            s += std::pow(d, (Real)p);
+        }
+        result = std::pow(s, (Real)1.0 / (Real)p);
+    }
+
+    return make_atom(result);
 }
 AtomPtr fn_matmean(AtomPtr node, AtomPtr env) { // Matrix mean along axis -> ARRAY
     Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST));
@@ -646,6 +902,76 @@ AtomPtr fn_cov(AtomPtr node, AtomPtr env) { // Covariance of columns (rows = obs
     }
 
     return matrix2list(C);
+}
+AtomPtr fn_corr(AtomPtr node, AtomPtr env) {
+    (void)env;
+
+    Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST));
+
+    const std::size_t n = a.rows();
+    const std::size_t d = a.cols();
+
+    if (n < 2 || d == 0) {
+        error("[corr] not enough data", node);
+    }
+
+    // column means and std-devs
+    std::valarray<Real> mu((Real)0, d);
+    std::valarray<Real> sigma((Real)0, d);
+
+    for (std::size_t j = 0; j < d; ++j) {
+        Real s = 0, s2 = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            Real v = a(i, j);
+            s  += v;
+            s2 += v * v;
+        }
+        Real mean = s / (Real)n;
+        Real var  = (s2 / (Real)n) - mean * mean;
+        if (var < 0) var = 0;
+        mu[j]    = mean;
+        sigma[j] = std::sqrt(var);
+    }
+
+    const Real eps = (Real)1e-12;
+    Matrix<Real> R(d, d, 0);
+
+    for (std::size_t j1 = 0; j1 < d; ++j1) {
+        for (std::size_t j2 = 0; j2 <= j1; ++j2) {
+            if (j1 == j2) {
+                R(j1, j2) = (Real)1;   // corr(x,x) = 1
+                continue;
+            }
+
+            Real sd1 = sigma[j1];
+            Real sd2 = sigma[j2];
+            if (sd1 < eps || sd2 < eps) {
+                // constant column → undefined corr; set 0
+                R(j1, j2) = (Real)0;
+                R(j2, j1) = (Real)0;
+                continue;
+            }
+
+            Real s = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                Real x1 = a(i, j1) - mu[j1];
+                Real x2 = a(i, j2) - mu[j2];
+                s += x1 * x2;
+            }
+
+            Real denom = (Real)(n - 1) * sd1 * sd2;
+            if (denom < eps) {
+                R(j1, j2) = (Real)0;
+                R(j2, j1) = (Real)0;
+            } else {
+                Real r = s / denom;
+                R(j1, j2) = r;
+                R(j2, j1) = r;
+            }
+        }
+    }
+
+    return matrix2list(R);
 }
 AtomPtr fn_zscore(AtomPtr node, AtomPtr env) { // Z-score normalization of columns: (x - mean) / std
     Matrix<Real> a = list2matrix(type_check(node->tail.at(0), LIST));
@@ -899,6 +1225,8 @@ AtomPtr add_scientific(AtomPtr env) {
     // Matrix/array construction / decomposition
     add_op("eye",      fn_eye,      1, env);
     add_op("rand",     fn_rand,     1, env);
+    add_op("zeros",    fn_zeros,    1, env);
+    add_op("ones",     fn_ones,     1, env);    
     add_op("bpf",      fn_bpf,      3, env);
     add_op("inv",      fn_inv,      1, env);
     add_op("det",      fn_det,      1, env);
@@ -907,13 +1235,18 @@ AtomPtr add_scientific(AtomPtr env) {
     add_op("solve",    fn_solve,    2, env);
     add_op("matcol",   fn_matcol,   2, env);
     add_op("stack2",   fn_stack2,   2, env);
+    add_op("hstack",   fn_hstack,   2, env);
+    add_op("vstack",   fn_vstack,   2, env);    
 
     // Statistics / filters
     add_op("median",   fn_median,   2, env);
     add_op("linefit",  fn_linefit,  2, env);
+    add_op("norm",     fn_norm,     1, env);
+    add_op("dist",     fn_dist,     2, env);    
     add_op("matmean",  fn_matmean,  2, env);
     add_op("matstd",   fn_matstd,   2, env);
     add_op("cov",      fn_cov,      1, env);
+    add_op("corr",     fn_corr,     1, env);    
     add_op("zscore",   fn_zscore,   1, env);
 
     // ML-style tools
