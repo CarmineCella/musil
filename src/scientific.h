@@ -1201,7 +1201,7 @@ AtomPtr fn_knn(AtomPtr node, AtomPtr env) {
             type_check(item->tail.at(0), ARRAY)->array;
 
         std::stringstream s;
-        print (item->tail.at(1), s);   // your existing pretty-printer
+        print (item->tail.at(1), s);  
         o->classlabel = s.str();
 
         knn.addObservation(o);

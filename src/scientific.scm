@@ -72,27 +72,51 @@
 
 
 ;; ------------------------------------------------------------
-;; Linear regression (normal equations)
+;; Linear regression (normal equations + 1D fallback to linefit)
 ;; ------------------------------------------------------------
 ;;
-;; Closed-form linear regression:
-;;   beta = (X^T X)^(-1) X^T Y
+;; X: n x d matrix (list of arrays, rows = samples, cols = features)
+;; Y: n x 1 matrix (list of 1-element arrays)
 ;;
-;; We assume:
-;;   - X is n x d matrix (rows = samples, cols = features)
-;;   - Y is n x 1 matrix (column of targets)
-;;   - beta is d x 1 matrix of coefficients
+;; For d = 1:
+;;   – use C++ primitive (linefit x y), which returns ARRAY [slope intercept]
+;;   – convert that to a 1x1 "matrix" [[slope]] using getcols
 ;;
-
+;; For d > 1:
+;;   – use normal equations:
+;;       beta = (X^T X)^(-1) X^T Y
+;;
 (def linreg_fit
   (lambda (X Y)
     {
-      (def Xt        (transpose X))
-      (def XtX       (matmul Xt X))
-      (def XtX_inv   (inv XtX))
-      (def XtX_inv_Xt (matmul XtX_inv Xt))
-      ;; d x 1
-      (matmul XtX_inv_Xt Y)
+      (def d (ncols X))
+
+      (if (== d 1)
+          ;; ---------- 1D case: delegate to linefit ----------
+          {
+            ;; Extract column vectors as ARRAYs
+            (def x_vec (matcol X (array 0)))  ;; e.g. [1 2 3]
+            (def y_vec (matcol Y (array 0)))  ;; e.g. [2 4 6]
+
+            ;; linefit returns ARRAY [slope intercept]
+            (def lf (linefit x_vec y_vec))
+
+            ;; Turn [slope intercept] into 1x2 matrix
+            (def lf_mat (list lf))
+
+            ;; Take only the first column → 1x1 matrix [[slope]]
+            (getcols lf_mat (array 0) (array 0))
+          }
+
+          ;; ---------- d > 1: generic normal equations ----------
+          {
+            (def Xt         (transpose X))         ;; d x n
+            (def XtX        (matmul Xt X))         ;; d x d
+            (def XtX_inv    (inv XtX))             ;; d x d
+            (def XtX_inv_Xt (matmul XtX_inv Xt))   ;; d x n
+            ;; beta: d x 1 matrix
+            (matmul XtX_inv_Xt Y)
+          })
     }))
 
 ;; linreg_predict:

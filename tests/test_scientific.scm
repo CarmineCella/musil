@@ -419,7 +419,13 @@
 ;; Linear regression (Scheme helpers)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Linear regression (Scheme helpers) – shapes + correctness
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ;; Simple linear regression: y = 2x, no intercept
+;; X = [[1],[2],[3]], Y = [[2],[4],[6]]
+
 (def LR_X
   (list (array 1)
         (array 2)
@@ -430,24 +436,49 @@
         (array 4)
         (array 6)))
 
-;; Only shape tests for now, since the underlying numeric backend
-;; may need separate debugging (inv / matmul behavior for 1x1).
-(test (quote (nrows (linreg_fit LR_X LR_Y))) 1)
-(test (quote (ncols (linreg_fit LR_X LR_Y))) 1)
+;; Fit
+(def LR_BETA (linreg_fit LR_X LR_Y))
 
+;; Shape tests: beta is 1x1 matrix
+(test (quote (nrows LR_BETA)) 1)
+(test (quote (ncols LR_BETA)) 1)
+
+;; Numeric correctness: beta = 2
+;; Represented as a 1x1 matrix => (list (array 2))
+(test (quote LR_BETA)
+      (list (array 2)))
+
+;; Predictions on training data: X * beta = Y
+(test (quote (linreg_predict LR_X LR_BETA))
+      LR_Y)
+
+;; New points: X_new = [[4],[5]]
 (def LR_X_NEW
   (list (array 4)
         (array 5)))
 
-(test (quote (nrows (linreg_predict LR_X_NEW (linreg_fit LR_X LR_Y)))) 2)
-(test (quote (ncols (linreg_predict LR_X_NEW (linreg_fit LR_X LR_Y)))) 1)
+;; Shape tests for predictions
+(test (quote (nrows (linreg_predict LR_X_NEW LR_BETA))) 2)
+(test (quote (ncols (linreg_predict LR_X_NEW LR_BETA))) 1)
 
+;; Numeric correctness: y_new = [8, 10]^T
+(test (quote (linreg_predict LR_X_NEW LR_BETA))
+      (list (array 8)
+            (array 10)))
+
+;; Residuals on training data: Y - X*beta = 0
 (def LR_RES
-  (linreg_residuals LR_X LR_Y (linreg_fit LR_X LR_Y)))
+  (linreg_residuals LR_X LR_Y LR_BETA))
 
+;; Shape
 (test (quote (nrows LR_RES)) 3)
 (test (quote (ncols LR_RES)) 1)
 
+;; Numeric correctness: all zeros
+(test (quote LR_RES)
+      (list (array 0)
+            (array 0)
+            (array 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; K-means + helpers
