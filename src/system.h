@@ -292,7 +292,8 @@ AtomPtr fn_readcsv(AtomPtr node, AtomPtr env) {
                 row_atom->tail.push_back(make_atom(arr));
             } else {
                 cell_str = (std::string) "\"" + cell_str;
-                row_atom->tail.push_back(make_atom(cell_str));
+                AtomPtr f = make_atom(cell_str);
+                row_atom->tail.push_back(f);
             }
         }
 

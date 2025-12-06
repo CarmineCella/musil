@@ -80,7 +80,7 @@
          CENTS_X    CENTS_Y  "centroids"
          ".")
 
-
+(print "plots saved as SVG\n")
 
 ;; eof
 

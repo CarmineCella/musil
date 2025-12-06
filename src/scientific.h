@@ -1214,7 +1214,7 @@ AtomPtr fn_knn(AtomPtr node, AtomPtr env) {
         Observation<Real> qo;
         qo.attributes = q->array;
 
-        std::string label = knn.classify(qo);
+        std::string label = (std::string) "\"" + knn.classify(qo); // forces string
         out->tail.push_back(make_atom(label));
     }
 

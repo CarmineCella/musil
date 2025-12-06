@@ -248,8 +248,6 @@ std::string save_svg_plot(const std::string& title,
     // Compose final path
     fs::path fullpath = base_dir / local_name;
     std::string filename = fullpath.string();
-
-    std::cout << base << " " << local_name << " " << filename << std::endl;
     std::ofstream out(filename.c_str());
     if (!out) {
         return std::string();

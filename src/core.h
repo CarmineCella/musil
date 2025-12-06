@@ -397,7 +397,6 @@ bool atom_eq (AtomPtr a, AtomPtr b) {
     }
     return false; // dummy
 }
-
 AtomPtr assoc (AtomPtr node, AtomPtr env) { // OPTIMIZATION: hash-map based symbol lookup
     if (!env->cache_valid) { // build cache on first access to this environment
         env->cache.clear();

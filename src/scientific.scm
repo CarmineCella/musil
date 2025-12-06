@@ -298,6 +298,67 @@
       (lindex labels (array 0))
     }))
 
+
+
+;; --------------------------------
+;; Learning helpers (KNN + metrics)
+;; --------------------------------
+
+;; Model is just (TRAIN K)
+(def knntrain
+  (lambda (trainset K)
+    (list trainset K)))
+
+(def knntest
+  (lambda (model testset)
+    {
+      (def TRAIN (lindex model (array 0)))
+      (def K     (lindex model (array 1)))
+      ;; Extract feature vectors from testset:
+      ;; each sample = (features label)
+      (def test_features
+        (map (lambda (sample)
+               (car sample))
+             testset))
+      ;; Use scientific.scm helper:
+      ;; (knn_predict TRAIN K QUERIES)
+      (knn_predict TRAIN K test_features)
+    }))
+
+;; Count correct predictions
+(def correct_count
+  (lambda (preds data)
+    (if (== (llength preds) 0)
+        0
+        {
+          (def p      (car preds))
+          (def sample (car data))
+          ;; sample = (features label)
+          (def true_label (lindex sample (array 1)))
+
+          (def rest_preds (cdr preds))
+          (def rest_data  (cdr data))
+          (def rest_correct (correct_count rest_preds rest_data))
+
+          (if (== p true_label)
+              (+ 1 rest_correct)
+              rest_correct)
+        })))
+
+;; Accuracy in [0,1]
+(def accuracy
+  (lambda (preds data)
+    {
+      (def n (llength preds))
+      (if (== n 0)
+          0
+          {
+            (def c (correct_count preds data))
+            (/ c n)
+          })
+    }))
+
+
 ;; ------------------------------------------------------------
 ;; Simple preprocessing wrappers
 ;; ------------------------------------------------------------
