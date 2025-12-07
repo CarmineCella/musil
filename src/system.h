@@ -5,6 +5,7 @@
 
 #include "core.h"
 #include "system/csv_tools.h"
+#include "system/wav_tools.h"
 
 #include <fstream>
 #include <vector>
@@ -349,6 +350,109 @@ AtomPtr fn_writecsv(AtomPtr node, AtomPtr env) {
 
     return make_atom(""); // unit
 }
+AtomPtr fn_wavread(AtomPtr node, AtomPtr env) {
+    args_check(node, 1);
+    std::string fname = type_check(node->tail.at(0), STRING)->lexeme;
+
+    WAVHeader header {};
+    std::vector<std::vector<double>> channels;
+    try {
+        channels = read_wav_raw(fname.c_str(), header);
+    } catch (const std::exception& e) {
+        error(e.what(), node);
+    } catch (...) {
+        error("[wavread] unknown error while reading WAV file", node);
+    }
+
+    // sr as scalar array
+    AtomPtr srAtom = make_atom(static_cast<Real>(header.sampleRate));
+
+    // (list of channel arrays) — here just a plain LIST of ARRAY nodes
+    AtomPtr chList = make_atom();     // default type = LIST
+    chList->tail.reserve(channels.size());
+    for (std::size_t ch = 0; ch < channels.size(); ++ch) {
+        const auto &v = channels[ch];
+        if (!v.empty()) {
+            std::valarray<Real> va(v.data(), v.size());
+            chList->tail.push_back(make_atom(va));
+        } else {
+            std::valarray<Real> va;
+            chList->tail.push_back(make_atom(va));
+        }
+    }
+
+    // result = (sr (list chns)) in your notation:
+    //   element 0: srAtom
+    //   element 1: chList (list of channel arrays)
+    AtomPtr res = make_atom();        // LIST
+    res->tail.reserve(2);
+    res->tail.push_back(srAtom);
+    res->tail.push_back(chList);
+    return res;
+}
+AtomPtr fn_wavwrite(AtomPtr node, AtomPtr env) {
+    args_check(node, 3);
+
+    std::string fname = type_check(node->tail.at(0), STRING)->lexeme;
+    Real sr = type_check(node->tail.at(1), ARRAY)->array[0];
+    if (sr <= 0) {
+        error("[wavwrite] sample rate must be > 0", node);
+    }
+
+    AtomPtr chList = type_check(node->tail.at(2), LIST);
+    if (chList->tail.empty()) {
+        error("[wavwrite] channel list is empty", node);
+    }
+
+    // Convert LIST of ARRAY into vector<vector<double>>
+    std::size_t numChannels = chList->tail.size();
+    std::valarray<Real>& first = type_check(chList->tail.at(0), ARRAY)->array;
+    std::size_t numSamples = first.size();
+
+    std::vector<std::vector<double>> channels(numChannels);
+    for (std::size_t ch = 0; ch < numChannels; ++ch) {
+        std::valarray<Real>& a = type_check(chList->tail.at(ch), ARRAY)->array;
+        if (a.size() != numSamples) {
+            error("[wavwrite] all channels must have the same length", node);
+        }
+        channels[ch].resize(numSamples);
+        for (std::size_t n = 0; n < numSamples; ++n) {
+            channels[ch][n] = static_cast<double>(a[n]);
+        }
+    }
+
+    // Fill minimal PCM header (16-bit)
+    WAVHeader header {};
+    std::memcpy(header.riff, "RIFF", 4);
+    std::memcpy(header.wave, "WAVE", 4);
+    std::memcpy(header.fmt,  "fmt ", 4);
+    std::memcpy(header.data, "data", 4);
+
+    header.subchunk1Size = 16;                 // PCM
+    header.audioFormat   = 1;                  // PCM
+    header.numChannels   = static_cast<uint16_t>(numChannels);
+    header.sampleRate    = static_cast<uint32_t>(sr);
+    header.bitsPerSample = 16;                 // 16-bit PCM
+
+    header.blockAlign = static_cast<uint16_t>(
+        header.numChannels * header.bitsPerSample / 8);
+    header.byteRate = header.sampleRate * header.blockAlign;
+
+    // dataSize and chunkSize computed in write_wav_raw
+    header.dataSize  = 0;
+    header.chunkSize = 0;
+
+    try {
+        write_wav_raw(fname.c_str(), channels, header);
+    } catch (const std::exception& e) {
+        error(e.what(), node);
+    } catch (...) {
+        error("[wavwrite] unknown error while writing WAV file", node);
+    }
+
+    // success
+    return make_atom((Real)1);
+}
 
 // interface
 AtomPtr add_system (AtomPtr env) {
@@ -364,8 +468,10 @@ AtomPtr add_system (AtomPtr env) {
     add_op ("clearpaths", &fn_clearpaths, 0, env);
     add_op ("udpsend", &fn_udpsend, 3, env);
     add_op ("udprecv", &fn_udprecv, 2, env);
-    add_op("readcsv",  fn_readcsv,  1, env);
-    add_op("writecsv", fn_writecsv, 2, env);
+    add_op ("readcsv",  fn_readcsv,  1, env);
+    add_op ("writecsv", fn_writecsv, 2, env);
+    add_op ("readwav",   fn_wavread,   1, env);
+    add_op ("writewav",  fn_wavwrite,  3, env);
     return env;
 }
 

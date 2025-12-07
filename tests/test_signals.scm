@@ -64,8 +64,8 @@
 
 ; guard point is last element, must equal first
 (test
- '(== (arr-nth g (array 0))
-      (arr-nth g (- (arr-len g) (array 1))))
+ '(== (getval g (array 0))
+      (getval g (- (size g) (array 1))))
  (array 1))
 
 ; ------------------------------------------------------------------------
@@ -73,7 +73,7 @@
 ; ------------------------------------------------------------------------
 
 (test
- '(arr-len (osc (array 44100)
+ '(size (osc (array 44100)
                 (array 440 440 440 440)
                 (gen (array 16) (array 1))))
  (array 4))
@@ -86,10 +86,10 @@
 (def X   (fft sig))
 (def sig2 (ifft X))
 
-(test~ '(arr-nth sig2 (array 0)) (array 1) (array 1e-5))
-(test~ '(arr-nth sig2 (array 1)) (array 2) (array 1e-5))
-(test~ '(arr-nth sig2 (array 2)) (array 3) (array 1e-5))
-(test~ '(arr-nth sig2 (array 3)) (array 4) (array 1e-5))
+(test~ '(getval sig2 (array 0)) (array 1) (array 1e-5))
+(test~ '(getval sig2 (array 1)) (array 2) (array 1e-5))
+(test~ '(getval sig2 (array 2)) (array 3) (array 1e-5))
+(test~ '(getval sig2 (array 3)) (array 4) (array 1e-5))
 
 ; ------------------------------------------------------------------------
 ; 5. car2pol / pol2car round-trip
@@ -119,11 +119,11 @@
 
 ; we only test that specspread / specdecr return scalars (no crash)
 (test
- '(arr-len (specspread (array 0 1 0) (array 1000 2000 3000) (array 2000)))
+ '(size (specspread (array 0 1 0) (array 1000 2000 3000) (array 2000)))
  (array 1))
 
 (test
- '(arr-len (specdecr (array 4 3 2 1)))
+ '(size (specdecr (array 4 3 2 1)))
  (array 1))
 
 ; flux(x,x) == 0
@@ -133,7 +133,7 @@
 
 ; irregularity: just check scalar result
 (test
- '(arr-len (specirr (array 1 2 3 4)))
+ '(size (specirr (array 1 2 3 4)))
  (array 1))
 
 ; ------------------------------------------------------------------------
@@ -174,9 +174,9 @@
           (array 0 1))))
 
 ; check shape and each channel (length-3)
-(test '(list-len convmc_out) (array 2))
-(test '(list-nth convmc_out (array 0)) (array 1 2 0))
-(test '(list-nth convmc_out (array 1)) (array 0 3 4))
+(test '(llength convmc_out) (array 2))
+(test '(lindex convmc_out (array 0)) (array 1 2 0))
+(test '(lindex convmc_out (array 1)) (array 0 3 4))
 
 ; ------------------------------------------------------------------------
 ; 10. dcblock
@@ -192,7 +192,7 @@
 
 ; just check decay: last sample is smaller than first
 (test~
- '(- (arr-nth dc_out (array 0)) (arr-nth dc_out (array 7)))
+ '(- (getval dc_out (array 0)) (getval dc_out (array 7)))
  (array 1)       ; we just want a positive difference
  (array 1.0))    ; loose tol, this is more a sanity check
 
@@ -202,7 +202,7 @@
 
 ; length must be sr * tau
 (test
- '(arr-len (reson (array 1 0 0 0) (array 1000) (array 100) (array 0.01)))
+ '(size (reson (array 1 0 0 0) (array 1000) (array 100) (array 0.01)))
  (array 10))
 
 ; ------------------------------------------------------------------------
@@ -221,7 +221,7 @@
 
 ; filtdesign returns [b, a] list
 (def fd (filtdesign 'lowpass (array 48000) (array 1000) (array 0.707) (array 0)))
-(test '(list-len fd) (array 2))
+(test '(llength fd) (array 2))
 
 ; ------------------------------------------------------------------------
 ; 13. delay (fractional, linear interpolation)
@@ -245,10 +245,10 @@
 ; allpass with x=[1 0 0 0], D=1, g=0.5 => [-0.5, 0.75, 0.375, 0.1875]
 (def ap (allpass (array 1 0 0 0) (array 1) (array 0.5)))
 
-(test~ '(arr-nth ap (array 0)) (array -0.5)   (array 1e-5))
-(test~ '(arr-nth ap (array 1)) (array 0.75)   (array 1e-5))
-(test~ '(arr-nth ap (array 2)) (array 0.375)  (array 1e-5))
-(test~ '(arr-nth ap (array 3)) (array 0.1875) (array 1e-5))
+(test~ '(getval ap (array 0)) (array -0.5)   (array 1e-5))
+(test~ '(getval ap (array 1)) (array 0.75)   (array 1e-5))
+(test~ '(getval ap (array 2)) (array 0.375)  (array 1e-5))
+(test~ '(getval ap (array 3)) (array 0.1875) (array 1e-5))
 
 ; ------------------------------------------------------------------------
 ; 15. resample (frequency-domain)
@@ -257,8 +257,8 @@
 (def rs1 (resample (array 1 2 3 4) (array 1.0)))  ; factor 1 -> same length
 (def rs2 (resample (array 1 2 3 4) (array 2.0)))  ; upsample
 
-(test '(arr-len rs1) (array 4))
-(test '(> (arr-len rs2) (array 4)) (array 1))
+(test '(size rs1) (array 4))
+(test '(> (size rs2) (array 4)) (array 1))
 
 ; ------------------------------------------------------------------------
 ; 16. simple rms sanity (no normalize here)
@@ -278,11 +278,11 @@
 
 ; lowpass / highpass wrappers should preserve length
 (test
- '(arr-len (lowpass (array 1 2 3 4) 48000 1000 0.707))
+ '(size (lowpass (array 1 2 3 4) 48000 1000 0.707))
  (array 4))
 
 (test
- '(arr-len (highpass (array 1 2 3 4) 48000 1000 0.707))
+ '(size (highpass (array 1 2 3 4) 48000 1000 0.707))
  (array 4))
 
 ; comb-filter / allpass-filter wrappers
@@ -291,7 +291,7 @@
  (array 1 1 1 1))
 
 (test
- '(arr-len (allpass-filter (array 1 0 0 0) 1 0.5))
+ '(size (allpass-filter (array 1 0 0 0) 1 0.5))
  (array 4))
 
 ; ------------------------------------------------------------------------
@@ -299,7 +299,7 @@
 ; ------------------------------------------------------------------------
 
 (def res_sig (resonator (array 1 0 0 0) 1000 100 0.01))
-(test '(arr-len res_sig) (array 10))
+(test '(size res_sig) (array 10))
 
 ;; ------------------------------------------------------------
 ;; 19. Spectral features

@@ -3,31 +3,6 @@
 (load "core.scm")
 
 ; ---------------------------------------------------------
-; Small helpers: arrays + lists
-; ---------------------------------------------------------
-
-; array nth: returns a 1-element array [a[i]]
-(def arr-nth
-  (lambda (a i)
-    (slice a (array i) (array 1))))
-
-; array length: returns a 1-element array [N]
-(def arr-len
-  (lambda (a)
-    (size a)))
-
-; list nth: list element at index i
-(def list-nth
-  (lambda (lst i)
-    (lindex lst (array i))))
-
-; list length: returns a 1-element array [N]
-(def list-len
-  (lambda (lst)
-    (llength lst)))
-
-
-; ---------------------------------------------------------
 ; RMS, normalization
 ; ---------------------------------------------------------
 
@@ -67,8 +42,8 @@
 (def apply-biquad
   (lambda (sig coeffs)
     {
-      (def b (list-nth coeffs 0))
-      (def a (list-nth coeffs 1))
+      (def b (lindex coeffs 0))
+      (def a (lindex coeffs 1))
       (filter sig b a)
     }))
 
@@ -198,3 +173,40 @@
       (def factor (/ Fs-out Fs-in))
       (resample-factor sig factor)
     }))
+
+
+
+;; ------------------------------------------------------------------
+;; Oscillator bank
+;; amps  : list of amplitude envelopes (arrays)
+;; freqs : list of frequency envelopes (arrays)
+;; sr    : sample rate (array scalar)
+;; tab   : wavetable (array, guard point included)
+;; ------------------------------------------------------------------
+(def oscbank
+  (lambda (sr amps freqs tab)
+    {
+      (def n (llength amps))
+      (if (not (== n (llength freqs)))
+          (error "[oscbank] amps and freqs must have same length"
+                 (list n (llength freqs))))
+      (def i   (array 0))
+      (def out (array 0))            ;; overwritten at first partial
+      (while (< i n)
+        {
+          (def a_i (lindex amps i))   ;; amplitude envelope (array)
+          (def f_i (lindex freqs i))  ;; frequency envelope (array)
+          (def sig (osc sr f_i tab))  ;; oscillator signal
+          (def sigw (* a_i sig))      ;; weighted by amplitude envelope
+          (if (== i (array 0))
+              (= out sigw)
+              (= out (+ out sigw)))
+          (= i (+ i (array 1)))
+        })
+      out
+    }))
+
+
+;; eof
+
+
