@@ -1,8 +1,6 @@
-;; --------------------------------
-;; Musil scripting language
-;; --------------------------------
+;; add_reconstruction.scm
 ;;
-;; Example: sound analysis and reconstruction (fixed, no list-nth/etc.)
+;; Sound analysis and reconstruction (fixed, no list-nth/etc.)
 
 (load "signals.scm")
 

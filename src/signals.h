@@ -360,6 +360,55 @@ AtomPtr fn_convmc(AtomPtr node, AtomPtr env) {
     }
     return out_channels;
 }
+// interleave / deinterleave ------------------------------------------------
+AtomPtr fn_deinterleave(AtomPtr node, AtomPtr env) {
+    std::valarray<Real>& in = type_check(node->tail.at(0), ARRAY)->array;
+    int L = (int)in.size();
+    if (L % 2 != 0) {
+        error("[deinterleave] input array length must be even", node);
+    }
+    int N = L / 2;
+
+    std::valarray<Real> a(Real(0), N);
+    std::valarray<Real> b(Real(0), N);
+
+    for (int i = 0; i < N; ++i) {
+        a[i] = in[2 * i];     // even indices
+        b[i] = in[2 * i + 1]; // odd indices
+    }
+
+    AtomPtr out = make_atom();   // list
+    out->tail.push_back(make_atom(a));
+    out->tail.push_back(make_atom(b));
+    return out;
+}
+
+AtomPtr fn_interleave(AtomPtr node, AtomPtr env) {
+    AtomPtr lst = node->tail.at(0);
+    if (lst->type != LIST) {
+        error("[interleave] argument must be a list of arrays", node);
+    }
+    if (lst->tail.size() != 2) {
+        error("[interleave] list must contain exactly 2 arrays", node);
+    }
+
+    std::valarray<Real>& a = type_check(lst->tail.at(0), ARRAY)->array;
+    std::valarray<Real>& b = type_check(lst->tail.at(1), ARRAY)->array;
+
+    if (a.size() != b.size()) {
+        error("[interleave] arrays must have same length", node);
+    }
+
+    int N = (int)a.size();
+    std::valarray<Real> out(Real(0), 2 * N);
+
+    for (int i = 0; i < N; ++i) {
+        out[2 * i]     = a[i];
+        out[2 * i + 1] = b[i];
+    }
+
+    return make_atom(out);
+}
 
 // filters
 AtomPtr fn_dcblock(AtomPtr node, AtomPtr env) {
@@ -658,7 +707,9 @@ AtomPtr add_signals (AtomPtr env) {
 	add_op ("energy", fn_energy, 1, env);
 	add_op ("zcr", fn_zcr, 1, env);		
   	add_op("conv",   fn_conv,   2, env);
-	add_op("convmc", fn_convmc, 2, env);	
+	add_op("convmc", fn_convmc, 2, env);
+ 	add_op("deinterleave", fn_deinterleave, 1, env);
+    add_op("interleave",   fn_interleave,   1, env);	
 
 	add_op ("dcblock",   fn_dcblock,   2, env);
 	add_op ("reson", 	 fn_reson, 4, env);	
