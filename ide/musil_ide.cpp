@@ -563,7 +563,7 @@ static const char* musil_builtin_keywords[] = {
     "array", "array2list", "asin", "assign", "atan",
     "begin", "break", "car", "cdr", "clearpaths", "clock", "comp",
     "compare", "cos", "cosh", "def", "diff", "dirlist", "dot", "dup",
-    "elem", "eq", "eval", "exec", "exit", "fac", "fib", "filter",
+    "elem", "eq", "eval", "exec", "exit", "fac", "fib", "lfilter",
     "filestat", "flip", "floor", "foldl", "fourth", "function",
     "getval", "getvar", "if", "info", "lambda",
     "lappend", "lhead", "lindex", "length", "let", "list",

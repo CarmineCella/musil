@@ -247,7 +247,7 @@
     (map2-runner '() f l1 l2)
   })
 
-(function filter (f l)
+(function lfilter (f l)
   {
     (def filter-runner
       (lambda (acc f l)

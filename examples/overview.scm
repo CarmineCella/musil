@@ -239,8 +239,8 @@
 
 (print "map square over L: " (map square L) "\n")
 (print "map2 + '(1 2) '(10 20) = " (map2 + '(1 2) '(10 20)) "\n")
-(print "filter (> x 2) L = "
-       (filter (lambda (x) (> x 2)) L) "\n")
+(print "lfilter (> x 2) L = "
+       (lfilter (lambda (x) (> x 2)) L) "\n")
 
 (print "foldl + 0 L = " (foldl + 0 L) "\n")
 (print "flip - 3 10 = " (flip - 3 10) "\n")

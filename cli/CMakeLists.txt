@@ -47,6 +47,7 @@ install(FILES
     ${CMAKE_SOURCE_DIR}/src/core.scm
     ${CMAKE_SOURCE_DIR}/src/scientific.scm
     ${CMAKE_SOURCE_DIR}/src/plotting.scm
+    ${CMAKE_SOURCE_DIR}/src/signals.scm
     DESTINATION $ENV{HOME}/.musil
 )
 

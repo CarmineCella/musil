@@ -18,7 +18,7 @@
 ;; Filter out empty rows (some Iris files have a blank line at end)
 (def nonempty_rows
   (lambda (rows)
-    (filter (lambda (row)
+    (lfilter (lambda (row)
               (> (llength row) 0))
             rows)))
 
