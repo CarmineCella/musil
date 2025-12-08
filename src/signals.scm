@@ -174,8 +174,6 @@
       (resample-factor sig factor)
     }))
 
-
-
 ;; ------------------------------------------------------------------
 ;; Oscillator bank
 ;; amps  : list of amplitude envelopes (arrays)
@@ -204,6 +202,83 @@
           (= i (+ i (array 1)))
         })
       out
+    }))
+
+;; STFT: (stft sig N hop) -> list of spectra
+;;   sig : array
+;;   N   : frame size
+;;   hop : analysis hop
+
+(def stft
+  (lambda (sig N hop)
+    {
+      (def L    (size sig))
+      (def pos  0)
+      (def specs ())
+
+      ;; analysis window (Hann-like)
+      (def win (window N 0.5 0.5 0.0))
+
+      (while (<= (+ pos N) L)
+        {
+          (def frame   (slice sig pos N))
+          (def frame-w (* frame win))
+          (def spec    (fft frame-w))
+          (lappend specs spec)
+          (= pos (+ pos hop))
+        })
+
+      specs
+    }))
+
+;; ISTFT: (istft specs N hop) -> array
+;;   - FFT is unnormalized, IFFT divides by N in C++
+;;   - We do overlap/add with a Hann window
+;;   - We compute the constant C = sum(win^2) / hop
+;;     and divide the whole output by C to correct the gain.
+
+(def istft
+  (lambda (spec-list N hop)
+    {
+      (def nframes (llength spec-list))
+      (if (== nframes (array 0))
+          (array 0)
+          {
+            ;; Output length: Lout = hop*(nframes-1) + N
+            (def Lout (+ (* hop (- nframes 1)) N))
+            (def out  (zeros Lout))
+
+            ;; Hann analysis/synthesis window
+            (def win  (window N 0.5 0.5 0.0))
+            (def win2 (* win win))
+
+            ;; Scalar normalization constant:
+            ;; C = sum(win^2) / hop  ≈ 1.5 for Hann + N/4
+            (def win-energy (sum win2))
+            (def normconst  (/ win-energy hop))
+
+            (def k 0)
+            (while (< k nframes)
+              {
+                (def spec  (lindex spec-list k))
+                (def frame (ifft spec))       ;; already /N in C++
+                (def frame-w (* frame win))
+                (def pos   (* k hop))
+
+                ;; Overlap/add into out
+                (def seg-out (slice out pos N))
+                (def seg-new (+ seg-out frame-w))
+                (assign out seg-new pos N)
+
+                (= k (+ k 1))
+              })
+
+            ;; Final normalization by scalar normconst
+            (def inv-norm (/ 1.0 normconst))      ;; scalar
+            (def out-norm (* out (array inv-norm))) ;; scale array
+
+            out-norm
+          })
     }))
 
 
