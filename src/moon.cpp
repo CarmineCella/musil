@@ -29,6 +29,9 @@ int main(int argc, char* argv[]) {
         std::string src(std::istreambuf_iterator<char>(f), {});
         try   {
             state.exec(src, argv[a]);
+        } catch (Error& e) {
+            std::cerr << "error: " << e.file << ":" << e.line << ": " << e.msg << "\n";
+            return 1;
         } catch (std::exception& e) {
             std::cerr << "error: " << e.what() << "\n";
             return 1;

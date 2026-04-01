@@ -16,6 +16,12 @@
 #include <cstdlib>
 #include <stdexcept>
 
+struct Error {
+    std::string file;
+    int line;
+    std::string msg;
+};
+
 using Value = std::variant<double, std::string>;
 
 std::string to_str(const Value& v) {
@@ -45,7 +51,7 @@ struct Token {
     int line = 1;
 };
 
-std::vector<Token> lex(const std::string& src) {
+std::vector<Token> lex(const std::string& src, const std::string& filename = "<unknown>") {
     std::vector<Token> toks;
     size_t i = 0, n = src.size();
     int line = 1;
@@ -102,7 +108,7 @@ std::vector<Token> lex(const std::string& src) {
             bool has_dot = false;
             while (i < n && (isdigit((unsigned char)src[i]) || src[i] == '.')) {
                 if (src[i] == '.') {
-                    if (has_dot) throw std::runtime_error("line " + std::to_string(line) + ": malformed number '" + s + ".'");
+                    if (has_dot) throw Error{filename, line, "malformed number '" + s + ".'"};
                     has_dot = true;
                 }
                 s += src[i++];
@@ -159,7 +165,7 @@ std::vector<Token> lex(const std::string& src) {
             i++;
             continue;
         }
-        throw std::runtime_error("line " + std::to_string(line) + ": unknown character " + src[i]);
+        throw Error{filename, line, "unknown character " + std::string(1, src[i])};
     }
     toks.push_back({END, "", line});
     return toks;
@@ -199,8 +205,7 @@ struct Interpreter {
         return false;
     }
     Token expect(TK t) {
-        if (!check(t)) throw std::runtime_error(
-                filename + ":" + std::to_string(T[pos].line) + ": unexpected '" + T[pos].val + "'");
+        if (!check(t)) throw Error{filename, T[pos].line, "unexpected '" + T[pos].val + "'"};
         return consume();
     }
 
@@ -210,7 +215,7 @@ struct Interpreter {
         if (it != locals.end()) return it->second;
         auto it2 = globals.find(n);
         if (it2 != globals.end()) return it2->second;
-        throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": undefined '" + n + "'");
+        throw Error{filename, T[pos].line, "undefined '" + n + "'"};
     }
     // var statement: always declares in the current scope
     void decl_var(const std::string& n, Value v) {
@@ -264,7 +269,7 @@ struct Interpreter {
         } else if (check(IDENT) && T[pos+1].type == LPAREN) {
             expr();    // bare call
         } else if (!check(RBRACE) && !check(END))
-            throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": unexpected '" + T[pos].val + "'");
+            throw Error{filename, T[pos].line, "unexpected '" + T[pos].val + "'"};
     }
 
     void proc_decl() {
@@ -386,7 +391,7 @@ struct Interpreter {
     Value call_user(const std::string& name, std::vector<Value> args) {
         auto& p = procs.at(name);
         if (args.size() != p.params.size())
-            throw std::runtime_error(filename + ": arity mismatch " + name);
+            throw Error{filename, -1, "arity mismatch " + name};
         Interpreter sub{p.body, 0, globals, {}, procs};
         sub.in_proc  = true;
         sub.load_fn  = load_fn;
@@ -409,7 +414,7 @@ struct Interpreter {
             return std::get<std::string>(a[i]);
         };
         auto chk= [&](size_t n) {
-            if (a.size()!=n) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": " + nm+": expected "+std::to_string(n)+" arg(s)");
+            if (a.size()!=n) throw Error{filename, T[pos].line, nm+": expected "+std::to_string(n)+" arg(s)"};
         };
         // ── math ──────────────────────────────────────────────────────────────
         if (nm=="floor") {
@@ -478,26 +483,26 @@ struct Interpreter {
         if (nm=="read") {
             chk(1);
             std::ifstream f(sv(0));
-            if (!f) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": [read] can't open '"+sv(0)+"'");
+            if (!f) throw Error{filename, T[pos].line, "[read] can't open '"+sv(0)+"'"};
             return std::string(std::istreambuf_iterator<char>(f), {});
         }
         if (nm=="write") {
             chk(2);
             std::ofstream f(sv(0));
-            if (!f) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": [write] can't open '"+sv(0)+"'");
+            if (!f) throw Error{filename, T[pos].line, "[write] can't open '"+sv(0)+"'"};
             f << sv(1);
             return 0.0;
         }
         if (nm=="append") {
             chk(2);
             std::ofstream f(sv(0),std::ios::app);
-            if (!f) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": [append] can't open '"+sv(0)+"'");
+            if (!f) throw Error{filename, T[pos].line, "[append] can't open '"+sv(0)+"'"};
             f << sv(1);
             return 0.0;
         }
         if (nm=="load") {
             chk(1);
-            if (!load_fn) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": load not available");
+            if (!load_fn) throw Error{filename, T[pos].line, "load not available"};
             std::string filename = sv(0);
             std::ifstream f(filename);
             if (!f) {
@@ -508,13 +513,13 @@ struct Interpreter {
                     f.open(install_path);
                 }
             }
-            if (!f) throw std::runtime_error(this->filename + ":" + std::to_string(T[pos].line) + ": [load] can't open '" + filename + "'");
+            if (!f) throw Error{this->filename, T[pos].line, "[load] can't open '" + filename + "'"};
             load_fn(std::string(std::istreambuf_iterator<char>(f), {}), filename);
             return 0.0;
         }
         // ── interactive & misc ────────────────────────────────────────────────
         if (nm=="input") {
-            if (a.size() > 1) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": [input] 0 or 1 arg");
+            if (a.size() > 1) throw Error{filename, T[pos].line, "[input] 0 or 1 arg"};
             if (a.size() == 1) std::cout << to_str(a[0]) << std::flush;
             std::string line;
             if (!std::getline(std::cin, line)) return std::string{};
@@ -543,14 +548,14 @@ struct Interpreter {
         }
         if (nm=="asc")   {
             chk(1);
-            if(sv(0).empty()) throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": [asc] empty string");
+            if(sv(0).empty()) throw Error{filename, T[pos].line, "[asc] empty string"};
             return (double)(unsigned char)sv(0)[0];
         }
         if (nm=="clock") {
             chk(0);
             return (double)std::clock() / CLOCKS_PER_SEC;
         }
-        throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": undefined '"+nm+"'");
+        throw Error{filename, T[pos].line, "undefined '"+nm+"'"};
     }
 
     Value expr() {
@@ -658,7 +663,7 @@ struct Interpreter {
             }
             return get_var(n);
         }
-        throw std::runtime_error(filename + ":" + std::to_string(T[pos].line) + ": unexpected in expr '" + T[pos].val + "'");
+        throw Error{filename, T[pos].line, "unexpected in expr '" + T[pos].val + "'"};
     }
 };
 
@@ -669,7 +674,7 @@ struct Environment {
 
     void exec(const std::string& src, const std::string& filename = "<unknown>") {
         current_file = filename;
-        auto toks = lex(src);
+        auto toks = lex(src, filename);
         Interpreter interp{std::move(toks), 0, globals, {}, procs, {}, false, current_file};
         interp.load_fn = [this](const std::string& s, const std::string& f) {
             this->exec(s, f);
@@ -708,6 +713,8 @@ void repl(Environment& state) {
             if (buf.find_first_not_of(" \t\n") != std::string::npos) {
                 try   {
                     state.exec(buf, "<stdin>");
+                } catch (Error& e) {
+                    std::cerr << "error: " << e.file << ":" << e.line << ": " << e.msg << "\n";
                 } catch (std::exception& e) {
                     std::cerr << "error: " << e.what() << "\n";
                 }
