@@ -27,66 +27,34 @@ struct Error {
     std::vector<std::string> trace;   // proc call stack at point of error
 };
 
+// Proc forward-declared here so ProcVal = shared_ptr<Proc> compiles;
+// full definition appears after Token/lex (body needs vector<Token>).
+struct Proc;
+
 // ── Value ─────────────────────────────────────────────────────────────────────
-// Three types:
-//   NumVal  — std::valarray<double>  (scalar = size 1, vector = size > 1)
-//   string  — text
-//   ArrayPtr — shared heterogeneous array (the existing [] type, unchanged)
+// Four types:
+//   NumVal   — std::valarray<double>  (scalar = size 1, vector = size > 1)
+//   string   — text
+//   ArrayPtr — shared heterogeneous array (the [] type)
+//   ProcVal  — first-class proc (shared, no closure — sees globals only)
 
 using NumVal   = std::valarray<double>;
 struct MoonArray;
+struct Proc;                              // forward declaration
 using ArrayPtr = std::shared_ptr<MoonArray>;
-using Value    = std::variant<NumVal, std::string, ArrayPtr>;
+using ProcVal  = std::shared_ptr<Proc>;
+using Value    = std::variant<NumVal, std::string, ArrayPtr, ProcVal>;
 
 struct MoonArray { std::vector<Value> elems; };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers (to_str/to_bool defined after Proc is complete — see below) ──────
 
 inline double nv_scalar(const NumVal& v) { return v[0]; }
 inline bool   nv_is_scalar(const NumVal& v) { return v.size() == 1; }
 
-std::string to_str(const Value& v) {
-    if (auto* nv = std::get_if<NumVal>(&v)) {
-        if (nv->size() == 1) {
-            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[0]); return buf;
-        }
-        std::string r = "<";
-        for (size_t i = 0; i < nv->size(); i++) {
-            if (i) r += " ";
-            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[i]); r += buf;
-        }
-        return r + ">";
-    }
-    if (auto* s = std::get_if<std::string>(&v)) return *s;
-    const auto& el = std::get<ArrayPtr>(v)->elems;
-    std::string r = "[";
-    for (size_t i = 0; i < el.size(); i++) {
-        if (i) r += ", ";
-        if (std::holds_alternative<std::string>(el[i]))
-            r += '"' + std::get<std::string>(el[i]) + '"';
-        else r += to_str(el[i]);
-    }
-    return r + "]";
-}
-
-double to_bool(const Value& v) {
-    if (auto* nv = std::get_if<NumVal>(&v))   return nv->size() > 0 && (*nv)[0] != 0.0 ? 1.0 : 0.0;
-    if (auto* s  = std::get_if<std::string>(&v)) return s->empty() ? 0.0 : 1.0;
-    return std::get<ArrayPtr>(v)->elems.empty() ? 0.0 : 1.0;
-}
-
-// value equality — needed because valarray's == returns valarray<bool>, not bool
-bool values_equal(const Value& a, const Value& b) {
-    if (a.index() != b.index()) return false;
-    if (auto* na = std::get_if<NumVal>(&a)) {
-        const NumVal& nb = std::get<NumVal>(b);
-        if (na->size() != nb.size()) return false;
-        for (size_t i = 0; i < na->size(); i++) if ((*na)[i] != nb[i]) return false;
-        return true;
-    }
-    if (auto* sa = std::get_if<std::string>(&a)) return *sa == std::get<std::string>(b);
-    return std::get<ArrayPtr>(a) == std::get<ArrayPtr>(b);   // identity (shared_ptr pointer eq)
-}
+std::string to_str(const Value& v);   // forward declaration — defined after Proc
+double to_bool(const Value& v);       // forward declaration — defined after Proc
+bool values_equal(const Value& a, const Value& b);  // forward declaration
 
 // ── Tokens ────────────────────────────────────────────────────────────────────
 
@@ -168,10 +136,63 @@ std::vector<Token> lex(const std::string& src, const std::string& filename = "<s
 struct ReturnSignal { Value val; };
 struct BreakSignal  {};
 
+// Full Proc definition (body needs Token, which is now defined)
 struct Proc {
     std::vector<std::string> params;
     std::vector<Token>       body;
 };
+
+// ── Helper definitions (Proc now complete) ────────────────────────────────────
+
+std::string to_str(const Value& v) {
+    if (auto* nv = std::get_if<NumVal>(&v)) {
+        if (nv->size() == 1) {
+            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[0]); return buf;
+        }
+        std::string r = "<";
+        for (size_t i = 0; i < nv->size(); i++) {
+            if (i) r += " ";
+            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[i]); r += buf;
+        }
+        return r + ">";
+    }
+    if (auto* s = std::get_if<std::string>(&v)) return *s;
+    if (auto* p = std::get_if<ProcVal>(&v)) {
+        std::string r = "<proc(";
+        for (size_t i = 0; i < (*p)->params.size(); i++) { if (i) r += ", "; r += (*p)->params[i]; }
+        return r + ")>";
+    }
+    const auto& el = std::get<ArrayPtr>(v)->elems;
+    std::string r = "[";
+    for (size_t i = 0; i < el.size(); i++) {
+        if (i) r += ", ";
+        if (std::holds_alternative<std::string>(el[i]))
+            r += '"' + std::get<std::string>(el[i]) + '"';
+        else r += to_str(el[i]);
+    }
+    return r + "]";
+}
+
+double to_bool(const Value& v) {
+    if (auto* nv = std::get_if<NumVal>(&v))    return nv->size() > 0 && (*nv)[0] != 0.0 ? 1.0 : 0.0;
+    if (auto* s = std::get_if<std::string>(&v)) return s->empty() ? 0.0 : 1.0;
+    if (std::holds_alternative<ProcVal>(v))     return 1.0;
+    return std::get<ArrayPtr>(v)->elems.empty() ? 0.0 : 1.0;
+}
+
+bool values_equal(const Value& a, const Value& b) {
+    if (a.index() != b.index()) return false;
+    if (auto* na = std::get_if<NumVal>(&a)) {
+        const NumVal& nb = std::get<NumVal>(b);
+        if (na->size() != nb.size()) return false;
+        for (size_t i = 0; i < na->size(); i++) if ((*na)[i] != nb[i]) return false;
+        return true;
+    }
+    if (auto* sa = std::get_if<std::string>(&a)) return *sa == std::get<std::string>(b);
+    if (std::holds_alternative<ProcVal>(a))
+        return std::get<ProcVal>(a) == std::get<ProcVal>(b);
+    return std::get<ArrayPtr>(a) == std::get<ArrayPtr>(b);
+}
 
 // ── Builtin type (forward-declare Interpreter) ────────────────────────────────
 
@@ -500,6 +521,26 @@ struct Interpreter {
         return result;
     }
 
+    // Call a first-class proc value — same as call_user but takes the Proc directly
+    Value call_procval(const ProcVal& pv, std::vector<Value> args, const std::string& label = "<proc>") {
+        if (args.size() != pv->params.size())
+            throw make_err("arity mismatch: expected " + std::to_string(pv->params.size()) + " args");
+        call_stack.push_back(label);
+        Interpreter sub{pv->body, 0, globals, {}, procs, builtins, load_fn, true, filename, call_stack};
+        for (size_t i = 0; i < args.size(); i++) sub.locals[pv->params[i]] = args[i];
+        Value result{NumVal{0.0}};
+        try {
+            sub.run_block();
+        } catch (ReturnSignal& r) {
+            result = r.val;
+        } catch (...) {
+            call_stack.pop_back();
+            throw;
+        }
+        call_stack.pop_back();
+        return result;
+    }
+
     Value call_builtin(const std::string& nm, std::vector<Value>& a) {
         // user-registered functions take priority
         auto it = builtins.find(nm);
@@ -562,17 +603,49 @@ struct Interpreter {
 
         // ── numeric vector operations ─────────────────────────────────────────
         if (nm=="sum") {
-            chk(1); return NumVal{std::get<NumVal>(a[0]).sum()};
+            chk(1);
+            if (!std::holds_alternative<NumVal>(a[0]))
+                throw make_err("sum: argument must be a vector (use arr_sum from stdlib for arrays)");
+            return NumVal{std::get<NumVal>(a[0]).sum()};
         }
         if (nm=="all") {
-            chk(1); const NumVal& v = std::get<NumVal>(a[0]);
+            chk(1);
+            if (!std::holds_alternative<NumVal>(a[0]))
+                throw make_err("all: argument must be a vector");
+            const NumVal& v = std::get<NumVal>(a[0]);
             for (size_t i = 0; i < v.size(); i++) if (v[i] == 0.0) return NumVal{0.0};
             return NumVal{1.0};
         }
         if (nm=="any") {
-            chk(1); const NumVal& v = std::get<NumVal>(a[0]);
+            chk(1);
+            if (!std::holds_alternative<NumVal>(a[0]))
+                throw make_err("any: argument must be a vector");
+            const NumVal& v = std::get<NumVal>(a[0]);
             for (size_t i = 0; i < v.size(); i++) if (v[i] != 0.0) return NumVal{1.0};
             return NumVal{0.0};
+        }
+        // to_vec(array_of_numbers) — convert numeric array to vector
+        if (nm=="to_vec") {
+            chk(1); chk_arr(0, "to_vec");
+            const auto& el = ap(0)->elems;
+            NumVal r(el.size());
+            for (size_t i = 0; i < el.size(); i++) {
+                if (!std::holds_alternative<NumVal>(el[i]))
+                    throw make_err("to_vec: all array elements must be numbers");
+                r[i] = nv_scalar(std::get<NumVal>(el[i]));
+            }
+            return r;
+        }
+        // to_arr(vector) — convert numeric vector to array of numbers
+        if (nm=="to_arr") {
+            chk(1);
+            if (!std::holds_alternative<NumVal>(a[0]))
+                throw make_err("to_arr: argument must be a vector");
+            const NumVal& v = std::get<NumVal>(a[0]);
+            auto r = std::make_shared<MoonArray>();
+            r->elems.reserve(v.size());
+            for (size_t i = 0; i < v.size(); i++) r->elems.push_back(NumVal{v[i]});
+            return r;
         }
 
         // ── len: works on string, array, and numeric vector ───────────────────
@@ -609,6 +682,7 @@ struct Interpreter {
                 return std::string{std::get<NumVal>(a[0]).size() <= 1 ? "number" : "vector"};
             }
             if (std::holds_alternative<std::string>(a[0])) return std::string{"string"};
+            if (std::holds_alternative<ProcVal>(a[0]))     return std::string{"proc"};
             return std::string{"array"};
         }
 
@@ -754,13 +828,18 @@ struct Interpreter {
             return NumVal{0.0};
         }
         if (nm=="exec") {
-            chk(1); return NumVal{(double)std::system(sv(0).c_str())};
+            chk(1);
+            std::cout.flush();   // flush Moon output before child process writes
+            return NumVal{(double)std::system(sv(0).c_str())};
         }
         if (nm=="apply") {
-            // apply(proc_name, args_array) — call a proc by name with an array of arguments
-            if (a.size() != 2) throw make_err("apply: needs 2 args (name, array)");
-            std::string proc_name = sv(0); chk_arr(1, "apply");
+            // apply(f, args_array) — f can be a proc value or a proc/builtin name string
+            if (a.size() != 2) throw make_err("apply: needs 2 args (proc or name, array)");
+            chk_arr(1, "apply");
             std::vector<Value> args = ap(1)->elems;
+            if (std::holds_alternative<ProcVal>(a[0]))
+                return call_procval(std::get<ProcVal>(a[0]), args);
+            std::string proc_name = sv(0);
             auto pit = procs.find(proc_name);
             if (pit != procs.end()) return call_user(proc_name, args);
             return call_builtin(proc_name, args);
@@ -846,24 +925,33 @@ struct Interpreter {
     }
     Value index_expr() {
         Value v = atom();
-        while (check(LBRACKET)) {
-            consume(); Value idx = expr(); expect(RBRACKET);
-            if (std::holds_alternative<NumVal>(v)) {
-                const NumVal& n = std::get<NumVal>(v);
-                int i = (int)nv_scalar(std::get<NumVal>(idx));
-                if (i < 0) i += (int)n.size();
-                if (i < 0 || i >= (int)n.size())
-                    throw make_err("index " + std::to_string(i) + " out of bounds");
-                v = NumVal{n[i]};
-            } else if (std::holds_alternative<ArrayPtr>(v)) {
-                auto& ap = std::get<ArrayPtr>(v);
-                int i = (int)nv_scalar(std::get<NumVal>(idx));
-                if (i < 0) i += (int)ap->elems.size();
-                if (i < 0 || i >= (int)ap->elems.size())
-                    throw make_err("index " + std::to_string(i) + " out of bounds");
-                v = ap->elems[i];
+        while (check(LBRACKET) || (check(LPAREN) && std::holds_alternative<ProcVal>(v))) {
+            if (check(LBRACKET)) {
+                consume(); Value idx = expr(); expect(RBRACKET);
+                if (std::holds_alternative<NumVal>(v)) {
+                    const NumVal& n = std::get<NumVal>(v);
+                    int i = (int)nv_scalar(std::get<NumVal>(idx));
+                    if (i < 0) i += (int)n.size();
+                    if (i < 0 || i >= (int)n.size())
+                        throw make_err("index " + std::to_string(i) + " out of bounds");
+                    v = NumVal{n[i]};
+                } else if (std::holds_alternative<ArrayPtr>(v)) {
+                    auto& ap = std::get<ArrayPtr>(v);
+                    int i = (int)nv_scalar(std::get<NumVal>(idx));
+                    if (i < 0) i += (int)ap->elems.size();
+                    if (i < 0 || i >= (int)ap->elems.size())
+                        throw make_err("index " + std::to_string(i) + " out of bounds");
+                    v = ap->elems[i];
+                } else {
+                    throw make_err("subscript on non-indexable value");
+                }
             } else {
-                throw make_err("subscript on non-indexable value");
+                // LPAREN after a ProcVal: call it
+                consume();
+                std::vector<Value> args;
+                while (!check(RPAREN)) { args.push_back(expr()); if (!check(RPAREN)) expect(COMMA); }
+                expect(RPAREN);
+                v = call_procval(std::get<ProcVal>(v), args);
             }
         }
         return v;
@@ -872,6 +960,26 @@ struct Interpreter {
         if (check(NUM))     return NumVal{std::stod(consume().val)};
         if (check(STR))     return consume().val;
         if (check(LPAREN))  { consume(); Value v=expr(); expect(RPAREN); return v; }
+        // anonymous proc literal:  proc (params) { body }
+        if (check(PROC)) {
+            consume();
+            std::vector<std::string> params;
+            expect(LPAREN);
+            while (!check(RPAREN)) {
+                params.push_back(expect(IDENT).val);
+                if (!check(RPAREN)) expect(COMMA);
+            }
+            expect(RPAREN);
+            std::vector<Token> body;
+            body.push_back(expect(LBRACE));
+            int depth = 1;
+            while (depth > 0) {
+                if (check(LBRACE)) depth++; else if (check(RBRACE)) depth--;
+                body.push_back(consume());
+            }
+            body.push_back({END, ""});
+            return std::make_shared<Proc>(Proc{std::move(params), std::move(body)});
+        }
         if (check(LBRACKET)) {
             consume();
             auto arr = std::make_shared<MoonArray>();
@@ -892,8 +1000,15 @@ struct Interpreter {
                     if (!check(RPAREN)) expect(COMMA);
                 }
                 expect(RPAREN);
-                auto it = procs.find(n);
-                return it != procs.end() ? call_user(n, args) : call_builtin(n, args);
+                // 1. Named proc
+                auto pit = procs.find(n);
+                if (pit != procs.end()) return call_user(n, args);
+                // 2. Variable holding a ProcVal
+                Value* vp = get_var_ptr(n);
+                if (vp && std::holds_alternative<ProcVal>(*vp))
+                    return call_procval(std::get<ProcVal>(*vp), args, n);
+                // 3. Builtin
+                return call_builtin(n, args);
             }
             return get_var(n);
         }

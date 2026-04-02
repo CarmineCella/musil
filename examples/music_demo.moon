@@ -1,9 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# music theory demo — demonstrates moon as a compositional scratch-pad
+# music theory demo — Moon v5
 # ─────────────────────────────────────────────────────────────────────────────
 load("stdlib.moon")
-
-var PI = 3.14159265358979
 
 # ── Equal temperament ─────────────────────────────────────────────────────────
 # MIDI note 69 = A4 = 440 Hz
@@ -43,21 +41,23 @@ print "M3     just=" fmt_fixed(just_major3(), 6) "  ET=" fmt_fixed(et_ratio(4), 
 print "m3     just=" fmt_fixed(just_minor3(), 6) "  ET=" fmt_fixed(et_ratio(3), 6)
 
 # ── Scale construction ────────────────────────────────────────────────────────
-# Returns encoded array of semitone offsets from root
+# Each proc returns an array of semitone offsets from the root.
+# Array literals replace the old arr()+push() chains.
 
-proc scale_major ()      { var a = arr_make()  a = arr_push(a,0)  a = arr_push(a,2)  a = arr_push(a,4)  a = arr_push(a,5)  a = arr_push(a,7)  a = arr_push(a,9)  a = arr_push(a,11)  return a }
-proc scale_minor_nat ()  { var a = arr_make()  a = arr_push(a,0)  a = arr_push(a,2)  a = arr_push(a,3)  a = arr_push(a,5)  a = arr_push(a,7)  a = arr_push(a,8)  a = arr_push(a,10)  return a }
-proc scale_dorian ()     { var a = arr_make()  a = arr_push(a,0)  a = arr_push(a,2)  a = arr_push(a,3)  a = arr_push(a,5)  a = arr_push(a,7)  a = arr_push(a,9)  a = arr_push(a,10)  return a }
-proc scale_pentatonic () { var a = arr_make()  a = arr_push(a,0)  a = arr_push(a,2)  a = arr_push(a,4)  a = arr_push(a,7)  a = arr_push(a,9)   return a }
-proc scale_whole_tone () { var a = arr_make()  a = arr_push(a,0)  a = arr_push(a,2)  a = arr_push(a,4)  a = arr_push(a,6)  a = arr_push(a,8)  a = arr_push(a,10)  return a }
+proc scale_major ()      { return [0, 2, 4, 5, 7, 9, 11] }
+proc scale_minor_nat ()  { return [0, 2, 3, 5, 7, 8, 10] }
+proc scale_dorian ()     { return [0, 2, 3, 5, 7, 9, 10] }
+proc scale_pentatonic () { return [0, 2, 4, 7, 9] }
+proc scale_whole_tone () { return [0, 2, 4, 6, 8, 10] }
 
-# print MIDI notes for a scale starting at root
+# Print MIDI notes for a scale starting at root.
+# intervals[i] returns a NumVal directly — no num() conversion needed.
 proc print_scale (name, root, intervals) {
-    var n = arr_len(intervals)
+    var n = len(intervals)
     var out = name + " (root=" + str(root) + "): "
     var i = 0
     while (i < n) {
-        out = out + str(root + num(arr_get(intervals, i)))
+        out = out + str(root + intervals[i])
         if (i < n - 1) { out = out + " " }
         i = i + 1
     }
@@ -73,25 +73,26 @@ print_scale("pentatonic", 60, scale_pentatonic())
 print_scale("whole tone", 60, scale_whole_tone())
 
 # ── Hexachord operations ──────────────────────────────────────────────────────
-# relevant to 6-Z4 / 6-Z33 work
+# Relevant to 6-Z4 / 6-Z33 work.
+# h[i] returns a NumVal — arithmetic works directly, no num() wrapper.
 
 proc hexachord_invert (h) {
-    var n = arr_len(h)
-    var out = arr_make()
+    var n = len(h)
+    var out = []
     var i = 0
     while (i < n) {
-        out = arr_push(out, mod(12 - num(arr_get(h, i)), 12))
+        push(out, mod(12 - h[i], 12))    # h[i] is a number — use directly
         i = i + 1
     }
     return arr_sort(out)
 }
 
 proc hexachord_transpose (h, t) {
-    var n = arr_len(h)
-    var out = arr_make()
+    var n = len(h)
+    var out = []
     var i = 0
     while (i < n) {
-        out = arr_push(out, mod(num(arr_get(h, i)) + t, 12))
+        push(out, mod(h[i] + t, 12))     # h[i] is a number — use directly
         i = i + 1
     }
     return arr_sort(out)
@@ -103,13 +104,7 @@ proc print_hex (name, h) {
 
 print ""
 print "── Hexachord operations (6-Z4 on F#=6) ──"
-var h6z4 = arr_make()
-h6z4 = arr_push(h6z4, 6)   # F#
-h6z4 = arr_push(h6z4, 7)   # G
-h6z4 = arr_push(h6z4, 8)   # G#
-h6z4 = arr_push(h6z4, 9)   # A
-h6z4 = arr_push(h6z4, 10)  # A#
-h6z4 = arr_push(h6z4, 11)  # B
+var h6z4 = [6, 7, 8, 9, 10, 11]    # F# G G# A A# B — array literal
 
 print_hex("6-Z4 original  ", h6z4)
 print_hex("6-Z4 inverted  ", hexachord_invert(h6z4))
@@ -119,7 +114,6 @@ print_hex("6-Z4 T5 invert ", hexachord_invert(hexachord_transpose(h6z4, 5)))
 # ── Rhythm: subdivisions and durations ───────────────────────────────────────
 
 proc duration_ms (bpm, subdivisions) {
-    # duration of one subdivision in ms
     return 60000 / (bpm * subdivisions)
 }
 
@@ -138,7 +132,7 @@ write(outfile, "MIDI\tHz\tNote\n")
 var names = split("C,C#,D,D#,E,F,F#,G,G#,A,A#,B", ",")
 var midi = 48   # C3
 while (midi <= 72) {
-    var note_name = arr_get(names, mod(midi, 12))
+    var note_name = names[mod(midi, 12)]   # direct indexing — no get() needed
     var octave = floor(midi / 12) - 1
     var line = str(midi) + "\t" + fmt_fixed(midi_to_hz(midi), 2) + "\t" + note_name + str(octave) + "\n"
     append(outfile, line)

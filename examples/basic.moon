@@ -15,7 +15,7 @@ print "x > 10 -> " (x > 10)
 print "x < 10 -> " (x < 10)
 print "x == 42 -> " (x == 42)
 print "x != 42 -> " (x != 42)
-dsd
+
 # variable reassignment
 x = x + 1
 print "x after increment = " x

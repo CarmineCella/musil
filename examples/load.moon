@@ -1,4 +1,4 @@
-load("/tmp/moon_lib.moon")
+load("stdlib.moon")
 print "square(9) = " square(9)
 print "cube(4)   = " cube(4)
 print "pi        = " pi
