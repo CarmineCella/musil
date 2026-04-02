@@ -7,3 +7,4 @@ docs/*.gz
 docs/*.toc
 docs/*.fls
 docs/*.fdb_latexmk
+examples/signals/*.wav
