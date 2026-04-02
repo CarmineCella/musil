@@ -28,12 +28,12 @@ struct Error {
 };
 struct Proc;
 using NumVal   = std::valarray<double>;
-struct MoonArray;
+struct Array;
 struct Proc;                              // forward declaration
-using ArrayPtr = std::shared_ptr<MoonArray>;
+using ArrayPtr = std::shared_ptr<Array>;
 using ProcVal  = std::shared_ptr<Proc>;
 using Value    = std::variant<NumVal, std::string, ArrayPtr, ProcVal>;
-struct MoonArray { std::vector<Value> elems; };
+struct Array { std::vector<Value> elems; };
 
 inline double nv_scalar(const NumVal& v) { return v[0]; }
 inline bool   nv_is_scalar(const NumVal& v) { return v.size() == 1; }
@@ -586,7 +586,7 @@ struct Interpreter {
             if (!std::holds_alternative<NumVal>(a[0]))
                 throw make_err("to_arr: argument must be a vector");
             const NumVal& v = std::get<NumVal>(a[0]);
-            auto r = std::make_shared<MoonArray>();
+            auto r = std::make_shared<Array>();
             r->elems.reserve(v.size());
             for (size_t i = 0; i < v.size(); i++) r->elems.push_back(NumVal{v[i]});
             return r;
@@ -628,7 +628,7 @@ struct Interpreter {
         }
 
         if (nm=="arr") {
-            auto a_ = std::make_shared<MoonArray>();
+            auto a_ = std::make_shared<Array>();
             if (a.empty()) return a_;
             int n = (int)d(0);
             Value fill = a.size() >= 2 ? a[1] : Value{NumVal{0.0}};
@@ -667,13 +667,13 @@ struct Interpreter {
             chk(3); chk_arr(0, "slice");
             int lo=(int)d(1), hi=(int)d(2), sz=(int)ap(0)->elems.size();
             if (lo<0) lo=0; if (hi>sz) hi=sz;
-            auto r = std::make_shared<MoonArray>();
+            auto r = std::make_shared<Array>();
             if (lo < hi) r->elems.assign(ap(0)->elems.begin()+lo, ap(0)->elems.begin()+hi);
             return r;
         }
         if (nm=="concat") {
             chk(2); chk_arr(0, "concat"); chk_arr(1, "concat");
-            auto r = std::make_shared<MoonArray>(MoonArray{ap(0)->elems});
+            auto r = std::make_shared<Array>(Array{ap(0)->elems});
             r->elems.insert(r->elems.end(), ap(1)->elems.begin(), ap(1)->elems.end());
             return r;
         }
@@ -686,7 +686,7 @@ struct Interpreter {
         }
         if (nm=="split") {
             chk(2); std::string s=sv(0), delim=sv(1);
-            auto r = std::make_shared<MoonArray>();
+            auto r = std::make_shared<Array>();
             size_t dlen = delim.size();
             while (true) {
                 size_t p = s.find(delim);
@@ -697,19 +697,19 @@ struct Interpreter {
         }
         if (nm=="copy") {
             chk(1); chk_arr(0, "copy");
-            return std::make_shared<MoonArray>(MoonArray{ap(0)->elems});
+            return std::make_shared<Array>(Array{ap(0)->elems});
         }
         if (nm=="range") {
             if (a.size() < 2 || a.size() > 3) throw make_err("range: needs 2 or 3 args");
             double lo=d(0), hi=d(1), step = a.size()==3 ? d(2) : 1.0;
             if (step == 0) throw make_err("range: step cannot be 0");
-            auto r = std::make_shared<MoonArray>();
+            auto r = std::make_shared<Array>();
             for (double x = lo; step>0 ? x<hi : x>hi; x += step) r->elems.push_back(NumVal{x});
             return r;
         }
         if (nm=="shuffle") {
             chk(1); chk_arr(0, "shuffle");
-            auto r = std::make_shared<MoonArray>(MoonArray{ap(0)->elems});
+            auto r = std::make_shared<Array>(Array{ap(0)->elems});
             auto& el = r->elems;
             for (size_t i = el.size()-1; i > 0; i--) {
                 size_t j = (size_t)std::rand() % (i + 1);
@@ -719,7 +719,7 @@ struct Interpreter {
         }
         if (nm=="keys") {
             chk(0);
-            auto r = std::make_shared<MoonArray>();
+            auto r = std::make_shared<Array>();
             for (auto& [k, _] : globals) r->elems.push_back(k);
             return r;
         }
@@ -917,7 +917,7 @@ struct Interpreter {
         }
         if (check(LBRACKET)) {
             consume();
-            auto arr = std::make_shared<MoonArray>();
+            auto arr = std::make_shared<Array>();
             while (!check(RBRACKET)) {
                 arr->elems.push_back(expr());
                 if (!check(RBRACKET)) expect(COMMA);

@@ -450,15 +450,15 @@ section("13. STDLIB — ARRAY ALGORITHMS")
 
 var data = [4, 7, 2, 9, 1, 5, 8, 3, 6]
 
-print "arr_sum:      " arr_sum(data)
-# print "arr_mean:     " arr_mean(data)
-print "arr_min:      " arr_min(data)
-print "arr_max:      " arr_max(data)
-# print "arr_std:      " fmt_fixed(arr_std(data), 4)
-print "contains 7:   " arr_contains(data, 7)
-# print "index_of 5:   " arr_index_of(data, 5)
-print "reversed:     " arr_reverse(data)
-print "sorted:       " arr_sort(data)
+print "arr_sum:      " total(data)
+print "arr_mean:     " mean(data)
+print "arr_min:      " minimum(data)
+print "arr_max:      " maximum(data)
+# print "arr_std:      " fmt_fixed(std(data), 4)
+print "contains 7:   " contains(data, 7)
+print "index_of 5:   " index_of(data, 5)
+print "reversed:     " reversed(data)
+print "sorted:       " sorted(data)
 
 # ───────────────────────────────────────────────────────────────────────────────
 #  14. FILE I/O
@@ -550,7 +550,7 @@ print "rand()      = " fmt_fixed(rand(), 4)
 
 # Clock — CPU seconds (useful for timing)
 var t0 = clock()
-var dummy = arr_sort(arr_reverse(range(1, 1000)))
+var dummy = sorted(reversed(range(1, 1000)))
 var elapsed = clock() - t0
 print "sort 999 items took: " fmt_fixed(elapsed * 1000, 2) " ms"
 

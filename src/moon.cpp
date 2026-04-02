@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     std::srand(time (NULL));
     Environment state;
     if (argc == 1) {
-        cout << "[moon, v0.1] - tiny interpreter" << endl << endl;
+        cout << "[moon, v" << VERSION << "]" << endl << endl;
         cout << "(c) 2026 by Carmine-Emanuele Cella" << endl << endl;
         repl(state);
         return 0;

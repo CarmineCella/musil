@@ -1,0 +1,1133 @@
+% ─────────────────────────────────────────────────────────────────────────────
+%  Moon v0.5 — User Manual
+% ─────────────────────────────────────────────────────────────────────────────
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{mdframed}
+\usepackage{amsmath}
+
+% ── Colours ──────────────────────────────────────────────────────────────────
+\definecolor{moonblue}{RGB}{25,80,140}
+\definecolor{moongray}{RGB}{245,245,245}
+\definecolor{moongreen}{RGB}{0,120,60}
+\definecolor{moonred}{RGB}{160,30,30}
+\definecolor{moonpurple}{RGB}{100,0,150}
+\definecolor{mooncomment}{RGB}{100,100,100}
+
+% ── Listings setup ────────────────────────────────────────────────────────────
+\lstdefinelanguage{Moon}{
+  morekeywords={var,proc,return,if,else,while,for,in,break,and,or,not,print,load},
+  morestring=[b]",
+  morecomment=[l]{\#},
+  sensitive=true,
+}
+\lstdefinestyle{moon}{
+  language=Moon,
+  backgroundcolor=\color{moongray},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{moonblue}\bfseries,
+  stringstyle=\color{moonred},
+  commentstyle=\color{mooncomment}\itshape,
+  numberstyle=\tiny\color{gray},
+  numbers=left,
+  numbersep=8pt,
+  frame=single,
+  framerule=0.4pt,
+  rulecolor=\color{gray!40},
+  xleftmargin=1.5em,
+  breaklines=true,
+  showstringspaces=false,
+  tabsize=4,
+}
+\lstdefinestyle{mooninline}{
+  language=Moon,
+  basicstyle=\ttfamily,
+  keywordstyle=\color{moonblue}\bfseries,
+  stringstyle=\color{moonred},
+  commentstyle=\color{mooncomment},
+  showstringspaces=false,
+}
+\lstset{style=moon}
+
+\newcommand{\moon}[1]{\lstinline[style=mooninline]{#1}}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries\color{moonblue}}{{\thesection}}{1em}{}[\vspace{-0.3em}\rule{\linewidth}{0.5pt}]
+\titleformat{\subsection}{\normalsize\bfseries\color{moonblue!80}}{{\thesubsection}}{1em}{}
+
+% ── Note / warning boxes ──────────────────────────────────────────────────────
+\newenvironment{note}{\begin{mdframed}[backgroundcolor=blue!6,linecolor=moonblue,linewidth=0.8pt]\textbf{Note:}\ }{\end{mdframed}}
+\newenvironment{warn}{\begin{mdframed}[backgroundcolor=red!6,linecolor=moonred,linewidth=0.8pt]\textbf{Warning:}\ }{\end{mdframed}}
+
+% ── Header / footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{Moon v0.5 User Manual}}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+% ── Function reference macro ──────────────────────────────────────────────────
+% \fn{name}{signature}{description}
+\newcommand{\fn}[3]{%
+  \noindent\texttt{\textbf{#1}}\texttt{(#2)}\\[0.2em]
+  \hspace*{1em}#3\par\vspace{0.4em}%
+}
+
+% ── Table column types ────────────────────────────────────────────────────────
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+% ── Title ────────────────────────────────────────────────────────────────────
+\begin{titlepage}
+\centering
+\vspace*{3cm}
+{\fontsize{48}{56}\selectfont\color{moonblue}\textbf{Moon}}\par
+\vspace{0.5cm}
+{\LARGE\color{gray} A Scripting Language for Sound And Music Computing}\par
+\vspace{0.3cm}
+{\large\color{gray} User Manual \quad v0.5}\par
+\vspace{3cm}
+\rule{0.5\linewidth}{0.5pt}\par
+\vspace{1.5cm}
+{\normalsize
+Moon is a small, expressive scripting language designed as a control and computation
+layer for algorithmic composition, signal processing, and music technology research.
+It provides first-class numeric vectors, heterogeneous arrays, first-class procedures,
+file I/O, and a clean extension API for connecting to C++ libraries.
+}\par
+\vfill
+{\small\color{gray} (c) 2026 by Carmine-Emanuele Cella}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Overview}
+\label{sec:overview}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Moon is a dynamically-typed, interpreted scripting language implemented as a
+single C++ header (\texttt{moon.h}). It is designed for use as a frontend for
+C++ tools in music technology, orchestration, and signal processing.
+
+\subsection*{Key characteristics}
+\begin{itemize}[noitemsep]
+  \item \textbf{Four value types:} number (scalar), vector (numeric array), string, array (heterogeneous), and proc (first-class function).
+  \item \textbf{Numeric vectors} are \texttt{std::valarray<double>} under the hood; all arithmetic and math functions apply element-wise with scalar broadcasting.
+  \item \textbf{Heterogeneous arrays} hold any mix of values; they have reference semantics (assignment shares the data).
+  \item \textbf{First-class procedures} can be stored in variables, passed as arguments, and stored in arrays.
+  \item \textbf{Modular:} \moon{load("file.moon")} executes another file in the current environment; the \texttt{\textasciitilde/.moon/} directory is on the search path.
+  \item \textbf{Extensible:} register C++ functions as Moon builtins with one line.
+\end{itemize}
+
+\subsection*{Building and running}
+To compile using CMake, from the \emph{root} folder type:
+\begin{lstlisting}[style=moon, numbers=none]
+mkdir build
+cd build
+cmake ..
+make
+\end{lstlisting}
+
+You can also compile the code manually, from the {src} folder, with:
+\begin{lstlisting}[style=moon, numbers=none]
+g++ -std=c++17 -O2 -o moon moon.cpp   # compile the interpreter
+\end{lstlisting}
+
+To run the interpreter, call: 
+\begin{lstlisting}[style=moon, numbers=none]
+./moon script.moon                          # run a file
+./moon lib.moon script.moon                 # run multiple files, shared state
+./moon                                      # start interactive REPL
+\end{lstlisting}
+
+Files loaded with \moon{load()} search first in the current directory, then in \texttt{\textasciitilde/.moon/}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Types and Values}
+\label{sec:types}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Moon has five types. Use \moon{type(x)} to inspect any value at runtime.
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Type} & \texttt{type()} result & \textbf{C++ representation} & \textbf{Semantics} \\
+\midrule
+Scalar number  & \texttt{"number"}  & \texttt{valarray<double>} size 1   & value (copies on assign) \\
+Numeric vector & \texttt{"vector"}  & \texttt{valarray<double>} size $>$1 & value (copies on assign) \\
+String         & \texttt{"string"}  & \texttt{std::string}               & value (copies on assign) \\
+Array          & \texttt{"array"}   & \texttt{shared\_ptr<MoonArray>}    & reference (shares on assign) \\
+Proc           & \texttt{"proc"}    & \texttt{shared\_ptr<Proc>}         & reference (shares on assign) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Numbers (scalars)}
+
+Every numeric literal creates a 1-element vector, which behaves as an ordinary
+number in all arithmetic and comparisons. The internal representation is
+\texttt{std::valarray<double>}; scalar operations compile to single-element
+valarray arithmetic and are as fast as raw \texttt{double}.
+
+\begin{lstlisting}
+var x = 42
+var y = 3.14
+var z = .5          # leading dot supported
+var tiny = 1e-10    # scientific notation supported
+var big  = 6.674e-11
+\end{lstlisting}
+
+Moon has no integer type. All numbers are IEEE 754 doubles. Use
+\moon{floor}, \moon{ceil}, and \moon{mod} when integer arithmetic is needed.
+
+\subsection{Numeric vectors}
+
+A vector is a \texttt{std::valarray<double>} with more than one element. It is
+created with the \moon{vec}, \moon{linspace}, \moon{zeros}, \moon{ones}, or
+\moon{range}-to-\moon{to\_vec} functions. All arithmetic operators and all math
+builtins (\moon{sin}, \moon{cos}, \moon{sqrt}, etc.) apply element-wise.
+
+\begin{lstlisting}
+var v = vec(1, 2, 3, 4, 5)     # from individual scalars
+var w = linspace(0, 1, 5)      # 5 points evenly spaced in [0, 1]
+var z = zeros(4)               # <0 0 0 0>
+var o = ones(3)                # <1 1 1>
+
+print v + 10        # <11 12 13 14 15>   scalar broadcast
+print v * v         # <1 4 9 16 25>      element-wise
+print sin(w * PI)   # element-wise sin
+\end{lstlisting}
+
+Vectors print as \texttt{<1 2 3>} with angle brackets, distinguishing them
+from arrays which print as \texttt{[1, 2, 3]}.
+
+\textbf{Value semantics:} assigning a vector copies all its data. Mutating the
+copy does not affect the original.
+
+\begin{lstlisting}
+var a = vec(1, 2, 3)
+var b = a           # b is an independent copy
+b[0] = 99
+print a[0]          # a is unchanged
+\end{lstlisting}
+
+\subsection{Arrays}
+
+An array is a heterogeneous, mutable, ordered list of values. Elements may be
+numbers, strings, other arrays, or procs. The backing store is a
+\texttt{shared\_ptr<vector<Value>>}.
+
+\begin{lstlisting}
+var a = [1, "two", [3, 4], proc(x){ return x*2 }]
+print a[0]          # 1
+print a[1]          # two
+print a[2][1]       # 4     -- nested indexing
+print a[3](5)       # 10    -- calling a stored proc
+\end{lstlisting}
+
+\textbf{Reference semantics:} assigning an array copies the \emph{pointer}, not
+the data. Both variables refer to the same underlying list. Use \moon{copy(a)}
+to obtain an independent shallow copy.
+
+\begin{lstlisting}
+var x = [1, 2, 3]
+var y = x           # y and x share the same list
+y[0] = 99
+print x[0]          # x sees the change
+
+var z = copy(x)     # z is a new, independent copy
+z[0] = 0
+print x[0]          # x is unaffected
+\end{lstlisting}
+
+\moon{copy()} is a \emph{shallow} copy: inner arrays are still shared.
+\moon{range(lo, hi)} also produces an array (suitable for \moon{for}/\moon{in} loops).
+For numeric computation, prefer \moon{linspace} which produces a vector.
+
+\subsection{Strings}
+
+Strings are immutable. The \texttt{+} operator concatenates and coerces numbers:
+
+\begin{lstlisting}
+var s = "score: " + 99      # "score: 99"
+var t = "ha" + "ha"         # "haha"
+\end{lstlisting}
+
+Escape sequences: \texttt{\textbackslash n} (newline), \texttt{\textbackslash t}
+(tab), \texttt{\textbackslash\textbackslash} (backslash), \texttt{\textbackslash"}
+(double quote).
+
+\subsection{Procs}
+
+Procs are first-class values. A named \moon{proc} declaration stores the proc
+in the global proc table; an anonymous \moon{proc} literal creates a
+\texttt{shared\_ptr<Proc>} value.
+
+\begin{lstlisting}
+proc square (n) { return n * n }     # named proc
+
+var double = proc (x) { return x * 2 }   # anonymous, stored in variable
+print double(7)    # 14
+\end{lstlisting}
+
+\begin{note}
+Procs are \emph{not} closures. They see the global environment at call time,
+not the local variables of the scope in which they were defined.
+\end{note}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Variables and Expressions}
+\label{sec:vars}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Variable declaration and assignment}
+
+\begin{lstlisting}
+var name = expression     # declare and initialise
+name = expression         # assign to existing variable
+\end{lstlisting}
+
+\moon{var} inside a proc creates a local variable. \moon{var} at the top level
+creates a global. Plain assignment (\moon{=} without \moon{var}) searches locals
+first, then globals; creates a new binding if not found.
+
+\subsection{Operator precedence}
+
+\begin{center}
+\begin{tabular}{@{}clc@{}}
+\toprule
+\textbf{Precedence} & \textbf{Operators} & \textbf{Associativity} \\
+\midrule
+1 (lowest) & \texttt{or}  & left \\
+2 & \texttt{and}          & left \\
+3 & \texttt{not}          & right (unary) \\
+4 & \texttt{< > <= >= == !=} & non-associative \\
+5 & \texttt{+ -}          & left \\
+6 & \texttt{* /}          & left \\
+7 & \texttt{-} (unary)    & right \\
+8 (highest) & \texttt{[i]} subscript, \texttt{()} call & left \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Arithmetic on vectors and scalars}
+
+All arithmetic operators are element-wise on vectors. When one operand is a
+scalar (1-element vector) and the other is a multi-element vector, the scalar is
+\emph{broadcast} to match the vector size:
+
+\begin{lstlisting}
+var v = vec(1, 2, 3)
+print v + 10            # <11 12 13>    scalar broadcast
+print v * v             # <1 4 9>       element-wise
+print v + vec(10,20,30) # <11 22 33>    vector + vector
+\end{lstlisting}
+
+Mismatched sizes (neither is 1) produce a runtime error.
+
+\subsection{Comparison operators}
+
+On scalars, comparisons return \texttt{1} (true) or \texttt{0} (false).
+On vectors, comparisons are element-wise and return a \emph{mask vector} of
+0s and 1s:
+
+\begin{lstlisting}
+print 5 > 3             # 1
+print vec(1,5,3) > 2    # <0 1 1>   mask
+print all(vec(1,5,3) > 0)  # all elements > 0
+print any(vec(1,5,3) > 4)  # some elements > 4
+\end{lstlisting}
+
+Use \moon{all()} and \moon{any()} to reduce a vector mask to a scalar for
+use in \moon{if} and \moon{while} conditions.
+
+String equality uses \moon{==} and \moon{!=} only; ordering operators on strings
+produce a runtime error.
+
+\subsection{Logical operators}
+
+\moon{and}, \moon{or}, \moon{not} always return a scalar \texttt{1} or \texttt{0}.
+Truthiness: any non-zero number, any non-empty string, any non-empty array, any
+proc is truthy; zero, empty string, and empty array are falsy.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Control Flow}
+\label{sec:control}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{If / else if / else}
+
+\begin{lstlisting}
+if (condition) {
+    ...
+} else if (other_condition) {
+    ...
+} else {
+    ...
+}
+\end{lstlisting}
+
+Parentheses around the condition are required. Any number of \moon{else if}
+branches may appear; the final \moon{else} is optional.
+
+\subsection{While}
+
+\begin{lstlisting}
+while (condition) {
+    ...
+    break       # exit the loop immediately
+}
+\end{lstlisting}
+
+\moon{break} exits the innermost \moon{while} or \moon{for} loop. There is no
+\moon{continue}.
+
+\subsection{For / in}
+
+Iterates over arrays, numeric vectors, or strings:
+
+\begin{lstlisting}
+# Over an array (range returns an array)
+for (var i in range(0, 5)) {
+    print i
+}
+
+# Over a numeric vector
+for (var x in linspace(0, 1, 5)) {
+    print x
+}
+
+# Over a string (yields one character per iteration)
+for (var ch in "hello") {
+    print ch
+}
+\end{lstlisting}
+
+The loop variable is declared with \moon{var}; it is visible within the loop
+body. \moon{break} works inside \moon{for}/\moon{in}.
+
+\begin{note}
+\moon{range(lo, hi)} produces an \emph{array}, while \moon{linspace(lo, hi, n)}
+produces a \emph{vector}. Use \moon{range} for integer loops, \moon{linspace}
+for mathematical sequences.
+\end{note}
+
+\subsection{Return}
+
+\moon{return expression} exits the current proc and passes the value to the
+caller. A proc that falls off the end without \moon{return} returns \texttt{0}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Procedures}
+\label{sec:procs}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Named procedures}
+
+\begin{lstlisting}
+proc name (param1, param2, ...) {
+    var local = ...
+    return value
+}
+\end{lstlisting}
+
+Named procs are stored in a global proc table and are available everywhere
+after their declaration. Parameters are local variables; modifications to
+parameter \emph{vectors} do not affect the caller (value semantics).
+Modifications to parameter \emph{arrays} \emph{do} affect the caller (reference
+semantics).
+
+\subsection{Anonymous proc literals}
+
+\begin{lstlisting}
+var f = proc (x) { return x * x }
+print f(5)          # 25
+print type(f)       # proc
+\end{lstlisting}
+
+Anonymous procs can be stored in variables, passed to other procs, and stored
+in arrays. They are first-class values.
+
+\subsection{Calling procs by value}
+
+When a variable holds a proc, calling it uses the same \moon{name(args)} syntax:
+
+\begin{lstlisting}
+var transforms = [
+    proc (x) { return x + 1 },
+    proc (x) { return x * 2 }
+]
+print transforms[0](5)   # 6
+print transforms[1](5)   # 10
+\end{lstlisting}
+
+\subsection{Higher-order patterns}
+
+\begin{lstlisting}
+proc map (a, f) {
+    var out = []
+    for (var x in a) { push(out, f(x)) }
+    return out
+}
+var doubled = map([1,2,3,4], proc(x){ return x*2 })
+\end{lstlisting}
+
+The stdlib provides \moon{map}, \moon{filter}, and \moon{reduce}. The
+\moon{apply(f, args)} builtin calls a proc value or a named proc with an array
+of arguments.
+
+\subsection{Recursion}
+
+Recursive calls work normally; there is no tail-call optimisation, so very
+deep recursion will exhaust the C++ call stack.
+
+\begin{lstlisting}
+proc fib (n) {
+    if (n <= 1) { return n }
+    return fib(n-1) + fib(n-2)
+}
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Vectors — Numeric Arrays}
+\label{sec:vectors}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Creation}
+
+\begin{lstlisting}
+var v = vec(1, 2, 3, 4, 5)         # from scalar arguments
+var w = linspace(0, PI, 512)       # 512 points, 0 to PI inclusive
+var z = zeros(1024)                 # 1024 zeros
+var o = ones(256)                   # 256 ones
+\end{lstlisting}
+
+\subsection{Element-wise arithmetic}
+
+\begin{lstlisting}
+var v = vec(1, 2, 3)
+print v + 10           # <11 12 13>
+print v * v            # <1 4 9>
+print -v               # <-1 -2 -3>
+print pow(v, 2)        # <1 4 9>  (element-wise power)
+\end{lstlisting}
+
+\subsection{Math functions (all element-wise)}
+
+\texttt{floor}, \texttt{ceil}, \texttt{abs}, \texttt{sqrt}, \texttt{sin},
+\texttt{cos}, \texttt{tan}, \texttt{exp}, \texttt{log}, \texttt{log2} accept
+a single vector argument. \texttt{pow(v, e)} and \texttt{atan2(y, x)} accept
+two vector arguments (with broadcast).
+
+\begin{lstlisting}
+var phase = linspace(0, TAU, 512)
+var wave  = sin(phase)             # one call, 512 sine values
+var env   = linspace(1, 0, 512)    # linear fade
+var faded = wave * env             # element-wise product
+\end{lstlisting}
+
+\subsection{Reductions}
+
+\begin{lstlisting}
+var v = vec(1, 2, 3, 4, 5)
+print sum(v)        # 15
+print all(v > 0)    # 1
+print any(v > 4)    # 1
+print len(v)        # 5
+\end{lstlisting}
+
+\subsection{Indexing}
+
+Negative indices count from the end (\texttt{-1} is the last element).
+
+\begin{lstlisting}
+var v = vec(10, 20, 30)
+print v[0]     # 10
+print v[-1]    # 30
+v[1] = 99
+print v        # <10 99 30>
+\end{lstlisting}
+
+\subsection{Iteration}
+
+\begin{lstlisting}
+var total = 0
+for (var x in vec(1, 2, 3, 4, 5)) {
+    total = total + x
+}
+\end{lstlisting}
+
+\subsection{Conversion}
+
+\moon{to\_arr(v)} converts a vector to an array of numbers. \moon{to\_vec(a)}
+converts an array of numbers to a vector (fails if any element is non-numeric).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Arrays — Heterogeneous Lists}
+\label{sec:arrays}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{Creation}
+
+\begin{lstlisting}
+var a = [1, "two", [3, 4]]      # literal
+var b = arr(5)                   # [0, 0, 0, 0, 0]
+var c = arr(3, "x")              # ["x", "x", "x"]
+var d = range(0, 5)              # [0, 1, 2, 3, 4]
+var e = split("a,b,c", ",")      # ["a", "b", "c"]
+\end{lstlisting}
+
+\subsection{Indexing and assignment}
+
+\begin{lstlisting}
+print a[0]          # first element
+print a[-1]         # last element
+a[1] = "TWO"        # mutates in place (visible through all aliases)
+
+var matrix = [[1,2,3],[4,5,6]]
+print matrix[1][2]  # 6
+matrix[1][2] = 99   # nested assignment
+\end{lstlisting}
+
+\subsection{Mutation}
+
+All mutation functions modify the array in place. Because arrays have reference
+semantics, mutations are visible through all aliases.
+
+\begin{lstlisting}
+var a = [1, 2, 3]
+push(a, 4)           # [1, 2, 3, 4]
+push(a, 5, 6)        # variadic: [1, 2, 3, 4, 5, 6]
+var x = pop(a)       # removes and returns 6
+insert(a, 2, 99)     # insert before index 2: [1, 2, 99, 3, 4, 5]
+var r = remove(a, 0) # removes index 0, returns 1
+\end{lstlisting}
+
+\subsection{Non-mutating operations}
+
+These return new arrays; the original is unchanged.
+
+\begin{lstlisting}
+var s = slice(a, 1, 4)       # elements [1, 4)
+var c = concat(a, b)         # all elements of a then b
+var cp = copy(a)             # shallow copy
+var sh = shuffle(a)          # randomly shuffled copy
+\end{lstlisting}
+
+\subsection{Reference semantics and copy}
+
+\begin{lstlisting}
+var x = [1, 2, 3]
+var y = x               # y aliases x
+y[0] = 99
+print x[0]              # shared mutation
+
+var z = copy(x)         # break sharing
+z[0] = 0
+print x[0]              # x unaffected
+\end{lstlisting}
+
+\begin{warn}
+Arrays passed to procs are passed by reference. A proc that calls
+\moon{push}, \moon{pop}, \moon{insert}, or \moon{remove} on a parameter
+will modify the caller's array. Call \moon{copy(a)} inside the proc if you
+need a local version.
+\end{warn}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Strings}
+\label{sec:strings}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Strings are immutable value types. The \texttt{+} operator concatenates;
+if either operand is a number it is converted to string first.
+
+\begin{lstlisting}
+var s = "Hello, " + "Moon!"
+var t = "score: " + 99        # "score: 99"
+print len(s)                  # 12
+print upper(s)                # "HELLO, MOON!"
+print sub(s, 0, 5)            # "Hello"
+print find(s, ",")            # 5
+\end{lstlisting}
+
+Strings can be iterated character by character with \moon{for}/\moon{in}.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{File I/O and Modules}
+\label{sec:io}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{File I/O}
+
+\begin{lstlisting}
+write("/tmp/out.txt", "line one\nline two\n")    # create or overwrite
+append("/tmp/out.txt", "line three\n")           # add to end
+var content = read("/tmp/out.txt")               # whole file as string
+\end{lstlisting}
+
+\subsection{Loading modules}
+
+\begin{lstlisting}
+load("stdlib.moon")          # search current dir, then ~/.moon/
+load("/abs/path/lib.moon")   # absolute path
+\end{lstlisting}
+
+All procs and variables defined in the loaded file become globally available
+in the calling environment. Files are executed sequentially; circular loads
+will loop indefinitely.
+
+\subsection{Eval and exec}
+
+\begin{lstlisting}
+eval("var x = " + str(42))   # parse and execute a string as Moon code
+eval("proc cube(n){ return n*n*n }")
+
+var rc = exec("ls -l /tmp")  # run a shell command; returns exit code
+\end{lstlisting}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Built-in Functions Reference}
+\label{sec:builtins}
+% ─────────────────────────────────────────────────────────────────────────────
+
+All built-in functions are always available without loading any library.
+Functions marked \textbf{[vec]} operate element-wise on vectors.
+Functions marked \textbf{[arr]} require an array argument.
+
+\subsection{Math}
+
+\begin{longtable}{@{}L{3.2cm}L{3.8cm}L{7.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{floor} [vec]   & \texttt{floor(x)}        & Largest integer $\le x$. \\
+\texttt{ceil} [vec]    & \texttt{ceil(x)}         & Smallest integer $\ge x$. \\
+\texttt{abs} [vec]     & \texttt{abs(x)}          & Absolute value. \\
+\texttt{sqrt} [vec]    & \texttt{sqrt(x)}         & Square root. \\
+\texttt{sin} [vec]     & \texttt{sin(x)}          & Sine (radians). \\
+\texttt{cos} [vec]     & \texttt{cos(x)}          & Cosine (radians). \\
+\texttt{tan} [vec]     & \texttt{tan(x)}          & Tangent (radians). \\
+\texttt{exp} [vec]     & \texttt{exp(x)}          & $e^x$. \\
+\texttt{log} [vec]     & \texttt{log(x)}          & Natural logarithm. \\
+\texttt{log2} [vec]    & \texttt{log2(x)}         & Base-2 logarithm. \\
+\texttt{pow} [vec]     & \texttt{pow(base, exp)}  & \texttt{base}$^{\texttt{exp}}$, element-wise with broadcast. \\
+\texttt{atan2} [vec]   & \texttt{atan2(y, x)}     & Four-quadrant arctangent, element-wise. \\
+\texttt{rand}          & \texttt{rand()}          & Pseudo-random number in $[0, 1)$. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Vector constructors and reductions}
+
+\begin{longtable}{@{}L{3.2cm}L{4.2cm}L{7.3cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{vec}      & \texttt{vec(a, b, ...)}        & Create a vector from scalar arguments. \\
+\texttt{linspace} & \texttt{linspace(lo, hi, n)}   & $n$ evenly-spaced values in $[\texttt{lo}, \texttt{hi}]$ inclusive. \\
+\texttt{zeros}    & \texttt{zeros(n)}              & Vector of $n$ zeros. \\
+\texttt{ones}     & \texttt{ones(n)}               & Vector of $n$ ones. \\
+\texttt{sum}      & \texttt{sum(v)}                & Sum of all elements (vectors only; use \texttt{total} for arrays). \\
+\texttt{all}      & \texttt{all(v)}                & Returns 1 if every element is non-zero. \\
+\texttt{any}      & \texttt{any(v)}                & Returns 1 if any element is non-zero. \\
+\texttt{to\_arr}  & \texttt{to\_arr(v)}            & Convert vector to array of numbers. \\
+\texttt{to\_vec}  & \texttt{to\_vec(a)}            & Convert array of numbers to vector. \\
+\bottomrule
+\end{longtable}
+
+\subsection{String builtins}
+
+\begin{longtable}{@{}L{3.2cm}L{4.2cm}L{7.3cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{len}      & \texttt{len(x)}               & Length of string, array, or vector. \\
+\texttt{sub}      & \texttt{sub(s, lo, hi)}        & Substring \texttt{s[lo..hi)}. \\
+\texttt{find}     & \texttt{find(s, pattern)}      & First occurrence of \texttt{pattern} in \texttt{s}, or $-1$. \\
+\texttt{upper}    & \texttt{upper(s)}              & Uppercase copy. \\
+\texttt{lower}    & \texttt{lower(s)}              & Lowercase copy. \\
+\texttt{str}      & \texttt{str(x)}               & Convert any value to its string representation. \\
+\texttt{num}      & \texttt{num(s)}               & Parse string to number. \\
+\texttt{char}     & \texttt{char(n)}              & Character with ASCII code $n$. \\
+\texttt{asc}      & \texttt{asc(s)}               & ASCII code of first character of \texttt{s}. \\
+\texttt{split}    & \texttt{split(s, delim)}       & Split string on delimiter; returns array of strings. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Array builtins}
+
+\begin{longtable}{@{}L{3.2cm}L{4.5cm}L{7cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{arr}      & \texttt{arr()}                 & Empty array. \\
+                  & \texttt{arr(n)}                & Array of $n$ zeros. \\
+                  & \texttt{arr(n, val)}           & Array of $n$ copies of \texttt{val}. \\
+\texttt{len}      & \texttt{len(a)}               & Number of elements. \\
+\texttt{push}     & \texttt{push(a, v1, v2, ...)} & Append one or more values; mutates in place. Returns \texttt{a}. \\
+\texttt{pop}      & \texttt{pop(a)}               & Remove and return last element; mutates. \\
+\texttt{insert}   & \texttt{insert(a, i, val)}    & Insert \texttt{val} before index \texttt{i}; mutates. Returns \texttt{a}. \\
+\texttt{remove}   & \texttt{remove(a, i)}         & Remove element at index \texttt{i}; mutates. Returns removed element. \\
+\texttt{slice}    & \texttt{slice(a, lo, hi)}     & New array with elements \texttt{[lo, hi)}. \\
+\texttt{concat}   & \texttt{concat(a, b)}         & New array with all elements of \texttt{a} then \texttt{b}. \\
+\texttt{copy}     & \texttt{copy(a)}              & Shallow copy; breaks reference sharing. \\
+\texttt{range}    & \texttt{range(lo, hi)}        & Array of integers $[\texttt{lo}, \texttt{hi})$. \\
+                  & \texttt{range(lo, hi, step)}  & With custom step; negative step goes downward. \\
+\texttt{shuffle}  & \texttt{shuffle(a)}           & New randomly shuffled copy. Original unchanged. \\
+\texttt{join}     & \texttt{join(a, sep)}         & Concatenate elements as strings with separator. Returns string. \\
+\texttt{keys}     & \texttt{keys()}               & Array of all current global variable names (debugging). \\
+\bottomrule
+\end{longtable}
+
+\subsection{Type and conversion}
+
+\begin{longtable}{@{}L{3.2cm}L{3.8cm}L{7.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{type}  & \texttt{type(x)}    & Returns \texttt{"number"}, \texttt{"vector"}, \texttt{"string"}, \texttt{"array"}, or \texttt{"proc"}. \\
+\texttt{str}   & \texttt{str(x)}    & Any value to string. Vectors print as \texttt{<1 2 3>}. \\
+\texttt{num}   & \texttt{num(s)}    & String to number. \\
+\texttt{char}  & \texttt{char(n)}   & ASCII code to single-character string. \\
+\texttt{asc}   & \texttt{asc(s)}    & First character to ASCII code. \\
+\bottomrule
+\end{longtable}
+
+\subsection{File I/O and modules}
+
+\begin{longtable}{@{}L{3.2cm}L{4.5cm}L{6.8cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{read}    & \texttt{read(path)}              & Read entire file; returns string. \\
+\texttt{write}   & \texttt{write(path, text)}       & Write string to file (create or overwrite). \\
+\texttt{append}  & \texttt{append(path, text)}      & Append string to file. \\
+\texttt{load}    & \texttt{load(path)}              & Execute \texttt{.moon} file in current environment. \\
+\texttt{eval}    & \texttt{eval(code)}              & Execute string as Moon source code. \\
+\texttt{exec}    & \texttt{exec(cmd)}               & Run shell command. Returns exit code. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Higher-order and control}
+
+\begin{longtable}{@{}L{3.2cm}L{4.5cm}L{6.8cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{apply}   & \texttt{apply(f, args)}      & Call proc value \texttt{f} or proc named \texttt{f} (string) with array \texttt{args}. \\
+\texttt{input}   & \texttt{input()}             & Read one line from stdin. \\
+                 & \texttt{input(prompt)}       & Print prompt, then read one line. \\
+\texttt{clock}   & \texttt{clock()}             & CPU time in seconds (useful for benchmarking). \\
+\texttt{exit}    & \texttt{exit(code)}          & Terminate interpreter with exit code. \\
+\texttt{assert}  & \texttt{assert(cond)}        & Throw error if \texttt{cond} is falsy. \\
+                 & \texttt{assert(cond, msg)}   & Throw error with message. \\
+\bottomrule
+\end{longtable}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Standard Library Reference}
+\label{sec:stdlib}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Load with \moon{load("stdlib.moon")} (the
+file must be present in the local folder, or installed in \texttt{\textasciitilde/.moon/}).
+
+\subsection{Constants}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Name} & \textbf{Value} & \textbf{Description} \\
+\midrule
+\texttt{PI}    & 3.14159265358979 & $\pi$ \\
+\texttt{TAU}   & 6.28318530717959 & $2\pi$ \\
+\texttt{E}     & 2.71828182845905 & Euler's number $e$ \\
+\texttt{PHI}   & 1.61803398874989 & Golden ratio $\varphi$ \\
+\texttt{LN2}   & 0.693147180559945 & $\ln 2$ \\
+\texttt{SQRT2} & 1.41421356237310 & $\sqrt{2}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Core math}
+
+\begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{min}       & \texttt{min(a, b)}                  & Smaller of two scalars. \\
+\texttt{max}       & \texttt{max(a, b)}                  & Larger of two scalars. \\
+\texttt{clamp}     & \texttt{clamp(x, lo, hi)}           & Clamp $x$ to $[\texttt{lo}, \texttt{hi}]$. Works on scalars and vectors (via broadcast). \\
+\texttt{sign}      & \texttt{sign(x)}                    & $-1$, $0$, or $1$. \\
+\texttt{round}     & \texttt{round(x)}                   & Round to nearest integer (half up). \\
+\texttt{round\_to} & \texttt{round\_to(x, decimals)}     & Round to $d$ decimal places. \\
+\texttt{mod}       & \texttt{mod(a, b)}                  & Modulo, always non-negative: \texttt{mod(-1, 5) = 4}. \\
+\texttt{even}      & \texttt{even(n)}                    & 1 if $n$ is even. \\
+\texttt{odd}       & \texttt{odd(n)}                     & 1 if $n$ is odd. \\
+\texttt{between}   & \texttt{between(x, lo, hi)}         & 1 if $\texttt{lo} \le x \le \texttt{hi}$. \\
+\texttt{hypot}     & \texttt{hypot(a, b)}                & $\sqrt{a^2 + b^2}$. \\
+\texttt{gcd}       & \texttt{gcd(a, b)}                  & Greatest common divisor (integers). \\
+\texttt{lcm}       & \texttt{lcm(a, b)}                  & Least common multiple. \\
+\texttt{ipow}      & \texttt{ipow(base, exp)}            & Integer power ($\texttt{exp} \ge 0$). \\
+\texttt{lerp}      & \texttt{lerp(a, b, t)}              & Linear interpolation. Works on scalars and vectors. \\
+\texttt{map\_range}& \texttt{map\_range(x,il,ih,ol,oh)}  & Re-map from one range to another. \\
+\texttt{deg2rad}   & \texttt{deg2rad(d)}                 & Degrees to radians. \\
+\texttt{rad2deg}   & \texttt{rad2deg(r)}                 & Radians to degrees. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Number formatting}
+
+\begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{pad\_left}  & \texttt{pad\_left(s, w, ch)}    & Pad string on left to width $w$ with character \texttt{ch}. \\
+\texttt{pad\_right} & \texttt{pad\_right(s, w, ch)}   & Pad string on right to width $w$. \\
+\texttt{fmt\_fixed} & \texttt{fmt\_fixed(x, d)}       & Format number with exactly $d$ decimal places. \\
+\texttt{fmt\_pct}   & \texttt{fmt\_pct(x, d)}         & Format as percentage: \texttt{fmt\_pct(0.752, 1)} $\to$ \texttt{"75.2\%"}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{String utilities}
+
+\begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{starts\_with} & \texttt{starts\_with(s, prefix)}   & 1 if \texttt{s} starts with \texttt{prefix}. \\
+\texttt{ends\_with}   & \texttt{ends\_with(s, suffix)}     & 1 if \texttt{s} ends with \texttt{suffix}. \\
+\texttt{ltrim}        & \texttt{ltrim(s)}                  & Remove leading spaces. \\
+\texttt{rtrim}        & \texttt{rtrim(s)}                  & Remove trailing spaces. \\
+\texttt{trim}         & \texttt{trim(s)}                   & Remove leading and trailing spaces. \\
+\texttt{repeat\_str}  & \texttt{repeat\_str(s, n)}         & Repeat string $n$ times. \\
+\texttt{count\_str}   & \texttt{count\_str(s, pattern)}    & Count non-overlapping occurrences of \texttt{pattern}. \\
+\texttt{replace}      & \texttt{replace(s, old, new)}      & Replace all occurrences of \texttt{old} with \texttt{new}. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Vector statistics}
+
+These functions apply to \emph{vectors}. \texttt{mean} and \texttt{stdev} also
+accept arrays (via internal dispatch on \texttt{type}).
+
+\begin{longtable}{@{}L{3.5cm}L{3.8cm}L{7.2cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{mean}       & \texttt{mean(x)}        & Arithmetic mean. Accepts vector or numeric array. \\
+\texttt{stdev}      & \texttt{stdev(x)}       & Population standard deviation. Accepts vector or numeric array. \\
+\texttt{normalize}  & \texttt{normalize(v)}   & Scale vector to $[0, 1]$ (min becomes 0, max becomes 1). \\
+\texttt{dot}        & \texttt{dot(a, b)}      & Dot product of two vectors: $\sum a_i b_i$. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Array algorithms}
+
+\begin{longtable}{@{}L{3.5cm}L{4cm}L{7cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{total}      & \texttt{total(a)}           & Sum of all numeric elements in array. (Note: use \texttt{sum} for vectors.) \\
+\texttt{minimum}    & \texttt{minimum(a)}         & Smallest element. (Note: \texttt{min(a,b)} compares two scalars.) \\
+\texttt{maximum}    & \texttt{maximum(a)}         & Largest element. \\
+\texttt{contains}   & \texttt{contains(a, val)}   & 1 if \texttt{val} is in array. \\
+\texttt{index\_of}  & \texttt{index\_of(a, val)}  & First index of \texttt{val}, or $-1$. \\
+\texttt{reversed}   & \texttt{reversed(a)}        & New array in reversed order. Original unchanged. \\
+\texttt{sorted}     & \texttt{sorted(a)}          & New array sorted ascending (numeric). Original unchanged. \\
+\texttt{zip}        & \texttt{zip(a, b)}          & Pair elements: \texttt{zip([1,2],["a","b"])} $\to$ \texttt{[[1,"a"],[2,"b"]]}. Stops at shorter. \\
+\texttt{flatten}    & \texttt{flatten(a)}         & Collapse one level of nesting. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Higher-order functions}
+
+\begin{longtable}{@{}L{3.5cm}L{5cm}L{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{map}    & \texttt{map(a, f)}           & Apply proc \texttt{f} to each element; return new array. \\
+\texttt{filter} & \texttt{filter(a, pred)}     & Keep elements for which \texttt{pred(x)} is truthy. \\
+\texttt{reduce} & \texttt{reduce(a, f, init)}  & Fold: \texttt{acc = f(acc, x)} for each element, starting from \texttt{init}. \\
+\bottomrule
+\end{longtable}
+
+\begin{lstlisting}
+var doubled = map([1,2,3,4], proc(x){ return x * 2 })   # [2,4,6,8]
+var evens   = filter([1..8], proc(x){ return mod(x,2)==0 })
+var total3  = reduce([1,2,3,4,5], proc(a,x){ return a+x }, 0)   # 15
+\end{lstlisting}
+
+\subsection{Testing framework}
+
+\begin{longtable}{@{}L{3.5cm}L{5cm}L{6.5cm}@{}}
+\toprule
+\textbf{Function} & \textbf{Signature} & \textbf{Description} \\
+\midrule
+\endhead
+\texttt{assert}      & \texttt{assert(cond, msg)}      & Fail with message if \texttt{cond} is falsy. \\
+\texttt{assert\_eq}  & \texttt{assert\_eq(a, b, msg)}  & Fail if \texttt{a != b}, showing both values. \\
+\texttt{assert\_near}& \texttt{assert\_near(a,b,eps,msg)} & Fail if $|a - b| > \varepsilon$. Use for floating-point tests. \\
+\texttt{test\_summary} & \texttt{test\_summary()}     & Print pass/fail counts. \\
+\bottomrule
+\end{longtable}
+
+Global counters \texttt{\_tests\_run}, \texttt{\_tests\_passed}, and
+\texttt{\_tests\_failed} are maintained automatically.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Extending Moon from C++}
+\label{sec:extend}
+% ─────────────────────────────────────────────────────────────────────────────
+
+Moon is designed to be embedded. Any C++ application can register custom
+builtins that become callable from Moon scripts.
+
+\subsection{Including Moon}
+
+\begin{lstlisting}[language=C++]
+#include "moon.h"
+
+int main() {
+    Environment env;
+    env.exec("print \"hello\"", "script.moon");
+}
+\end{lstlisting}
+
+\subsection{Registering a builtin}
+
+A builtin has the signature:
+\texttt{Value(std::vector<Value>\&, Interpreter\&)}.
+
+\begin{lstlisting}[language=C++]
+env.register_builtin("midi_to_hz", [](std::vector<Value>& args, Interpreter& I) -> Value {
+    double midi = std::get<NumVal>(args[0])[0];
+    return NumVal{440.0 * std::pow(2.0, (midi - 69.0) / 12.0)};
+});
+\end{lstlisting}
+
+After this call, \moon{midi_to_hz(69)} is available in all Moon scripts run
+through \texttt{env}.
+
+\subsection{Injecting global variables}
+
+\begin{lstlisting}[language=C++]
+env.globals["SAMPLE_RATE"] = NumVal{48000.0};
+env.globals["SOL_PATH"]    = std::string{"/opt/sol/samples"};
+\end{lstlisting}
+
+\subsection{Value types in C++}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Moon type} & \textbf{C++ type} & \textbf{Access} \\
+\midrule
+number / vector  & \texttt{NumVal} = \texttt{std::valarray<double>} & \texttt{std::get<NumVal>(v)} \\
+string           & \texttt{std::string}                              & \texttt{std::get<std::string>(v)} \\
+array            & \texttt{ArrayPtr} = \texttt{shared\_ptr<MoonArray>} & \texttt{std::get<ArrayPtr>(v)} \\
+proc             & \texttt{ProcVal} = \texttt{shared\_ptr<Proc>}    & \texttt{std::get<ProcVal>(v)} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Use \texttt{std::holds\_alternative<T>(v)} to test the type before accessing.
+Throw \texttt{Error\{filename, line, message, \{\}\}} for runtime errors from
+builtins.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Quick Reference}
+\label{sec:quickref}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection*{Language grammar summary}
+
+\begin{lstlisting}[numbers=none]
+statement  ::= var name = expr
+             | name = expr
+             | name[expr] = expr
+             | proc name (params) { stmts }
+             | if (expr) { stmts } (else if (expr) { stmts })* (else { stmts })?
+             | while (expr) { stmts }
+             | for (var name in expr) { stmts }
+             | return expr
+             | break
+             | print expr*
+             | call
+
+expr       ::= or_expr (< > <= >= == != or_expr)*
+or_expr    ::= and_expr (or and_expr)*
+and_expr   ::= not_expr (and not_expr)*
+not_expr   ::= not not_expr | comparison
+comparison ::= add ((< > <= >= == !=) add)*
+add        ::= mul ((+ -) mul)*
+mul        ::= unary ((* /) unary)*
+unary      ::= - unary | atom ([expr])* ((args))?
+atom       ::= number | string | [exprs] | (expr) | name | proc(params){stmts}
+\end{lstlisting}
+
+\subsection*{Common patterns}
+
+\begin{lstlisting}
+# Integer loop
+for (var i in range(0, 10)) { print i }
+
+# Numeric vector operation
+var wave = sin(linspace(0, TAU, 512))
+
+# Map over array
+var doubled = map(data, proc(x){ return x * 2 })
+
+# Sort and get min/max
+var s = sorted(data)
+print s[0]      # minimum
+print s[-1]     # maximum
+
+# Convert array to vector for math
+var v = to_vec(numeric_array)
+print mean(v) "  std=" stdev(v)
+
+# Filter and reduce
+var positives = filter(data, proc(x){ return x > 0 })
+var total4    = reduce(positives, proc(a,x){ return a+x }, 0)
+\end{lstlisting}
+
+\subsection*{Licensing}
+
+The Moon language is released under the BSD 2-Clause license.
+
+
+\end{document}
