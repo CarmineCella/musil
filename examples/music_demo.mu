@@ -1,7 +1,8 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# music theory demo — Moon v5
+# music theory demo
 # ─────────────────────────────────────────────────────────────────────────────
-load("stdlib.moon")
+
+load("stdlib.mu")
 
 # ── Equal temperament ─────────────────────────────────────────────────────────
 # MIDI note 69 = A4 = 440 Hz
@@ -127,7 +128,7 @@ print "32nd          = " fmt_fixed(duration_ms(120, 8), 1) " ms"
 
 # ── Export a frequency table ──────────────────────────────────────────────────
 
-var outfile = "/tmp/moon_freqs.txt"
+var outfile = "/tmp/musil_freqs.txt"
 write(outfile, "MIDI\tHz\tNote\n")
 var names = split("C,C#,D,D#,E,F,F#,G,G#,A,A#,B", ",")
 var midi = 48   # C3

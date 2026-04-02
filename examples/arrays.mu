@@ -52,7 +52,7 @@ print "range(0,10,2)   = " range(0, 10, 2)
 print "range(5,0,-1)   = " range(5, 0, -1)
 
 # ── join / split ──────────────────────────────────────────────────────────────
-var words = ["hello", "moon", "world"]
+var words = ["hello", "musil", "world"]
 var sentence = join(words, " ")
 print "join: " sentence
 var parts = split(sentence, " ")

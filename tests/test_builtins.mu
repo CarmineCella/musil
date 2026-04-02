@@ -1,8 +1,10 @@
-load("stdlib.moon")
+# test suite for built-in functions
+
+load("stdlib.mu")
 
 # upper / lower
 assert_eq(upper("hello"),       "HELLO",   "upper")
-assert_eq(lower("MOON v3"),     "moon v3", "lower")
+assert_eq(lower("musil v3"),     "musil v3", "lower")
 assert_eq(upper(lower("MiXeD")), "MIXED",  "round-trip")
 
 # type
@@ -30,8 +32,8 @@ assert(type(t0) == "number",               "clock returns number")
 assert(t0 >= 0,                            "clock non-negative")
 
 # string == comparison
-assert_eq("moon" == "moon",     1,         "string == true")
-assert_eq("moon" == "sun",      0,         "string == false")
+assert_eq("musil" == "musil",     1,         "string == true")
+assert_eq("musil" == "sun",      0,         "string == false")
 assert_eq("a" != "b",           1,         "string != true")
 
 test_summary()

@@ -1,4 +1,4 @@
-# test_procs.moon — proc declaration, calls, recursion
+# proc declaration, calls, recursion
 
 proc square (n) {
     return n * n

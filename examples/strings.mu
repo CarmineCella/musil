@@ -1,6 +1,6 @@
 # string built-ins
 
-var s = "hello, moon!"
+var s = "hello, musil!"
 
 print "original  : " s
 print "len       : " len(s)

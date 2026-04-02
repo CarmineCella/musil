@@ -745,7 +745,7 @@ struct Interpreter {
             std::string path = sv(0); std::ifstream f(path);
             if (!f) {
                 const char* home = getenv("HOME");
-                if (home) { std::string hp = std::string(home) + "/.moon/" + path; f.open(hp); if (f) path = hp; }
+                if (home) { std::string hp = std::string(home) + "/.musil/" + path; f.open(hp); if (f) path = hp; }
             }
             if (!f) throw make_err("load: can't open '" + sv(0) + "'");
             load_fn(std::string(std::istreambuf_iterator<char>(f), {}), path);
@@ -767,7 +767,7 @@ struct Interpreter {
         }
         if (nm=="exec") {
             chk(1);
-            std::cout.flush();   // flush Moon output before child process writes
+            std::cout.flush();   // flush output before child process writes
             return NumVal{(double)std::system(sv(0).c_str())};
         }
         if (nm=="apply") {

@@ -1,8 +1,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Moonil — Language Reference
+#  Musil — Language Reference
 # ═══════════════════════════════════════════════════════════════════════════════
 
-load("stdlib.moon")   # math, string, array utilities
+load("stdlib.mu")   # math, string, array utilities
 
 proc section (title) {
     print ""
@@ -55,7 +55,7 @@ print "unary -   = " (-x)
 # ───────────────────────────────────────────────────────────────────────────────
 section("3. STRINGS")
 
-var greeting = "Hello, " + "Moon!"
+var greeting = "Hello, " + "musil!"
 print greeting
 print "length      = " len(greeting)
 print "upper       = " upper(greeting)
@@ -436,8 +436,8 @@ section("12. STDLIB — STRING UTILITIES")
 print "pad_left('7',3,'0')   = " pad_left("7", 3, "0")
 print "pad_right('hi',5,'.') = " pad_right("hi", 5, ".")
 print "trim('  hello  ')     = " trim("  hello  ")
-print "starts_with           = " starts_with("moon", "mo")
-print "ends_with             = " ends_with("moon", "on")
+print "starts_with           = " starts_with("musil", "mo")
+print "ends_with             = " ends_with("musil", "on")
 print "repeat_str('ha',3)    = " repeat_str("ha", 3)
 print "count_str             = " count_str("abcabc", "bc")
 print "replace               = " replace("hello", "l", "r")
@@ -467,7 +467,7 @@ print "sorted:       " sorted(data)
 # ───────────────────────────────────────────────────────────────────────────────
 section("14. FILE I/O")
 
-var tmpfile = "/tmp/moon_reference_demo.txt"
+var tmpfile = "/tmp/musil_reference_demo.txt"
 
 # Write
 write(tmpfile, "line 1\nline 2\nline 3\n")
@@ -490,7 +490,7 @@ print "line count:  " len(lines) " (last is empty due to trailing newline)"
 print "line 2:      " lines[1]
 
 # Build a CSV
-var csvfile = "/tmp/moon_demo.csv"
+var csvfile = "/tmp/musil_demo.csv"
 write(csvfile, "name,value\n")
 for (var item in [["alpha", 1], ["beta", 2], ["gamma", 3]]) {
     append(csvfile, item[0] + "," + str(item[1]) + "\n")
@@ -499,24 +499,24 @@ print "csv: " read(csvfile)
 
 # ───────────────────────────────────────────────────────────────────────────────
 #  15. LOAD — CODE MODULARISATION
-#  load(path): execute a .moon file in the current environment.
+#  load(path): execute a .mu file in the current environment.
 #  Procs and vars defined in loaded file become available globally.
-#  Searches ~/.moon/ if path not found directly.
+#  Searches ~/.musil/ if path not found directly.
 # ───────────────────────────────────────────────────────────────────────────────
 section("15. LOAD")
 
 # Write a small library file, then load it
-write("/tmp/moon_mylib.moon",
+write("/tmp/musil_mylib.mu",
     "proc celsius_to_f (c) { return c * 9 / 5 + 32 }\n" +
     "var BOILING = 100\n"
 )
-load("/tmp/moon_mylib.moon")
+load("/tmp/musil_mylib.mu")
 print "0°C in F:   " celsius_to_f(0)
 print "100°C in F: " celsius_to_f(BOILING)
 
 # ───────────────────────────────────────────────────────────────────────────────
 #  16. EVAL — RUNTIME CODE GENERATION
-#  eval(string): parse and execute a string as Moon code.
+#  eval(string): parse and execute a string as musil code.
 #  Useful for generating code dynamically. Shares the current global environment.
 # ───────────────────────────────────────────────────────────────────────────────
 section("16. EVAL")

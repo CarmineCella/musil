@@ -31,7 +31,7 @@ if (not flag) {
 }
 
 # string truthiness: non-empty = true
-var name = "moon"
+var name = "musil"
 if (name) {
     print "non-empty string is truthy"
 }

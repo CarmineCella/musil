@@ -1,3 +1,5 @@
+# while loops and related examples
+
 proc sum_range (lo, hi) {
     var s = 0
     var i = lo
@@ -29,5 +31,5 @@ while (row <= 5) {
 }
 
 proc hello (name) {
-    print "hello " name " from test_while.moon"
+    print "hello " name " from while.mu"
 }

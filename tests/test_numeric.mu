@@ -1,4 +1,6 @@
-load("stdlib.moon")
+# test suite for numeric vectors and related built-ins
+
+load("stdlib.mu")
 
 # ── Numeric vectors ───────────────────────────────────────────────────────────
 

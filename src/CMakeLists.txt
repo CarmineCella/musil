@@ -1,4 +1,4 @@
-# cli/CMakeLists.txt
+# src/CMakeLists.txt
 #
 # Command-line Musil interpreter.
 
@@ -42,7 +42,7 @@ install(TARGETS musil
 
 # Install .scm files into ~/.musil
 install(FILES
-    ${CMAKE_SOURCE_DIR}/src/stdlib.musil
+    ${CMAKE_SOURCE_DIR}/src/stdlib.mu
     DESTINATION $ENV{HOME}/.musil
 )
 
@@ -64,7 +64,7 @@ install(CODE "
         )
       endif()
         
-      file(GLOB scm_files \"\${MUSIL_HOME}/.musil/*.musil\")
+      file(GLOB scm_files \"\${MUSIL_HOME}/.musil/*.mu\")
       foreach(f \${scm_files})
         execute_process(
           COMMAND chown \${MUSIL_OWNER} \"\${f}\"

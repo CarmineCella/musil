@@ -1,6 +1,6 @@
-# test_arrays.moon — comprehensive test suite for native array support
+# test suite for native array support
 
-load ("stdlib.moon")
+load ("stdlib.mu")
 
 # ── Minimal test framework ────────────────────────────────────────────────────
 
