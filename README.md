@@ -2,7 +2,7 @@
 
 *A Scripting Language for Sound And Music Computing*
 
-**Musil* is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
+**Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
 
 The core of the language is made of a single [C++ header](src/musil.h) and a [standard library](src/stdlib.mu).
 A more or less comprehensive overview of the language can be found [here](examples/reference.mu) and version-specific documentation can be found in [docs](docs).
