@@ -853,14 +853,21 @@ Functions marked \textbf{[arr]} require an array argument.
 \end{longtable}
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Standard Library Reference}
+\section{Libraries}
 \label{sec:stdlib}
 % ─────────────────────────────────────────────────────────────────────────────
 
-Load with \musil{load("stdlib.mu")} (the
+
+Musil ships with a small collection of libraries that extend the core language with I/O, signal processing, scientific computing, and plotting. At the implementation level, these libraries are defined partly as C++ builtins registered in the interpreter, and partly as higher-level Musil procedures written in \texttt{.mu} files. The builtins provide efficient access to structured data such as vectors, matrices, WAV files, and plots, while the \texttt{.mu} layer offers more convenient composite operations built on top of them. 
+
+Each library must be loaded with \musil{load("library.mu")} (the
 file must be present in the local folder, or installed in \texttt{\textasciitilde/.musil/}).
 
-\subsection{Constants}
+\subsection{Standard library}
+
+The library is implemented in \musil{stdlib.mu}.
+
+\subsubsection{Constants}
 
 \begin{center}
 \begin{tabular}{@{}lll@{}}
@@ -877,7 +884,7 @@ file must be present in the local folder, or installed in \texttt{\textasciitild
 \end{tabular}
 \end{center}
 
-\subsection{Core math}
+\subsubsection{Core math}
 
 \begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
 \toprule
@@ -905,7 +912,7 @@ file must be present in the local folder, or installed in \texttt{\textasciitild
 \bottomrule
 \end{longtable}
 
-\subsection{Number formatting}
+\subsubsection{Number formatting}
 
 \begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
 \toprule
@@ -919,7 +926,7 @@ file must be present in the local folder, or installed in \texttt{\textasciitild
 \bottomrule
 \end{longtable}
 
-\subsection{String utilities}
+\subsubsection{String utilities}
 
 \begin{longtable}{@{}L{3.5cm}L{4.5cm}L{6.5cm}@{}}
 \toprule
@@ -937,7 +944,7 @@ file must be present in the local folder, or installed in \texttt{\textasciitild
 \bottomrule
 \end{longtable}
 
-\subsection{Vector statistics}
+\subsubsection{Vector statistics}
 
 These functions apply to \emph{vectors}. \texttt{mean} and \texttt{stdev} also
 accept arrays (via internal dispatch on \texttt{type}).
@@ -954,7 +961,7 @@ accept arrays (via internal dispatch on \texttt{type}).
 \bottomrule
 \end{longtable}
 
-\subsection{Array algorithms}
+\subsubsection{Array algorithms}
 
 \begin{longtable}{@{}L{3.5cm}L{4cm}L{7cm}@{}}
 \toprule
@@ -973,7 +980,7 @@ accept arrays (via internal dispatch on \texttt{type}).
 \bottomrule
 \end{longtable}
 
-\subsection{Higher-order functions}
+\subsubsection{Higher-order functions}
 
 \begin{longtable}{@{}L{3.5cm}L{5cm}L{6.5cm}@{}}
 \toprule
@@ -992,7 +999,7 @@ var evens   = filter([1..8], proc(x){ return mod(x,2)==0 })
 var total3  = reduce([1,2,3,4,5], proc(a,x){ return a+x }, 0)   # 15
 \end{lstlisting}
 
-\subsection{Testing framework}
+\subsubsection{Testing framework}
 
 \begin{longtable}{@{}L{3.5cm}L{5cm}L{6.5cm}@{}}
 \toprule
@@ -1008,6 +1015,81 @@ var total3  = reduce([1,2,3,4,5], proc(a,x){ return a+x }, 0)   # 15
 
 Global counters \texttt{\_tests\_run}, \texttt{\_tests\_passed}, and
 \texttt{\_tests\_failed} are maintained automatically.
+
+
+\subsection{System library}
+
+The system library (\musil{system.mu}) provides practical I/O and operating-system oriented services. In the current setup, the most important functions are:
+\begin{itemize}
+    \item \texttt{sleep(ms)}: suspend execution for a number of milliseconds.
+    \item \texttt{clock()}: return the current processor time.
+    \item \texttt{dirlist(path)}: list directory contents.
+    \item \texttt{filestat(path)}: query basic file information such as existence, size, and permissions.
+    \item \texttt{getvar(name)}: retrieve an environment variable.
+    \item \texttt{udpsend(host, port, message)} and \texttt{udprecv(host, port)}: basic UDP messaging.
+    \item \texttt{readcsv(path)} and \texttt{writecsv(path, table)}: CSV file import/export.
+    \item \texttt{readwav(path)} and \texttt{writewav(path, sr, channels)}: WAV file input/output.
+\end{itemize}
+
+At the language level, \texttt{readwav} returns a two-element structure \texttt{[sr, channels]}, where \texttt{sr} is the sample rate and \texttt{channels} is an array of vectors, one vector per channel. Conversely, \texttt{writewav} expects a filename, a scalar sample rate, and an array of channels of equal length. The underlying implementation supports PCM WAV reading and writing through the companion WAV utilities. 
+
+The core library also includes generic text/file helpers such as \texttt{read}, \texttt{write}, \texttt{append}, \texttt{load}, \texttt{eval}, \texttt{exec}, and \texttt{apply}. These functions are not part of the separate system header, but they are essential in practice because they make it possible to compose library code, load Musil source files, and build higher-level wrappers in \texttt{.mu}. 
+
+\subsection{Signals library}
+
+The signals library (\musil{signals.mu}) is centered on dense numeric vectors and provides synthesis, spectral processing, filtering, convolution, and signal-analysis primitives. The builtins registered by the library include:
+\begin{itemize}
+    \item synthesis: \texttt{mix}, \texttt{gen}, \texttt{osc}
+    \item spectral transforms: \texttt{fft}, \texttt{ifft}, \texttt{car2pol}, \texttt{pol2car}, \texttt{window}
+    \item spectral descriptors: \texttt{speccent}, \texttt{specspread}, \texttt{specskew}, \texttt{speckurt}, \texttt{specflux}, \texttt{specirr}, \texttt{specdecr}, \texttt{acorrf0}, \texttt{energy}, \texttt{zcr}
+    \item convolution and channel operations: \texttt{conv}, \texttt{convmc}, \texttt{deinterleave}, \texttt{interleave}
+    \item vector/block helpers: \texttt{vslice}, \texttt{vaddat}
+    \item filters and delay-based effects: \texttt{dcblock}, \texttt{reson}, \texttt{filter}, \texttt{filtdesign}, \texttt{delay}, \texttt{comb}, \texttt{allpass}, \texttt{resample}
+\end{itemize}
+These are the functions explicitly registered by \texttt{add\_signals(env)}. 
+
+Several details are worth stressing. First, the library is intentionally vector-oriented: most functions consume and produce \texttt{NumVal} vectors rather than general arrays. FFT-related functions work on interleaved complex data, and the packed representation used by helper functions reduces array traffic by storing paired streams in a single vector when useful. Second, \texttt{convmc} is the exception that still uses an array-of-vectors representation, because a multichannel signal is naturally structured as a list of channels rather than a single homogeneous vector. Third, \texttt{vaddat} is especially important for overlap-add workflows, because it performs block insertion/addition in compiled code rather than in an interpreted inner loop. 
+
+At the \texttt{signals.mu} level, one typically defines higher-level DSP procedures by composing the builtins above. In the current Musil setup, these helper procedures include short-time Fourier transform workflows such as \texttt{stft} and \texttt{istft}, as well as convenience wrappers around \texttt{filtdesign} and \texttt{filter} for standard biquad types such as low-pass, high-pass, notch, peak, and shelving filters. These \texttt{.mu} procedures do not add new low-level capabilities; rather, they package recurring signal-processing idioms into more ergonomic forms.
+
+\subsection{Scientific library}
+
+The scientific library (\musil{scientific.mu}) provides matrix algebra, statistics, interpolation, machine learning, and utility procedures for structured numerical work. At the language level, a matrix is represented as an array of numeric row vectors. This representation is deliberately simple and makes expressions such as \texttt{M[i]} (row extraction) and \texttt{M[i][j]} (element access) natural. The conversion helpers in the implementation explicitly map between this language-level format and the internal C++ matrix class. :contentReference[oaicite:5]{index=5}
+
+The core matrix and linear-algebra operations include:
+\begin{itemize}
+    \item \texttt{matdisp}, \texttt{matadd}, \texttt{matsub}, \texttt{matmul}, \texttt{hadamard}, \texttt{transpose}
+    \item \texttt{nrows}, \texttt{ncols}, \texttt{matsum}, \texttt{getrows}, \texttt{getcols}
+    \item constructors and structured generators such as \texttt{eye}, \texttt{rand}, \texttt{zeros}, \texttt{ones}, \texttt{bpf}
+    \item decomposition and algebraic operators such as \texttt{inv}, \texttt{det}, \texttt{diag}, \texttt{rank}, \texttt{solve}
+\end{itemize}
+The library also exposes statistical and analysis-oriented functions such as:
+\begin{itemize}
+    \item \texttt{median}, \texttt{linefit}, \texttt{norm}, \texttt{dist}
+    \item \texttt{matmean}, \texttt{matstd}, \texttt{cov}, \texttt{corr}, \texttt{zscore}
+    \item \texttt{pca}, \texttt{kmeans}, and \texttt{knn}
+\end{itemize}
+These functions are all implemented as builtins operating on vectors or matrices in the array-of-rows representation. 
+
+In practice, the scientific library works especially well together with the plotting layer. Functions such as \texttt{matcol}, \texttt{getcols}, \texttt{linefit}, \texttt{pca}, and \texttt{kmeans} produce data that can be directly visualized by \texttt{plot} and \texttt{scatter}. Because matrices remain explicit arrays of row vectors rather than flattened packed buffers, the scientific API is more verbose than the packed signal API, but also more transparent and easier to manipulate interactively. 
+
+\subsection{Plotting library}
+
+The plotting library (\musil{plotting.mu})  provides two builtins:
+\begin{itemize}
+    \item \texttt{plot(title, y\_1, legend\_1, y\_2, legend\_2, \dots, style)}
+    \item \texttt{scatter(title, x\_1, y\_1, legend\_1, x\_2, y\_2, legend\_2, \dots, style)}
+\end{itemize}
+In both cases, the last argument is a plotting style:
+\begin{itemize}
+    \item \texttt{"*"} for line plus markers
+    \item \texttt{"."} for markers only
+    \item \texttt{"-"} for line only
+\end{itemize}
+Both functions generate an SVG file and \emph{return its filename as a string}; they do not print the filename automatically. The SVG backend computes axis ranges, draws simple axes and tick marks, adds optional legends, and stores the file under a sanitized title-based name. 
+
+The companion \texttt{plotting.mu} layer is meant to collect convenience procedures built on top of the two builtins. Typical helper functions include quick plotting wrappers such as \texttt{qplot}, \texttt{qplot2}, and \texttt{qscatter}, together with column-oriented utilities such as \texttt{plot\_col}, \texttt{plot\_cols2}, and \texttt{scatter\_cols}. These functions are not performance-critical; their purpose is to reduce repetitive plotting boilerplate in data-analysis scripts.
+
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Extending Musil from C++}
