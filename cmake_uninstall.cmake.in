@@ -1,7 +1,7 @@
 # cmake_uninstall.cmake.in
 #
 
-message(STATUS "Starting Moon uninstall...")
+message(STATUS "Starting Moonil uninstall...")
 
 # ------------------------------------------------------------------------------
 # 1. Remove installed files (standard CMake uninstall)
@@ -26,36 +26,36 @@ foreach(file ${files})
 endforeach()
 
 # ------------------------------------------------------------------------------
-# 2. Remove ~/.moon directory
+# 2. Remove ~/.moonil directory
 # ------------------------------------------------------------------------------
 
 if(DEFINED ENV{HOME})
-    set(MOON_HOME "$ENV{HOME}/.moon")
-    if(EXISTS "${MOON_HOME}")
-        message(STATUS "Removing directory: ${MOON_HOME}")
-        file(REMOVE_RECURSE "${MOON_HOME}")
+    set(MOONIL_HOME "$ENV{HOME}/.moonil")
+    if(EXISTS "${MOONIL_HOME}")
+        message(STATUS "Removing directory: ${MOONIL_HOME}")
+        file(REMOVE_RECURSE "${MOONIL_HOME}")
     else()
-        message(STATUS "~/.moon directory not present")
+        message(STATUS "~/.moonil directory not present")
     endif()
 endif()
 
 
 # ------------------------------------------------------------------------------
 # 3. Cleanup for Linux / Windows (optional)
-#    Remove ${CMAKE_INSTALL_PREFIX}/moon or ${CMAKE_INSTALL_PREFIX}/bin/moon
+#    Remove ${CMAKE_INSTALL_PREFIX}/moonil or ${CMAKE_INSTALL_PREFIX}/bin/moonil
 # ------------------------------------------------------------------------------
 
 set(PREFIX "@CMAKE_INSTALL_PREFIX@")
 
-if(EXISTS "${PREFIX}/moon")
-    message(STATUS "Removing: ${PREFIX}/moon")
-    file(REMOVE_RECURSE "${PREFIX}/moon")
+if(EXISTS "${PREFIX}/moonil")
+    message(STATUS "Removing: ${PREFIX}/moonil")
+    file(REMOVE_RECURSE "${PREFIX}/moonil")
 endif()
 
-if(EXISTS "${PREFIX}/bin/moon")
-    message(STATUS "Removing CLI binary directory: ${PREFIX}/bin/moon")
+if(EXISTS "${PREFIX}/bin/moonil")
+    message(STATUS "Removing CLI binary directory: ${PREFIX}/bin/moonil")
     # No REMOVE_RECURSE because it may contain other binaries
-    file(REMOVE "${PREFIX}/bin/moon")
+    file(REMOVE "${PREFIX}/bin/moonil")
 endif()
 
-message(STATUS "Moon uninstall completed.")
+message(STATUS "Moonil uninstall completed.")

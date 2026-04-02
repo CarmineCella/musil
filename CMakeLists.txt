@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(moon LANGUAGES CXX)
+project(moonil LANGUAGES CXX)
 
 # Global compile definitions (visible to all targets)
 add_compile_definitions(VERSION="0.5")

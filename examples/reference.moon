@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Moon — Language Reference
+#  Moonil — Language Reference
 # ═══════════════════════════════════════════════════════════════════════════════
 
 load("stdlib.moon")   # math, string, array utilities

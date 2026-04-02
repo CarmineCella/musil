@@ -1,7 +1,7 @@
-// moon.cpp — a tiny interpreter
+// moonil.cpp — a tiny interpreter
 //
 
-#include "moon.h"
+#include "moonil.h"
 
 #include <iostream>
 #include <fstream>
@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     std::srand(time (NULL));
     Environment state;
     if (argc == 1) {
-        cout << "[moon, v" << VERSION << "]" << endl << endl;
+        cout << "[moonil, v" << VERSION << "]" << endl << endl;
         cout << "(c) 2026 by Carmine-Emanuele Cella" << endl << endl;
         repl(state);
         return 0;
