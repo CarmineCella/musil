@@ -1,5 +1,5 @@
-#ifndef MUSIL_SYSTEM_LIBRARY_H
-#define MUSIL_SYSTEM_LIBRARY_H
+#ifndef SYSTEM_H
+#define SYSTEM_H
 
 #include "core.h"
 #include "system/wav_tools.h"
@@ -300,4 +300,6 @@ inline void add_system(Environment& env) {
     env.register_builtin("writewav", fn_writewav);
 }
 
-#endif
+#endif // SYSTEM_H
+
+

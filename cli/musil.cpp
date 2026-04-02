@@ -18,6 +18,7 @@ int main(int argc, char* argv[]) {
     add_scientific(interpreter);
     add_system(interpreter);
     add_signals(interpreter);
+    add_plotting(interpreter);
 
     if (argc == 1) {
         cout << "[musil, v" << VERSION << "]" << endl << endl;

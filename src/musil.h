@@ -7,6 +7,7 @@
 #include "scientific.h"
 #include "system.h"
 #include "signals.h"
+#include "plotting.h"
 
 #endif // MUSIL_H
 
