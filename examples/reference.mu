@@ -544,9 +544,9 @@ print "num('3.14') = " num("3.14")
 print "str(PI)     = " str(PI)
 print "char(9786)  = " char(9786)    # ☺ (unicode codepoint as char via cast)
 
-# Random (seeded with 42 at startup — deterministic)
-print "rand()      = " fmt_fixed(rand(), 4)
-print "rand()      = " fmt_fixed(rand(), 4)
+# Random
+print "rand(1)      = " fmt_fixed(rand(1), 4)
+print "rand(1)      = " fmt_fixed(rand(1), 4)
 
 # Clock — CPU seconds (useful for timing)
 var t0 = clock()

@@ -993,7 +993,7 @@ int brace_depth(const std::string& s) {
     }
     return d;
 }
-void repl(Environment* env) {
+void repl(Environment& env) {
     std::string buf; int depth = 0;
     while (true) {
         std::cout << (depth==0 ? ">> " : ".. ") << std::flush;
@@ -1004,7 +1004,7 @@ void repl(Environment* env) {
         if (depth <= 0) {
             depth = 0;
             if (buf.find_first_not_of(" \t\n") != std::string::npos) {
-                try { env->exec(buf, "<stdin>"); }
+                try { env.exec(buf, "<stdin>"); }
                 catch (Error& e)         { std::cerr << format_error(e) << "\n"; }
                 catch (std::exception& e){ std::cerr << "error: " << e.what() << "\n"; }
             }

@@ -6,16 +6,7 @@
 #include "core.h"
 #include "scientific.h"
 #include "system.h"
-
-Environment* make_environment() {
-    Environment* env = new Environment();
-
-    add_scientific(*env);
-    add_system(*env);
-
-    return env;
-}
-
+#include "signals.h"
 
 #endif // MUSIL_H
 
