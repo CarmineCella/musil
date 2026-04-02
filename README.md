@@ -2,13 +2,12 @@
 
 *A tiny interpreter for music research*
 
-**Moon** is a tiny and expressive language designed to be small, easy to expand and easy to embed in host applications.
+**Moon** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
 
-The core of the language is made of a single [C++ header](src/moon.h) and a [standard library](src/stdlib.moon) written in **Moon**.
-A more or less comprehensive overview of the language can be found [here](examples/reference.moon). Version-specific documentation can be found in [docs](docs).
+The core of the language is made of a single [C++ header](src/moon.h) and a [standard library](src/stdlib.moon).
+A more or less comprehensive overview of the language can be found [here](examples/reference.moon) and version-specific documentation can be found in [docs](docs).
 
-It has been designed to be small, easy to expand and easy to embed in host applications. **Moon** is a tool for people who cross boundaries —  
-for musicians who code, coders who compose, and thinkers who move fluidly between algorithms and aesthetics.
+**Moon** is a tool for people who cross boundaries; for musicians who code, coders who compose, and thinkers who move fluidly between algorithms and aesthetics.
 
 For an example on how to integrate the language in your application, please check the [command line interpreter](src/moon.cpp).
 
