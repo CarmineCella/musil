@@ -90,7 +90,7 @@ static const NumVal& nvec(const Value& v, const std::string& ctx) {
 
 // ── Display ───────────────────────────────────────────────────────────────────
 
-static Value fn_matdisp(std::vector<Value>& args, Interpreter&) {
+static Value fn_matdisp(std::vector<Value>& args, Interpreter& interp) {
     for (auto& a : args) {
         Matrix<Real> m = arr2matrix(a, "matdisp");
         m.print(std::cout) << std::endl;
@@ -100,49 +100,49 @@ static Value fn_matdisp(std::vector<Value>& args, Interpreter&) {
 
 // ── Basic linear algebra ──────────────────────────────────────────────────────
 
-static Value fn_matadd(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "matadd: at least 2 matrices required"};
+static Value fn_matadd(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "matadd: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "matadd");
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> b = arr2matrix(args[i], "matadd");
         if (a.rows() != b.rows() || a.cols() != b.cols())
-            throw Error{"scientific", -1, "matadd: shape mismatch"};
+            throw Error{interp.filename, interp.cur_line(), "matadd: shape mismatch"};
         a = a + b;
     }
     return matrix2arr(a);
 }
 
-static Value fn_matsub(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "matsub: at least 2 matrices required"};
+static Value fn_matsub(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "matsub: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "matsub");
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> b = arr2matrix(args[i], "matsub");
         if (a.rows() != b.rows() || a.cols() != b.cols())
-            throw Error{"scientific", -1, "matsub: shape mismatch"};
+            throw Error{interp.filename, interp.cur_line(), "matsub: shape mismatch"};
         a = a - b;
     }
     return matrix2arr(a);
 }
 
-static Value fn_matmul(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "matmul: at least 2 matrices required"};
+static Value fn_matmul(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "matmul: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "matmul");
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> b = arr2matrix(args[i], "matmul");
         if (a.cols() != b.rows())
-            throw Error{"scientific", -1, "matmul: nonconformant dimensions"};
+            throw Error{interp.filename, interp.cur_line(), "matmul: nonconformant dimensions"};
         a = a * b;
     }
     return matrix2arr(a);
 }
 
-static Value fn_hadamard(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "hadamard: at least 2 matrices required"};
+static Value fn_hadamard(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "hadamard: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "hadamard");
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> b = arr2matrix(args[i], "hadamard");
         if (a.rows() != b.rows() || a.cols() != b.cols())
-            throw Error{"scientific", -1, "hadamard: shape mismatch"};
+            throw Error{interp.filename, interp.cur_line(), "hadamard: shape mismatch"};
         for (std::size_t r = 0; r < a.rows(); ++r)
             for (std::size_t c = 0; c < a.cols(); ++c)
                 a(r, c) *= b(r, c);
@@ -150,67 +150,67 @@ static Value fn_hadamard(std::vector<Value>& args, Interpreter&) {
     return matrix2arr(a);
 }
 
-static Value fn_transpose(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "transpose: 1 argument required"};
+static Value fn_transpose(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "transpose: 1 argument required"};
     return matrix2arr(arr2matrix(args[0], "transpose").transpose());
 }
 
-static Value fn_nrows(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "nrows: 1 argument required"};
+static Value fn_nrows(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "nrows: 1 argument required"};
     return NumVal{(double)arr2matrix(args[0], "nrows").rows()};
 }
 
-static Value fn_ncols(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "ncols: 1 argument required"};
+static Value fn_ncols(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "ncols: 1 argument required"};
     return NumVal{(double)arr2matrix(args[0], "ncols").cols()};
 }
 
-static Value fn_matsum(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "matsum: 2 arguments required (matrix, axis)"};
+static Value fn_matsum(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "matsum: 2 arguments required (matrix, axis)"};
     Matrix<Real> a = arr2matrix(args[0], "matsum");
     int axis = (int)scalar(args[1], "matsum");
-    if (axis != 0 && axis != 1) throw Error{"scientific", -1, "matsum: axis must be 0 or 1"};
+    if (axis != 0 && axis != 1) throw Error{interp.filename, interp.cur_line(), "matsum: axis must be 0 or 1"};
     return matrix2arr(a.sum(axis));
 }
 
-static Value fn_getrows(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 3) throw Error{"scientific", -1, "getrows: 3 arguments required"};
+static Value fn_getrows(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 3) throw Error{interp.filename, interp.cur_line(), "getrows: 3 arguments required"};
     Matrix<Real> a = arr2matrix(args[0], "getrows");
     int start = (int)scalar(args[1], "getrows");
     int end   = (int)scalar(args[2], "getrows");
     if (start < 0 || start >= (int)a.rows() || end < start || end >= (int)a.rows())
-        throw Error{"scientific", -1, "getrows: invalid row range"};
+        throw Error{interp.filename, interp.cur_line(), "getrows: invalid row range"};
     return matrix2arr(a.get_rows(start, end));
 }
 
-static Value fn_getcols(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 3) throw Error{"scientific", -1, "getcols: 3 arguments required"};
+static Value fn_getcols(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 3) throw Error{interp.filename, interp.cur_line(), "getcols: 3 arguments required"};
     Matrix<Real> a = arr2matrix(args[0], "getcols");
     int start = (int)scalar(args[1], "getcols");
     int end   = (int)scalar(args[2], "getcols");
     if (start < 0 || start >= (int)a.cols() || end < start || end >= (int)a.cols())
-        throw Error{"scientific", -1, "getcols: invalid column range"};
+        throw Error{interp.filename, interp.cur_line(), "getcols: invalid column range"};
     return matrix2arr(a.get_cols(start, end));
 }
 
 // ── Matrix construction ───────────────────────────────────────────────────────
 
-static Value fn_eye(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "eye: 1 argument required"};
+static Value fn_eye(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "eye: 1 argument required"};
     int n = (int)scalar(args[0], "eye");
-    if (n <= 0) throw Error{"scientific", -1, "eye: size must be positive"};
+    if (n <= 0) throw Error{interp.filename, interp.cur_line(), "eye: size must be positive"};
     Matrix<Real> e(n, n); e.id();
     return matrix2arr(e);
 }
 
 // randvec(n)  -> NumVal of n values in [-1, 1]
 // randmat(cols, rows) -> Array-of-Vectors matrix
-static Value fn_rand(std::vector<Value>& args, Interpreter&) {
+static Value fn_rand(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() < 1 || args.size() > 2)
-        throw Error{"scientific", -1, "rand: 1 or 2 arguments required"};
+        throw Error{interp.filename, interp.cur_line(), "rand: 1 or 2 arguments required"};
     int len  = (int)scalar(args[0], "rand");
     int rows = args.size() == 2 ? (int)scalar(args[1], "rand") : 1;
-    if (len <= 0 || rows <= 0) throw Error{"scientific", -1, "rand: dimensions must be positive"};
+    if (len <= 0 || rows <= 0) throw Error{interp.filename, interp.cur_line(), "rand: dimensions must be positive"};
     if (rows == 1) {
         NumVal out(len);
         for (int i = 0; i < len; ++i)
@@ -228,24 +228,24 @@ static Value fn_rand(std::vector<Value>& args, Interpreter&) {
 }
 
 // zeros/ones: zeros(n) -> vector; zeros(cols, rows) -> matrix
-static Value fn_zeros(std::vector<Value>& args, Interpreter&) {
+static Value fn_zeros(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() < 1 || args.size() > 2)
-        throw Error{"scientific", -1, "zeros: 1 or 2 arguments"};
+        throw Error{interp.filename, interp.cur_line(), "zeros: 1 or 2 arguments"};
     int len  = (int)scalar(args[0], "zeros");
     int rows = args.size() == 2 ? (int)scalar(args[1], "zeros") : 1;
-    if (len <= 0 || rows <= 0) throw Error{"scientific", -1, "zeros: dimensions must be positive"};
+    if (len <= 0 || rows <= 0) throw Error{interp.filename, interp.cur_line(), "zeros: dimensions must be positive"};
     if (rows == 1) return NumVal((size_t)len);
     auto arr = std::make_shared<Array>();
     for (int r = 0; r < rows; ++r) arr->elems.push_back(NumVal((size_t)len));
     return arr;
 }
 
-static Value fn_ones(std::vector<Value>& args, Interpreter&) {
+static Value fn_ones(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() < 1 || args.size() > 2)
-        throw Error{"scientific", -1, "ones: 1 or 2 arguments"};
+        throw Error{interp.filename, interp.cur_line(), "ones: 1 or 2 arguments"};
     int len  = (int)scalar(args[0], "ones");
     int rows = args.size() == 2 ? (int)scalar(args[1], "ones") : 1;
-    if (len <= 0 || rows <= 0) throw Error{"scientific", -1, "ones: dimensions must be positive"};
+    if (len <= 0 || rows <= 0) throw Error{interp.filename, interp.cur_line(), "ones: dimensions must be positive"};
     if (rows == 1) return NumVal(1.0, (size_t)len);
     auto arr = std::make_shared<Array>();
     for (int r = 0; r < rows; ++r) arr->elems.push_back(NumVal(1.0, (size_t)len));
@@ -254,21 +254,21 @@ static Value fn_ones(std::vector<Value>& args, Interpreter&) {
 
 // bpf(init, len0, end0 [, len1, end1, ...]) -> NumVal
 // Break-point function: piecewise linear interpolation.
-static Value fn_bpf(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 3) throw Error{"scientific", -1, "bpf: at least 3 arguments: init, len, end"};
+static Value fn_bpf(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 3) throw Error{interp.filename, interp.cur_line(), "bpf: at least 3 arguments: init, len, end"};
     Real init = scalar(args[0], "bpf");
     int  len0 = (int)scalar(args[1], "bpf");
     Real end0 = scalar(args[2], "bpf");
-    if (len0 <= 0) throw Error{"scientific", -1, "bpf: segment length must be positive"};
+    if (len0 <= 0) throw Error{interp.filename, interp.cur_line(), "bpf: segment length must be positive"};
     std::size_t remaining = args.size() - 3;
-    if (remaining % 2 != 0) throw Error{"scientific", -1, "bpf: extra args must be (len, end) pairs"};
+    if (remaining % 2 != 0) throw Error{interp.filename, interp.cur_line(), "bpf: extra args must be (len, end) pairs"};
     BPF<Real> bpf(len0);
     bpf.add_segment(init, len0, end0);
     Real curr = end0;
     for (std::size_t i = 0; i < remaining / 2; ++i) {
         int  seg_len = (int)scalar(args[3 + 2*i],     "bpf");
         Real seg_end =      scalar(args[3 + 2*i + 1], "bpf");
-        if (seg_len <= 0) throw Error{"scientific", -1, "bpf: segment length must be positive"};
+        if (seg_len <= 0) throw Error{interp.filename, interp.cur_line(), "bpf: segment length must be positive"};
         bpf.add_segment(curr, seg_len, seg_end);
         curr = seg_end;
     }
@@ -279,24 +279,24 @@ static Value fn_bpf(std::vector<Value>& args, Interpreter&) {
 
 // ── Matrix decomposition ──────────────────────────────────────────────────────
 
-static Value fn_inv(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "inv: 1 argument required"};
+static Value fn_inv(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "inv: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "inv");
-    if (a.rows() != a.cols()) throw Error{"scientific", -1, "inv: matrix must be square"};
+    if (a.rows() != a.cols()) throw Error{interp.filename, interp.cur_line(), "inv: matrix must be square"};
     return matrix2arr(a.inverse());
 }
 
-static Value fn_det(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "det: 1 argument required"};
+static Value fn_det(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "det: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "det");
-    if (a.rows() != a.cols()) throw Error{"scientific", -1, "det: matrix must be square"};
+    if (a.rows() != a.cols()) throw Error{interp.filename, interp.cur_line(), "det: matrix must be square"};
     return NumVal{a.det()};
 }
 
 // diag(v)  -> diagonal matrix (NumVal -> matrix)
 // diag(M)  -> extract diagonal (matrix -> NumVal)
-static Value fn_diag(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "diag: 1 argument required"};
+static Value fn_diag(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "diag: 1 argument required"};
     if (std::holds_alternative<NumVal>(args[0])) {
         const NumVal& v = std::get<NumVal>(args[0]);
         std::size_t n = v.size();
@@ -313,11 +313,11 @@ static Value fn_diag(std::vector<Value>& args, Interpreter&) {
         for (std::size_t i = 0; i < n; ++i) d[i] = a(i, i);
         return d;
     }
-    throw Error{"scientific", -1, "diag: argument must be vector or matrix"};
+    throw Error{interp.filename, interp.cur_line(), "diag: argument must be vector or matrix"};
 }
 
-static Value fn_rank(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "rank: 1 argument required"};
+static Value fn_rank(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "rank: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "rank");
     Matrix<Real> m = a;
     const std::size_t rows = m.rows(), cols = m.cols();
@@ -343,20 +343,20 @@ static Value fn_rank(std::vector<Value>& args, Interpreter&) {
 }
 
 // solve(A, b) -> x such that A*x = b  (A square, b NumVal)
-static Value fn_solve(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "solve: 2 arguments required (matrix, vector)"};
+static Value fn_solve(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "solve: 2 arguments required (matrix, vector)"};
     Matrix<Real> A = arr2matrix(args[0], "solve");
     const NumVal& b = nvec(args[1], "solve");
     const std::size_t n = A.rows();
-    if (A.cols() != n) throw Error{"scientific", -1, "solve: A must be square"};
-    if (b.size() != n) throw Error{"scientific", -1, "solve: b length must equal number of rows"};
+    if (A.cols() != n) throw Error{interp.filename, interp.cur_line(), "solve: A must be square"};
+    if (b.size() != n) throw Error{interp.filename, interp.cur_line(), "solve: b length must equal number of rows"};
     Matrix<Real> M = A;
     std::valarray<Real> rhs(b), x((Real)0, n);
     const Real eps = 1e-12;
     for (std::size_t k = 0; k < n; ++k) {
         std::size_t piv = k; Real maxv = std::fabs(M(k, k));
         for (std::size_t i = k+1; i < n; ++i) { Real v = std::fabs(M(i,k)); if (v > maxv) { maxv = v; piv = i; } }
-        if (maxv < eps) throw Error{"scientific", -1, "solve: singular matrix"};
+        if (maxv < eps) throw Error{interp.filename, interp.cur_line(), "solve: singular matrix"};
         if (piv != k) { for (std::size_t j = 0; j < n; ++j) std::swap(M(k,j), M(piv,j)); std::swap(rhs[k], rhs[piv]); }
         for (std::size_t i = k+1; i < n; ++i) {
             Real f = M(i,k) / M(k,k);
@@ -373,22 +373,22 @@ static Value fn_solve(std::vector<Value>& args, Interpreter&) {
 }
 
 // matcol(M, j) -> NumVal (column j as vector)
-static Value fn_matcol(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "matcol: 2 arguments required"};
+static Value fn_matcol(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "matcol: 2 arguments required"};
     Matrix<Real> a = arr2matrix(args[0], "matcol");
     int col = (int)scalar(args[1], "matcol");
-    if (col < 0 || col >= (int)a.cols()) throw Error{"scientific", -1, "matcol: column index out of range"};
+    if (col < 0 || col >= (int)a.cols()) throw Error{interp.filename, interp.cur_line(), "matcol: column index out of range"};
     NumVal out(a.rows());
     for (std::size_t i = 0; i < a.rows(); ++i) out[i] = a(i, col);
     return out;
 }
 
 // stack2(x, y) -> n×2 matrix from two NumVals of same length
-static Value fn_stack2(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "stack2: 2 arguments required"};
+static Value fn_stack2(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "stack2: 2 arguments required"};
     const NumVal& x = nvec(args[0], "stack2");
     const NumVal& y = nvec(args[1], "stack2");
-    if (x.size() != y.size()) throw Error{"scientific", -1, "stack2: x and y must have same length"};
+    if (x.size() != y.size()) throw Error{interp.filename, interp.cur_line(), "stack2: x and y must have same length"};
     std::size_t n = x.size();
     Matrix<Real> m(n, 2);
     for (std::size_t i = 0; i < n; ++i) { m(i,0) = x[i]; m(i,1) = y[i]; }
@@ -396,14 +396,14 @@ static Value fn_stack2(std::vector<Value>& args, Interpreter&) {
 }
 
 // hstack(A, B, ...) -> horizontally concatenated matrix
-static Value fn_hstack(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "hstack: at least 2 matrices required"};
+static Value fn_hstack(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "hstack: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "hstack");
     std::size_t rows = a.rows(), total_cols = a.cols();
     std::vector<Matrix<Real>> mats{a};
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> m = arr2matrix(args[i], "hstack");
-        if (m.rows() != rows) throw Error{"scientific", -1, "hstack: row count mismatch"};
+        if (m.rows() != rows) throw Error{interp.filename, interp.cur_line(), "hstack: row count mismatch"};
         total_cols += m.cols(); mats.push_back(m);
     }
     Matrix<Real> out(rows, total_cols);
@@ -418,14 +418,14 @@ static Value fn_hstack(std::vector<Value>& args, Interpreter&) {
 }
 
 // vstack(A, B, ...) -> vertically stacked matrix
-static Value fn_vstack(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2) throw Error{"scientific", -1, "vstack: at least 2 matrices required"};
+static Value fn_vstack(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2) throw Error{interp.filename, interp.cur_line(), "vstack: at least 2 matrices required"};
     Matrix<Real> a = arr2matrix(args[0], "vstack");
     std::size_t cols = a.cols(), total_rows = a.rows();
     std::vector<Matrix<Real>> mats{a};
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<Real> m = arr2matrix(args[i], "vstack");
-        if (m.cols() != cols) throw Error{"scientific", -1, "vstack: column count mismatch"};
+        if (m.cols() != cols) throw Error{interp.filename, interp.cur_line(), "vstack: column count mismatch"};
         total_rows += m.rows(); mats.push_back(m);
     }
     Matrix<Real> out(total_rows, cols);
@@ -442,11 +442,11 @@ static Value fn_vstack(std::vector<Value>& args, Interpreter&) {
 // ── Statistics and filters ────────────────────────────────────────────────────
 
 // median(v, order) -> NumVal: running median filter of given window order
-static Value fn_median(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "median: 2 arguments required (vector, order)"};
+static Value fn_median(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "median: 2 arguments required (vector, order)"};
     const NumVal& v = nvec(args[0], "median");
     int order = (int)scalar(args[1], "median");
-    if (order <= 0) throw Error{"scientific", -1, "median: order must be positive"};
+    if (order <= 0) throw Error{interp.filename, interp.cur_line(), "median: order must be positive"};
     if (v.size() == 0) return NumVal{};
     std::size_t n = v.size();
     NumVal out(n);
@@ -463,14 +463,14 @@ static Value fn_median(std::vector<Value>& args, Interpreter&) {
 }
 
 // linefit(x, y) -> vec(slope, intercept)
-static Value fn_linefit(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "linefit: 2 arguments required"};
+static Value fn_linefit(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "linefit: 2 arguments required"};
     const NumVal& x = nvec(args[0], "linefit");
     const NumVal& y = nvec(args[1], "linefit");
-    if (x.size() != y.size()) throw Error{"scientific", -1, "linefit: x and y must have same size"};
+    if (x.size() != y.size()) throw Error{interp.filename, interp.cur_line(), "linefit: x and y must have same size"};
     LineFit<Real> line;
     std::valarray<Real> xv(x), yv(y);
-    if (!line.fit(xv, yv)) throw Error{"scientific", -1, "linefit: cannot fit (vertical line)"};
+    if (!line.fit(xv, yv)) throw Error{interp.filename, interp.cur_line(), "linefit: cannot fit (vertical line)"};
     Real slope, intercept;
     line.get_params(slope, intercept);
     NumVal r(2); r[0] = slope; r[1] = intercept;
@@ -478,11 +478,11 @@ static Value fn_linefit(std::vector<Value>& args, Interpreter&) {
 }
 
 // norm(v [, p]) -> scalar Lp norm (default L2)
-static Value fn_norm(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 1 || args.size() > 2) throw Error{"scientific", -1, "norm: 1 or 2 arguments"};
+static Value fn_norm(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 1 || args.size() > 2) throw Error{interp.filename, interp.cur_line(), "norm: 1 or 2 arguments"};
     const NumVal& v = nvec(args[0], "norm");
     int p = args.size() == 2 ? (int)scalar(args[1], "norm") : 2;
-    if (p <= 0) throw Error{"scientific", -1, "norm: p must be positive"};
+    if (p <= 0) throw Error{interp.filename, interp.cur_line(), "norm: p must be positive"};
     if (v.size() == 0) return NumVal{0.0};
     Real result = 0;
     if (p == 1) {
@@ -498,13 +498,13 @@ static Value fn_norm(std::vector<Value>& args, Interpreter&) {
 }
 
 // dist(x, y [, p]) -> scalar Lp distance (default L2)
-static Value fn_dist(std::vector<Value>& args, Interpreter&) {
-    if (args.size() < 2 || args.size() > 3) throw Error{"scientific", -1, "dist: 2 or 3 arguments"};
+static Value fn_dist(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() < 2 || args.size() > 3) throw Error{interp.filename, interp.cur_line(), "dist: 2 or 3 arguments"};
     const NumVal& x = nvec(args[0], "dist");
     const NumVal& y = nvec(args[1], "dist");
-    if (x.size() != y.size()) throw Error{"scientific", -1, "dist: x and y must have same length"};
+    if (x.size() != y.size()) throw Error{interp.filename, interp.cur_line(), "dist: x and y must have same length"};
     int p = args.size() == 3 ? (int)scalar(args[2], "dist") : 2;
-    if (p <= 0) throw Error{"scientific", -1, "dist: p must be positive"};
+    if (p <= 0) throw Error{interp.filename, interp.cur_line(), "dist: p must be positive"};
     if (x.size() == 0) return NumVal{0.0};
     Real result = 0;
     if (p == 1) {
@@ -520,8 +520,8 @@ static Value fn_dist(std::vector<Value>& args, Interpreter&) {
 }
 
 // matmean(M, axis) -> NumVal: mean along axis 0 (per column) or 1 (per row)
-static Value fn_matmean(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "matmean: 2 arguments required"};
+static Value fn_matmean(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "matmean: 2 arguments required"};
     Matrix<Real> a = arr2matrix(args[0], "matmean");
     int axis = (int)scalar(args[1], "matmean");
     std::size_t rows = a.rows(), cols = a.cols();
@@ -540,12 +540,12 @@ static Value fn_matmean(std::vector<Value>& args, Interpreter&) {
         }
         return mu;
     }
-    throw Error{"scientific", -1, "matmean: axis must be 0 or 1"};
+    throw Error{interp.filename, interp.cur_line(), "matmean: axis must be 0 or 1"};
 }
 
 // matstd(M, axis) -> NumVal: std dev along axis 0 or 1
-static Value fn_matstd(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "matstd: 2 arguments required"};
+static Value fn_matstd(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "matstd: 2 arguments required"};
     Matrix<Real> a = arr2matrix(args[0], "matstd");
     int axis = (int)scalar(args[1], "matstd");
     std::size_t rows = a.rows(), cols = a.cols();
@@ -574,15 +574,15 @@ static Value fn_matstd(std::vector<Value>& args, Interpreter&) {
         }
         return sigma;
     }
-    throw Error{"scientific", -1, "matstd: axis must be 0 or 1"};
+    throw Error{interp.filename, interp.cur_line(), "matstd: axis must be 0 or 1"};
 }
 
 // cov(M) -> covariance matrix of columns (rows = observations)
-static Value fn_cov(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "cov: 1 argument required"};
+static Value fn_cov(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "cov: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "cov");
     std::size_t n = a.rows(), d = a.cols();
-    if (n < 2) throw Error{"scientific", -1, "cov: need at least 2 rows"};
+    if (n < 2) throw Error{interp.filename, interp.cur_line(), "cov: need at least 2 rows"};
     NumVal mu(d);
     for (std::size_t j = 0; j < d; ++j) { Real s=0; for (std::size_t i=0;i<n;++i) s+=a(i,j); mu[j]=s/n; }
     Matrix<Real> C(d, d, 0);
@@ -603,11 +603,11 @@ static Value fn_cov(std::vector<Value>& args, Interpreter&) {
 }
 
 // corr(M) -> correlation matrix of columns
-static Value fn_corr(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "corr: 1 argument required"};
+static Value fn_corr(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "corr: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "corr");
     std::size_t n = a.rows(), d = a.cols();
-    if (n < 2) throw Error{"scientific", -1, "corr: need at least 2 rows"};
+    if (n < 2) throw Error{interp.filename, interp.cur_line(), "corr: need at least 2 rows"};
     NumVal mu(d), sigma(d);
     for (std::size_t j=0;j<d;++j) {
         Real s=0,s2=0; for (std::size_t i=0;i<n;++i){Real v=a(i,j);s+=v;s2+=v*v;}
@@ -629,8 +629,8 @@ static Value fn_corr(std::vector<Value>& args, Interpreter&) {
 }
 
 // zscore(M) -> column-wise z-score normalized matrix
-static Value fn_zscore(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "zscore: 1 argument required"};
+static Value fn_zscore(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "zscore: 1 argument required"};
     Matrix<Real> a = arr2matrix(args[0], "zscore");
     std::size_t n = a.rows(), d = a.cols();
     if (n == 0 || d == 0) return matrix2arr(a);
@@ -651,11 +651,11 @@ static Value fn_zscore(std::vector<Value>& args, Interpreter&) {
 // ── Machine learning ──────────────────────────────────────────────────────────
 
 // pca(M) -> (d x d+1) matrix: first d cols = eigenvectors, last col = eigenvalues
-static Value fn_pca(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 1) throw Error{"scientific", -1, "pca: 1 argument required"};
+static Value fn_pca(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "pca: 1 argument required"};
     Matrix<Real> X = arr2matrix(args[0], "pca");
     int rows = (int)X.rows(), cols = (int)X.cols();
-    if (rows == 0 || cols == 0) throw Error{"scientific", -1, "pca: empty matrix"};
+    if (rows == 0 || cols == 0) throw Error{interp.filename, interp.cur_line(), "pca: empty matrix"};
     std::vector<Real> data_flat(rows*cols);
     for (int i=0;i<rows;++i) for (int j=0;j<cols;++j) data_flat[i*cols+j]=X(i,j);
     int eig_cols = cols+1;
@@ -669,13 +669,13 @@ static Value fn_pca(std::vector<Value>& args, Interpreter&) {
 // kmeans(M, K) -> [labels_vector, centroids_matrix]
 // labels_vector: NumVal of length n (cluster indices as reals)
 // centroids_matrix: K x m Array-of-Vectors
-static Value fn_kmeans(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 2) throw Error{"scientific", -1, "kmeans: 2 arguments required (matrix, K)"};
+static Value fn_kmeans(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "kmeans: 2 arguments required (matrix, K)"};
     Matrix<Real> X = arr2matrix(args[0], "kmeans");
     int K = (int)scalar(args[1], "kmeans");
     int n = (int)X.rows(), m = (int)X.cols();
-    if (n == 0 || m == 0) throw Error{"scientific", -1, "kmeans: empty matrix"};
-    if (K <= 0 || K > n) throw Error{"scientific", -1, "kmeans: invalid K"};
+    if (n == 0 || m == 0) throw Error{interp.filename, interp.cur_line(), "kmeans: empty matrix"};
+    if (K <= 0 || K > n) throw Error{interp.filename, interp.cur_line(), "kmeans: invalid K"};
     std::vector<Real> data_flat(n*m);
     for (int i=0;i<n;++i) for (int j=0;j<m;++j) data_flat[i*m+j]=X(i,j);
     std::vector<int>  labels_vec(n);
@@ -694,21 +694,21 @@ static Value fn_kmeans(std::vector<Value>& args, Interpreter&) {
 // knn(train_data, K, queries) -> array of label strings
 // train_data: array of [features_vector, label_string] pairs
 // queries: array of NumVals
-static Value fn_knn(std::vector<Value>& args, Interpreter&) {
-    if (args.size() != 3) throw Error{"scientific", -1, "knn: 3 arguments required (train, K, queries)"};
+static Value fn_knn(std::vector<Value>& args, Interpreter& interp) {
+    if (args.size() != 3) throw Error{interp.filename, interp.cur_line(), "knn: 3 arguments required (train, K, queries)"};
     if (!std::holds_alternative<ArrayPtr>(args[0]))
-        throw Error{"scientific", -1, "knn: training data must be an array"};
+        throw Error{interp.filename, interp.cur_line(), "knn: training data must be an array"};
     const auto& train_arr = std::get<ArrayPtr>(args[0])->elems;
     int obs = (int)train_arr.size();
-    if (obs < 1) throw Error{"scientific", -1, "knn: insufficient training data"};
+    if (obs < 1) throw Error{interp.filename, interp.cur_line(), "knn: insufficient training data"};
     int K = (int)scalar(args[1], "knn");
-    if (K < 1 || K > obs) throw Error{"scientific", -1, "knn: invalid K"};
+    if (K < 1 || K > obs) throw Error{interp.filename, interp.cur_line(), "knn: invalid K"};
     // Determine feature dimension from first training sample
     if (!std::holds_alternative<ArrayPtr>(train_arr[0]))
-        throw Error{"scientific", -1, "knn: each training item must be [features, label]"};
+        throw Error{interp.filename, interp.cur_line(), "knn: each training item must be [features, label]"};
     const auto& first = std::get<ArrayPtr>(train_arr[0])->elems;
     if (first.size() != 2 || !std::holds_alternative<NumVal>(first[0]))
-        throw Error{"scientific", -1, "knn: training item[0] must be [NumVec, label]"};
+        throw Error{interp.filename, interp.cur_line(), "knn: training item[0] must be [NumVec, label]"};
     int features = (int)std::get<NumVal>(first[0]).size();
     KNN<Real> knn_model(K, features);
     for (int i = 0; i < obs; ++i) {
@@ -719,7 +719,7 @@ static Value fn_knn(std::vector<Value>& args, Interpreter&) {
         knn_model.addObservation(o);
     }
     if (!std::holds_alternative<ArrayPtr>(args[2]))
-        throw Error{"scientific", -1, "knn: queries must be an array"};
+        throw Error{interp.filename, interp.cur_line(), "knn: queries must be an array"};
     const auto& queries = std::get<ArrayPtr>(args[2])->elems;
     auto out = std::make_shared<Array>();
     for (const auto& q : queries) {

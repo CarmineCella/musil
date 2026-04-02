@@ -40,9 +40,10 @@ install(TARGETS musil
     RUNTIME DESTINATION bin
 )
 
-# Install .scm files into ~/.musil
+# Install .mu files into ~/.musil
 install(FILES
     ${CMAKE_SOURCE_DIR}/src/stdlib.mu
+    ${CMAKE_SOURCE_DIR}/src/scientific.mu
     DESTINATION $ENV{HOME}/.musil
 )
 

@@ -37,6 +37,6 @@ print "isqrt(50)  = " isqrt(50)
 print "--- 5 random numbers in [0,1) ---"
 var i = 0
 while (i < 5) {
-    print rand()
+    print rand(1)
     i = i + 1
 }

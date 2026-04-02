@@ -748,7 +748,6 @@ struct Interpreter {
             load_fn(std::string(std::istreambuf_iterator<char>(f), {}), path);
             return NumVal{0.0};
         }
-
         if (nm=="input") {
             if (a.size() > 1) throw make_err("input: 0 or 1 arg");
             if (a.size() == 1) std::cout << to_str(a[0]) << std::flush;
@@ -779,7 +778,6 @@ struct Interpreter {
             if (pit != procs.end()) return call_user(proc_name, args);
             return call_builtin(proc_name, args);
         }
-        if (nm=="clock") { chk(0); return NumVal{(double)std::clock() / CLOCKS_PER_SEC}; }
         if (nm=="exit")  { chk(1); std::exit((int)d(0)); }
         if (nm=="assert"){
             if (a.size() < 1 || a.size() > 2) throw make_err("assert: 1 or 2 args");
@@ -892,6 +890,7 @@ struct Interpreter {
         if (check(NUM))     return NumVal{std::stod(consume().val)};
         if (check(STR))     return consume().val;
         if (check(LPAREN))  { consume(); Value v=expr(); expect(RPAREN); return v; }
+
         // anonymous proc literal:  proc (params) { body }
         if (check(PROC)) {
             consume();
@@ -912,6 +911,8 @@ struct Interpreter {
             body.push_back({END, ""});
             return std::make_shared<Proc>(Proc{std::move(params), std::move(body)});
         }
+
+        // array literal: [expr, expr, ...]
         if (check(LBRACKET)) {
             consume();
             auto arr = std::make_shared<Array>();
@@ -922,6 +923,7 @@ struct Interpreter {
             expect(RBRACKET);
             return arr;
         }
+
         if (check(IDENT)) {
             std::string n = consume().val;
             if (check(LPAREN)) {
@@ -942,8 +944,16 @@ struct Interpreter {
                 // 3. Builtin
                 return call_builtin(n, args);
             }
-            return get_var(n);
+            // Variable lookup: locals/globals first, then named procs.
+            // Named procs are transparently first-class: passing `f` without ()
+            // returns a ProcVal so it can be stored, passed, or called later.
+            Value* vp = get_var_ptr(n);
+            if (vp) return *vp;
+            auto pit = procs.find(n);
+            if (pit != procs.end()) return std::make_shared<Proc>(pit->second);
+            throw make_err("undefined '" + n + "'");
         }
+
         throw make_err("unexpected in expr '" + T[pos].val + "'");
     }
 };
@@ -964,6 +974,7 @@ struct Environment {
     std::map<std::string, Proc>    procs;
     std::map<std::string, Builtin> builtins;
     std::vector<std::string>       call_stack;    
+    std::vector<std::string>       paths;
 };
 std::string format_error(const Error& e) {
     std::string msg = e.file + ":" + std::to_string(e.line) + ": " + e.msg;

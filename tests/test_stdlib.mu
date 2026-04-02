@@ -42,8 +42,8 @@ assert_eq(fmt_fixed(10, 0),    "10",      "fmt_fixed 0dp")
 assert_eq(fmt_pct(0.752, 1),   "75.2%",   "fmt_pct")
 
 # ── strings ────────────────────────────────────────────────────────────────
-assert_eq(starts_with("musil", "mo"), 1,       "starts_with")
-assert_eq(ends_with("musil", "on"),   1,       "ends_with")
+assert_eq(starts_with("musil", "mu"), 1,       "starts_with")
+assert_eq(ends_with("musil", "il"),   1,       "ends_with")
 assert_eq(trim("  hi  "),    "hi",            "trim")
 assert_eq(repeat_str("ab", 3), "ababab",      "repeat_str")
 assert_eq(count_str("abab", "ab"), 2,         "count_str")

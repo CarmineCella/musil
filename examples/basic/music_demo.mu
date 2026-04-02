@@ -85,7 +85,7 @@ proc hexachord_invert (h) {
         push(out, mod(12 - h[i], 12))    # h[i] is a number — use directly
         i = i + 1
     }
-    return arr_sort(out)
+    return sorted(out)
 }
 
 proc hexachord_transpose (h, t) {
@@ -96,7 +96,7 @@ proc hexachord_transpose (h, t) {
         push(out, mod(h[i] + t, 12))     # h[i] is a number — use directly
         i = i + 1
     }
-    return arr_sort(out)
+    return sorted(out)
 }
 
 proc print_hex (name, h) {
