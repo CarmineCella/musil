@@ -1,7 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Moon v5 — Complete Language Reference
-#  Run: ./moon reference.moon
-#  All features demonstrated with working examples and printed output.
+#  Moon — Language Reference
 # ═══════════════════════════════════════════════════════════════════════════════
 
 load("stdlib.moon")   # math, string, array utilities

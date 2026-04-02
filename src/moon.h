@@ -1,4 +1,6 @@
-// moon.h  — v5: numeric vectors (valarray), eval, apply, shuffle, exec, call traces
+// moon.h 
+//
+
 #ifndef MOON_H
 #define MOON_H
 
@@ -18,45 +20,26 @@
 #include <cstdlib>
 #include <stdexcept>
 
-// ── Error ─────────────────────────────────────────────────────────────────────
-
 struct Error {
     std::string file;
     int line;
     std::string msg;
     std::vector<std::string> trace;   // proc call stack at point of error
 };
-
-// Proc forward-declared here so ProcVal = shared_ptr<Proc> compiles;
-// full definition appears after Token/lex (body needs vector<Token>).
 struct Proc;
-
-// ── Value ─────────────────────────────────────────────────────────────────────
-// Four types:
-//   NumVal   — std::valarray<double>  (scalar = size 1, vector = size > 1)
-//   string   — text
-//   ArrayPtr — shared heterogeneous array (the [] type)
-//   ProcVal  — first-class proc (shared, no closure — sees globals only)
-
 using NumVal   = std::valarray<double>;
 struct MoonArray;
 struct Proc;                              // forward declaration
 using ArrayPtr = std::shared_ptr<MoonArray>;
 using ProcVal  = std::shared_ptr<Proc>;
 using Value    = std::variant<NumVal, std::string, ArrayPtr, ProcVal>;
-
 struct MoonArray { std::vector<Value> elems; };
-
-// ── Helpers (to_str/to_bool defined after Proc is complete — see below) ──────
 
 inline double nv_scalar(const NumVal& v) { return v[0]; }
 inline bool   nv_is_scalar(const NumVal& v) { return v.size() == 1; }
-
 std::string to_str(const Value& v);   // forward declaration — defined after Proc
 double to_bool(const Value& v);       // forward declaration — defined after Proc
 bool values_equal(const Value& a, const Value& b);  // forward declaration
-
-// ── Tokens ────────────────────────────────────────────────────────────────────
 
 enum TK {
     NUM, STR, IDENT,
@@ -67,7 +50,6 @@ enum TK {
     LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET, COMMA, END
 };
 struct Token { TK type; std::string val; int line = 1; };
-
 std::vector<Token> lex(const std::string& src, const std::string& filename = "<stdin>") {
     std::vector<Token> toks;
     size_t i = 0, n = src.size(); int line = 1;
@@ -98,6 +80,14 @@ std::vector<Token> lex(const std::string& src, const std::string& filename = "<s
                     has_dot = true;
                 }
                 s += src[i++];
+            }
+            // optional exponent: e/E followed by optional +/- and digits  (e.g. 1e-10, 2.5E3)
+            if (i < n && (src[i] == 'e' || src[i] == 'E')) {
+                s += src[i++];
+                if (i < n && (src[i] == '+' || src[i] == '-')) s += src[i++];
+                if (i >= n || !isdigit((unsigned char)src[i]))
+                    throw Error{filename, line, "malformed number '" + s + "'"  , {}};
+                while (i < n && isdigit((unsigned char)src[i])) s += src[i++];
             }
             toks.push_back({NUM, s, line}); continue;
         }
@@ -131,18 +121,12 @@ std::vector<Token> lex(const std::string& src, const std::string& filename = "<s
     toks.push_back({END, "", line}); return toks;
 }
 
-// ── Signals ───────────────────────────────────────────────────────────────────
-
 struct ReturnSignal { Value val; };
 struct BreakSignal  {};
-
-// Full Proc definition (body needs Token, which is now defined)
 struct Proc {
     std::vector<std::string> params;
     std::vector<Token>       body;
 };
-
-// ── Helper definitions (Proc now complete) ────────────────────────────────────
 
 std::string to_str(const Value& v) {
     if (auto* nv = std::get_if<NumVal>(&v)) {
@@ -172,14 +156,12 @@ std::string to_str(const Value& v) {
     }
     return r + "]";
 }
-
 double to_bool(const Value& v) {
     if (auto* nv = std::get_if<NumVal>(&v))    return nv->size() > 0 && (*nv)[0] != 0.0 ? 1.0 : 0.0;
     if (auto* s = std::get_if<std::string>(&v)) return s->empty() ? 0.0 : 1.0;
     if (std::holds_alternative<ProcVal>(v))     return 1.0;
     return std::get<ArrayPtr>(v)->elems.empty() ? 0.0 : 1.0;
 }
-
 bool values_equal(const Value& a, const Value& b) {
     if (a.index() != b.index()) return false;
     if (auto* na = std::get_if<NumVal>(&a)) {
@@ -194,13 +176,8 @@ bool values_equal(const Value& a, const Value& b) {
     return std::get<ArrayPtr>(a) == std::get<ArrayPtr>(b);
 }
 
-// ── Builtin type (forward-declare Interpreter) ────────────────────────────────
-
 struct Interpreter;
 using Builtin = std::function<Value(std::vector<Value>&, Interpreter&)>;
-
-// ── Interpreter ───────────────────────────────────────────────────────────────
-
 struct Interpreter {
     std::vector<Token>              T;
     size_t                          pos = 0;
@@ -223,14 +200,11 @@ struct Interpreter {
     int cur_line() { return T[pos].line; }
     Error make_err(const std::string& msg) { return Error{filename, cur_line(), msg, call_stack}; }
 
-    // ── Variable scoping ─────────────────────────────────────────────────────
-
     Value get_var(const std::string& n) {
         auto it = locals.find(n);   if (it != locals.end())  return it->second;
         auto it2 = globals.find(n); if (it2 != globals.end()) return it2->second;
         throw make_err("undefined '" + n + "'");
     }
-    // Returns pointer to the storage location of a variable (for in-place mutation)
     Value* get_var_ptr(const std::string& n) {
         auto it = locals.find(n);   if (it != locals.end())  return &it->second;
         auto it2 = globals.find(n); if (it2 != globals.end()) return &it2->second;
@@ -245,9 +219,6 @@ struct Interpreter {
         if (in_proc) locals[n] = std::move(v); else globals[n] = std::move(v);
     }
 
-    // ── Numeric vector helpers ────────────────────────────────────────────────
-
-    // Element-wise binary op with broadcasting (scalar extends to match vector)
     NumVal nv_binop(const NumVal& a, const NumVal& b, char op) {
         size_t sa = a.size(), sb = b.size();
         if (sa == sb) {
@@ -272,8 +243,6 @@ struct Interpreter {
         throw make_err("vector size mismatch: " + std::to_string(sa) + " vs " + std::to_string(sb));
         return {};
     }
-
-    // Element-wise comparison, returns NumVal of 0.0/1.0
     NumVal nv_cmp(const NumVal& a, const NumVal& b, TK op) {
         size_t sa = a.size(), sb = b.size();
         size_t sz = std::max(sa, sb);
@@ -294,8 +263,6 @@ struct Interpreter {
         }
         return r;
     }
-
-    // Apply a scalar math function element-wise to a NumVal
     NumVal nv_apply(const NumVal& v, double(*f)(double)) {
         NumVal r(v.size());
         for (size_t i = 0; i < v.size(); i++) r[i] = f(v[i]);
@@ -312,10 +279,7 @@ struct Interpreter {
         return r;
     }
 
-    // ── Statements ───────────────────────────────────────────────────────────
-
     void run() { while (!check(END)) stmt(); }
-
     void stmt() {
         if (check(VAR)) {
             consume(); std::string n = expect(IDENT).val; expect(ASSIGN); decl_var(n, expr());
@@ -335,7 +299,6 @@ struct Interpreter {
         else if (!check(RBRACE) && !check(END))
             throw make_err("unexpected '" + T[pos].val + "'");
     }
-
     void indexed_assign() {
         std::string n = consume().val;
         expect(LBRACKET); Value idx = expr(); expect(RBRACKET);
@@ -368,7 +331,6 @@ struct Interpreter {
             throw make_err("cannot index into '" + n + "'");
         }
     }
-
     int checked_arr_index(const ArrayPtr& ap, const Value& idx, const std::string& name) {
         int i = (int)nv_scalar(std::get<NumVal>(idx));
         if (i < 0) i += (int)ap->elems.size();
@@ -376,7 +338,6 @@ struct Interpreter {
             throw make_err("index " + std::to_string(i) + " out of bounds for '" + name + "'");
         return i;
     }
-
     void proc_decl() {
         consume(); std::string name = expect(IDENT).val;
         expect(LPAREN);
@@ -396,7 +357,6 @@ struct Interpreter {
         body.push_back({END, ""});
         procs[name] = {params, std::move(body)};
     }
-
     void run_block() {
         expect(LBRACE);
         try { while (!check(RBRACE) && !check(END)) stmt(); }
@@ -419,7 +379,6 @@ struct Interpreter {
             pos++;
         }
     }
-
     void if_stmt() {
         consume();
         expect(LPAREN); bool taken = to_bool(expr()) != 0.0; expect(RPAREN);
@@ -435,7 +394,6 @@ struct Interpreter {
             }
         }
     }
-
     void while_stmt() {
         consume(); size_t cond = pos;
         while (true) {
@@ -445,7 +403,6 @@ struct Interpreter {
             try { run_block(); } catch (BreakSignal&) { break; }
         }
     }
-
     void for_stmt() {
         consume(); expect(LPAREN); expect(VAR);
         std::string var_name = expect(IDENT).val;
@@ -485,7 +442,6 @@ struct Interpreter {
             throw make_err("'for in' requires number, array, or string");
         }
     }
-
     void print_stmt() {
         int pl = T[pos].line; consume();
         std::string out;
@@ -497,8 +453,6 @@ struct Interpreter {
             out += to_str(expr());
         std::cout << out << "\n";
     }
-
-    // ── Proc call ─────────────────────────────────────────────────────────────
 
     Value call_user(const std::string& name, std::vector<Value> args) {
         auto& p = procs.at(name);
@@ -520,8 +474,6 @@ struct Interpreter {
         call_stack.pop_back();
         return result;
     }
-
-    // Call a first-class proc value — same as call_user but takes the Proc directly
     Value call_procval(const ProcVal& pv, std::vector<Value> args, const std::string& label = "<proc>") {
         if (args.size() != pv->params.size())
             throw make_err("arity mismatch: expected " + std::to_string(pv->params.size()) + " args");
@@ -540,7 +492,6 @@ struct Interpreter {
         call_stack.pop_back();
         return result;
     }
-
     Value call_builtin(const std::string& nm, std::vector<Value>& a) {
         // user-registered functions take priority
         auto it = builtins.find(nm);
@@ -567,7 +518,6 @@ struct Interpreter {
                 throw make_err(fn + ": argument must be an array");
         };
 
-        // ── math (all element-wise on NumVal) ─────────────────────────────────
         if (nm=="floor") { chk(1); return nv_apply(nv(0), std::floor); }
         if (nm=="ceil")  { chk(1); return nv_apply(nv(0), std::ceil);  }
         if (nm=="abs")   { chk(1); return nv_apply(nv(0), std::abs);   }
@@ -582,14 +532,11 @@ struct Interpreter {
         if (nm=="pow")   { chk(2); return nv_apply2(nv(0), nv(1), std::pow); }
         if (nm=="rand")  { chk(0); return NumVal{(double)std::rand() / RAND_MAX}; }
 
-        // ── numeric vector constructors ────────────────────────────────────────
-        // vec(a, b, c, ...) — create a numeric vector from scalar args
         if (nm=="vec") {
             NumVal r(a.size());
             for (size_t i = 0; i < a.size(); i++) r[i] = nv_scalar(std::get<NumVal>(a[i]));
             return r;
         }
-        // linspace(lo, hi, n) — n evenly spaced values in [lo, hi]
         if (nm=="linspace") {
             chk(3); double lo=d(0), hi=d(1); int n=(int)d(2);
             if (n <= 0) return NumVal{};
@@ -600,8 +547,6 @@ struct Interpreter {
         }
         if (nm=="zeros")  { chk(1); return NumVal((size_t)d(0)); }         // zero-filled
         if (nm=="ones")   { chk(1); return NumVal(1.0, (size_t)d(0)); }    // one-filled
-
-        // ── numeric vector operations ─────────────────────────────────────────
         if (nm=="sum") {
             chk(1);
             if (!std::holds_alternative<NumVal>(a[0]))
@@ -624,7 +569,7 @@ struct Interpreter {
             for (size_t i = 0; i < v.size(); i++) if (v[i] != 0.0) return NumVal{1.0};
             return NumVal{0.0};
         }
-        // to_vec(array_of_numbers) — convert numeric array to vector
+
         if (nm=="to_vec") {
             chk(1); chk_arr(0, "to_vec");
             const auto& el = ap(0)->elems;
@@ -636,7 +581,6 @@ struct Interpreter {
             }
             return r;
         }
-        // to_arr(vector) — convert numeric vector to array of numbers
         if (nm=="to_arr") {
             chk(1);
             if (!std::holds_alternative<NumVal>(a[0]))
@@ -647,8 +591,6 @@ struct Interpreter {
             for (size_t i = 0; i < v.size(); i++) r->elems.push_back(NumVal{v[i]});
             return r;
         }
-
-        // ── len: works on string, array, and numeric vector ───────────────────
         if (nm=="len") {
             chk(1);
             if (std::holds_alternative<ArrayPtr>(a[0])) return NumVal{(double)ap(0)->elems.size()};
@@ -656,7 +598,6 @@ struct Interpreter {
             return NumVal{(double)sv(0).size()};
         }
 
-        // ── string ────────────────────────────────────────────────────────────
         if (nm=="sub")  {
             chk(3); auto s=sv(0); int lo=(int)d(1), hi=(int)d(2);
             if (lo<0) lo=0; if (hi>(int)s.size()) hi=(int)s.size();
@@ -686,7 +627,6 @@ struct Interpreter {
             return std::string{"array"};
         }
 
-        // ── array ─────────────────────────────────────────────────────────────
         if (nm=="arr") {
             auto a_ = std::make_shared<MoonArray>();
             if (a.empty()) return a_;
@@ -784,7 +724,6 @@ struct Interpreter {
             return r;
         }
 
-        // ── file I/O ──────────────────────────────────────────────────────────
         if (nm=="read") {
             chk(1); std::ifstream f(sv(0));
             if (!f) throw make_err("read: can't open '" + sv(0) + "'");
@@ -813,7 +752,6 @@ struct Interpreter {
             return NumVal{0.0};
         }
 
-        // ── interactive, eval, exec ───────────────────────────────────────────
         if (nm=="input") {
             if (a.size() > 1) throw make_err("input: 0 or 1 arg");
             if (a.size() == 1) std::cout << to_str(a[0]) << std::flush;
@@ -857,9 +795,6 @@ struct Interpreter {
 
         throw make_err("undefined '" + nm + "'");
     }
-
-    // ── Expression grammar ────────────────────────────────────────────────────
-    // or > and > not > cmp > add > mul > unary > index > atom
 
     Value expr()     { return or_expr(); }
     Value or_expr()  {
@@ -1016,8 +951,6 @@ struct Interpreter {
     }
 };
 
-// ── Environment ───────────────────────────────────────────────────────────────
-
 struct Environment {
     std::map<std::string, Value>   globals;
     std::map<std::string, Proc>    procs;
@@ -1027,7 +960,6 @@ struct Environment {
     void register_builtin(const std::string& name, Builtin fn) {
         builtins[name] = std::move(fn);
     }
-
     void exec(const std::string& src, const std::string& filename = "<stdin>") {
         auto toks = lex(src, filename);
         Interpreter interp{std::move(toks), 0, globals, {}, procs, builtins,
@@ -1036,9 +968,6 @@ struct Environment {
         interp.run();
     }
 };
-
-// ── REPL / error formatting ───────────────────────────────────────────────────
-
 std::string format_error(const Error& e) {
     std::string msg = e.file + ":" + std::to_string(e.line) + ": " + e.msg;
     if (!e.trace.empty()) {
@@ -1048,7 +977,6 @@ std::string format_error(const Error& e) {
     }
     return msg;
 }
-
 int brace_depth(const std::string& s) {
     int d = 0; bool in_str = false;
     for (char c : s) {
@@ -1057,11 +985,10 @@ int brace_depth(const std::string& s) {
     }
     return d;
 }
-
 void repl(Environment& env) {
     std::string buf; int depth = 0;
     while (true) {
-        std::cout << (depth==0 ? "> " : ".. ") << std::flush;
+        std::cout << (depth==0 ? ">> " : ".. ") << std::flush;
         std::string line;
         if (!std::getline(std::cin, line)) { std::cout << "\n"; break; }
         depth += brace_depth(line);

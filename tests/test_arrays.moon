@@ -286,20 +286,20 @@ assert_eq(type(nested[0]), "array",  "mixed: element type is array")
 assert_eq(nested[1][0],    3,        "mixed: nested read correct")
 
 var data = [4, 7, 2, 9, 1, 5, 8, 3, 6]
-assert_eq(arr_sum(data),   45, "algo: sum of [4..9]")
-assert_eq(arr_max(data),    9, "algo: max")
-assert_eq(arr_min(data),    1, "algo: min")
-assert_eq(arr_sum(range(1,101)), 5050, "algo: sum 1..100 via range")
+assert_eq(total(data),   45, "algo: sum of [4..9]")
+assert_eq(maximum(data),    9, "algo: max")
+assert_eq(minimum(data),    1, "algo: min")
+assert_eq(total(range(1,101)), 5050, "algo: sum 1..100 via range")
 
-var rev = arr_reverse(data)
+var rev = reversed(data)
 assert_eq(rev[0],    6, "algo: reverse first element")
 assert_eq(rev[8],    4, "algo: reverse last element")
 assert_eq(data[0],   4, "algo: reverse did not modify original")
 
-assert_eq(arr_contains(data, 7), 1, "algo: contains (present)")
-assert_eq(arr_contains(data, 0), 0, "algo: contains (absent)")
+assert_eq(contains(data, 7), 1, "algo: contains (present)")
+assert_eq(contains(data, 0), 0, "algo: contains (absent)")
 
-var sorted = arr_sort(data)
+var sorted = sorted(data)
 assert_eq(sorted[0],   1, "algo: sort first")
 assert_eq(sorted[4],   5, "algo: sort middle")
 assert_eq(sorted[8],   9, "algo: sort last")
