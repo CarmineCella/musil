@@ -45,6 +45,7 @@ install(FILES
     ${CMAKE_SOURCE_DIR}/src/stdlib.mu
     ${CMAKE_SOURCE_DIR}/src/scientific.mu
     ${CMAKE_SOURCE_DIR}/src/signals.mu
+    ${CMAKE_SOURCE_DIR}/src/plotting.mu
     DESTINATION $ENV{HOME}/.musil
 )
 

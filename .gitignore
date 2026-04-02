@@ -8,3 +8,5 @@ docs/*.toc
 docs/*.fls
 docs/*.fdb_latexmk
 examples/signals/*.wav
+examples/plotting/*.svg
+tests/*.wav
