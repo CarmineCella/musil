@@ -733,7 +733,6 @@ struct Interpreter {
             auto r = std::make_shared<Array>();
             for (auto& [k, _] : globals) r->elems.push_back(k);
             for (auto& [k, _] : procs) r->elems.push_back(k);
-            for (auto& [k, _] : builtins) r->elems.push_back(k);
             return r;
         }
 

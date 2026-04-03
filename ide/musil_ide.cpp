@@ -530,36 +530,20 @@ const int N_STYLES = sizeof(styletable) / sizeof(styletable[0]);
 static const char* musil_builtin_keywords[] = {
     // Language keywords
     "var", "proc", "if", "else", "while", "for", "in",
-    "return", "break", "and", "or", "not", "print", "load",
+    "return", "break", "and", "or", "not", "print", 
     // Builtins
     "abs", "asc", "append", "apply",
     "arr", "ceil", "char", "clock", "concat", "copy",
     "cos", "eval", "exec", "exit", "exp",
     "filter", "find", "floor",
     "input", "join", "keys", "len",
-    "linspace", "log", "log2", "lower",
+    "linspace", "load", "log", "log2", "lower",
     "map", "num", "ones", "pop", "pow",
     "push", "rand", "range", "read",
     "reduce", "remove", "shuffle", "sin", "slice",
     "split", "sqrt", "str", "sub", "sum",
     "tan", "to_arr", "to_vec", "type", "upper",
-    "vec", "write", "zeros",
-    // stdlib constants
-    "PI", "TAU", "E", "PHI", "LN2", "SQRT2",
-    // stdlib functions
-    "between", "clamp", "contains", "cov_from_zscore",
-    "count_str", "deg2rad", "dot", "ends_with",
-    "even", "flatten", "fmt_fixed", "fmt_pct",
-    "gcd", "hypot", "index_of", "ipow",
-    "lcm", "lerp", "ltrim", "map_range",
-    "maximum", "mean", "minimum", "mod",
-    "normalize", "odd", "pad_left", "pad_right",
-    "rad2deg", "repeat_str", "replace", "reversed",
-    "round", "round_to", "rtrim", "sign",
-    "sorted", "standardize", "starts_with", "stdev",
-    "total", "trim", "zip",
-    // test framework
-    "assert", "assert_eq", "assert_near", "test_summary"
+    "vec", "write", "zeros"
 };
 const int N_BUILTIN_KEYWORDS =
     sizeof(musil_builtin_keywords) / sizeof(musil_builtin_keywords[0]);
@@ -701,7 +685,8 @@ void update_keywords_from_env_and_browser() {
     }
     for (const auto& kv : musil_env.procs)
         procs_list.push_back(kv.first);
-    for (const auto& kv : musil_env.globals)
+    
+        for (const auto& kv : musil_env.globals)
         globals_list.push_back(kv.first);
 
     std::sort(builtins_list.begin(), builtins_list.end());
@@ -710,6 +695,13 @@ void update_keywords_from_env_and_browser() {
 
     app_var_browser->clear();
     app_var_browser->format_char('@');
+
+    auto add_master_header = [&](const char* title) {
+        std::ostringstream oss;
+        oss << "@B" << (int)FL_BLUE << "@C" << (int)FL_WHITE << " " << title;
+        app_var_browser->add(oss.str().c_str());
+        g_browser_symbols.push_back("");  // header → non-clickable
+    };
 
     auto add_header = [&](const char* title) {
         std::ostringstream oss;
@@ -726,6 +718,8 @@ void update_keywords_from_env_and_browser() {
         g_env_symbols.push_back(name);
     };
 
+    add_master_header("Environment");
+
     if (!globals_list.empty()) {
         add_header("Variables");
         for (const auto& n : globals_list) add_entry(n, FL_DARK_GREEN);
@@ -734,9 +728,9 @@ void update_keywords_from_env_and_browser() {
         add_header("Procs");
         for (const auto& n : procs_list)  add_entry(n, FL_BLUE);
     }
-    if (!builtins_list.empty()) {
-        add_header("Builtins");
-        for (const auto& n : builtins_list) add_entry(n, FL_DARK_BLUE);
+
+    if (!builtins_list.empty()) { // not displayed in the browser but still added to env symbols for autocomplete
+        for (const auto& n : builtins_list) g_env_symbols.push_back(n);
     }
 
     app_var_browser->redraw();
