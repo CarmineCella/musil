@@ -1,4 +1,4 @@
-# src/CMakeLists.txt
+# cli/CMakeLists.txt
 #
 # Command-line Musil interpreter.
 

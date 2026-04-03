@@ -11,7 +11,7 @@
 
 using namespace std;
 
-int main(int argc, char* argv[]) {
+int main (int argc, char* argv[]) {
     std::srand(time (NULL));
     Environment interpreter;
 
@@ -19,30 +19,48 @@ int main(int argc, char* argv[]) {
     add_system(interpreter);
     add_signals(interpreter);
     add_plotting(interpreter);
+	try {
+		bool interactive = false;
+		int opt = 0;
+		while ((opt = getopt(argc, argv, "i")) != -1) {
+		    switch (opt) {
+		    case 'i': interactive = true; break;
+		    default:
+		        std::stringstream msg;
+		        msg << "usage is " << argv[0] << " [-i] [file...]";
+		        throw runtime_error (msg.str ());
+		    }
+		}
+		if (argc - optind == 0) {
+			cout << BOLDBLUE << "[musil, version "
+				<< VERSION <<"]" << RESET << endl << endl;
 
-    if (argc == 1) {
-        cout << "[musil, v" << VERSION << "]" << endl << endl;
-        cout << "(c) 2026 by Carmine-Emanuele Cella" << endl << endl;
-        repl(interpreter);
-        return 0;
-    }
-    for (int a=1; a<argc; a++) {
-        std::ifstream f(argv[a]);
-        if (!f) {
-            std::cerr << "cannot open '" << argv[a] << "'\n";
-            return 1;
-        }
-        std::string src(std::istreambuf_iterator<char>(f), {});
-        try   {
-            interpreter.exec(src, argv[a]);
-        } catch (Error& e) {
-            std::cerr << "error: " << e.file << ":" << e.line << ": " << e.msg << "\n";
-            return 1;
-        } catch (std::exception& e) {
-            std::cerr << "error: " << e.what() << "\n";
-            return 1;
-        }
-    }
+			cout << "music scripting language" << endl;
+			cout << "(c) " << COPYRIGHT << ", www.carminecella.com" << endl << endl;
+
+			repl(interpreter);
+		} else {
+			for (int i = optind; i < argc; ++i) {
+                std::ifstream f(argv[i]);
+                if (!f) {
+                    std::cerr << "cannot open '" << argv[i] << "'\n";
+                    return 1;
+                }
+                std::string src(std::istreambuf_iterator<char>(f), {});
+                interpreter.exec(src, argv[i]);
+			}
+			if (interactive) repl(interpreter);
+		}
+    } catch (Error& e) {
+        std::cerr <<  RED << format_error(e) << RESET  << endl;
+        return 1;
+    } catch (std::exception& e) {
+        std::cerr <<  RED << "error: " << e.what() << RESET  << endl;
+        return 1;
+	} catch (...) {
+		cerr << RED << "fatal unknown error" << RESET << endl;
+	}
+	
+	return 0;
 }
-
 // eof

@@ -58,4 +58,20 @@ if(EXISTS "${PREFIX}/bin/musil")
     file(REMOVE "${PREFIX}/bin/musil")
 endif()
 
+
+# ------------------------------------------------------------------------------
+# 4. Remove Musil IDE.app on macOS
+# ------------------------------------------------------------------------------
+
+if(APPLE)
+    set(MUSIL_APP "/Applications/Musil IDE.app")
+    if(EXISTS "${MUSIL_APP}")
+        message(STATUS "Removing application bundle: ${MUSIL_APP}")
+        file(REMOVE_RECURSE "${MUSIL_APP}")
+    else()
+        message(STATUS "Musil IDE.app not found in /Applications")
+    endif()
+endif()
+
+
 message(STATUS "Musil uninstall completed.")

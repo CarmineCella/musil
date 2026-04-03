@@ -6,9 +6,15 @@ project(musil LANGUAGES CXX)
 add_compile_definitions(VERSION="0.5")
 add_compile_definitions(COPYRIGHT="2026")
 
+# Options
+option(BUILD_MUSIL_IDE "Build Musil FLTK-based IDE" OFF)
 
 # Subdirectories
 add_subdirectory(cli)
+
+if(BUILD_MUSIL_IDE)
+    add_subdirectory(ide)
+endif()
 
 # ------------------------------------------------------------------------------
 # Uninstall target

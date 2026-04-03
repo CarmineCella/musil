@@ -20,6 +20,10 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#define BOLDBLUE    "\033[1m\033[34m"
+#define RED     	"\033[31m" 
+#define RESET   	"\033[0m"
+
 struct Error {
     std::string file;
     int line;
@@ -1005,7 +1009,7 @@ void repl(Environment& env) {
             depth = 0;
             if (buf.find_first_not_of(" \t\n") != std::string::npos) {
                 try { env.exec(buf, "<stdin>"); }
-                catch (Error& e)         { std::cerr << format_error(e) << "\n"; }
+                catch (Error& e)         { std::cerr << RED << format_error(e) <<  RESET << "\n"; }
                 catch (std::exception& e){ std::cerr << "error: " << e.what() << "\n"; }
             }
             buf.clear();
