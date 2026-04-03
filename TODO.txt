@@ -7,11 +7,11 @@ v0.6
 - check/improve speed for vector calculations
 - signals: add sparkle (pvoc), pconv 
 - music library: orchestrate, mp, soundtypes, granular orchestrate, symbolic composition system (notes, midi in and out, musicxml out, algorithmic gen)
+- add paths for IDE or find solution
 
 v0.51
 - graphic plots for IDE *
 - add yield function for IDE + stop function *
-- add paths for IDE or find solution
 - tab size = 4 *
 
 v0.5
