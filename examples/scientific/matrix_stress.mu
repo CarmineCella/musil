@@ -1,10 +1,14 @@
-print "matrix multiplication test..."
+print "matrix stress test..."
 
 var a = rand (1000, 1000)
 var b = rand (1000, 1000)
 
-#matdisp (matmul (a, b))
+matmul (a, b)
+hadamard (a, b)
 
-matdisp (hadamard (a, b))
+matadd (a, b)
+
+matshift (a, 3)
+matscale (b, 10)
 
 print "done"

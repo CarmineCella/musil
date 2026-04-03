@@ -3,7 +3,7 @@ Musil - TODO list
 -----------------
 
 v0.6
-- add yield function for IDE + stop function
+- add yield function for IDE + stop function *
 - add paths for IDE
 - graphic plots for IDE
 - check/improve speed for vector calculations

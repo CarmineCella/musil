@@ -873,12 +873,45 @@ struct Interpreter {
     }
     Value add() {
         Value l = mul();
-        while (check(PLUS)||check(MINUS)) {
-            bool plus = consume().type==PLUS; Value r = mul();
-            if (plus && (std::holds_alternative<std::string>(l) || std::holds_alternative<std::string>(r)))
-                l = to_str(l) + to_str(r);
-            else if (plus) l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '+');
-            else           l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '-');
+        while (check(PLUS) || check(MINUS)) {
+            bool plus = consume().type == PLUS;
+            Value r = mul();
+            // ---- string concatenation ----
+            if (plus &&
+                (std::holds_alternative<std::string>(l) ||
+                std::holds_alternative<std::string>(r))) {
+                // forbid matrix in string concatenation
+                if (std::holds_alternative<ArrayPtr>(l) ||
+                    std::holds_alternative<ArrayPtr>(r)) {
+                    throw make_err("operator '+': cannot concatenate matrices to string");
+                }
+                std::string ls = to_str(l);
+                std::string rs = to_str(r);
+                l = ls + rs;
+                continue;
+            }
+            // ---- numeric/vector arithmetic ----
+            if (std::holds_alternative<NumVal>(l) &&
+                std::holds_alternative<NumVal>(r)) {
+                if (plus) l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '+');
+                else      l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '-');
+                continue;
+            }
+            // ---- matrix misuse ----
+            if (std::holds_alternative<ArrayPtr>(l) ||
+                std::holds_alternative<ArrayPtr>(r)) {
+                throw make_err(
+                    plus
+                    ? "operator '+': not defined for matrices; use matadd(A, B) or matshift(A, s)"
+                    : "operator '-': not defined for matrices; use matsub(A, B) or matshift(A, -s)"
+                );
+            }
+            // ---- generic error ----
+            throw make_err(
+                plus
+                ? "operator '+': invalid operand types"
+                : "operator '-': invalid operand types"
+            );
         }
         return l;
     }
@@ -897,7 +930,6 @@ struct Interpreter {
                         : "operator '/': not defined for matrices"
                     );
                 }
-
                 throw make_err(
                     star
                     ? "operator '*': invalid operand types"
@@ -1021,6 +1053,8 @@ struct Interpreter {
     }
 };
 
+
+static inline void sig_yield(Interpreter& I) { I.maybe_yield(); }
 struct Environment {
     void register_builtin(const std::string& name, Builtin fn) {
         builtins[name] = std::move(fn);

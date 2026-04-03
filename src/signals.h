@@ -12,8 +12,6 @@
 
 using Real = double;
 
-// IDE / host yield hook for long-running signal builtins.
-static inline void sig_yield(Interpreter& I) { I.maybe_yield(); }
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
 
@@ -222,6 +220,8 @@ static Value fn_car2pol(std::vector<Value>& args, Interpreter& I) {
     if (args.size() != 1)
         throw Error{I.filename, I.cur_line(), "car2pol: 1 argument required"};
     NumVal spec = std::get<NumVal>(args[0]);
+    if (spec.size() % 2 != 0)
+        throw Error{I.filename, I.cur_line(), "car2pol: spectrum length must be even"};
     rect2pol(&spec[0], (int)spec.size() / 2);
     return spec;
 }
@@ -230,6 +230,8 @@ static Value fn_pol2car(std::vector<Value>& args, Interpreter& I) {
     if (args.size() != 1)
         throw Error{I.filename, I.cur_line(), "pol2car: 1 argument required"};
     NumVal spec = std::get<NumVal>(args[0]);
+    if (spec.size() % 2 != 0)
+        throw Error{I.filename, I.cur_line(), "pol2car: spectrum length must be even"};
     pol2rect(&spec[0], (int)spec.size() / 2);
     return spec;
 }
@@ -306,6 +308,8 @@ static Value fn_speccent(std::vector<Value>& args, Interpreter& I) {
     if (args.size() != 2) throw Error{I.filename, I.cur_line(), "speccent: 2 args required (amps, freqs)"};
     const NumVal& amps = sig_nvec(args[0], "speccent");
     const NumVal& freqs = sig_nvec(args[1], "speccent");
+    if (amps.size() != freqs.size())
+        throw Error{I.filename, I.cur_line(), "speccent: amps and freqs must have same length"};
     return NumVal{speccentr<Real>(&amps[0], &freqs[0], (int)amps.size())};
 }
 static Value fn_specspread(std::vector<Value>& args, Interpreter& I) {
@@ -313,6 +317,8 @@ static Value fn_specspread(std::vector<Value>& args, Interpreter& I) {
     const NumVal& amps = sig_nvec(args[0], "specspread");
     const NumVal& freqs = sig_nvec(args[1], "specspread");
     Real centroid = sig_scalar(args[2], "specspread");
+    if (amps.size() != freqs.size())
+        throw Error{I.filename, I.cur_line(), "specspread: amps and freqs must have same length"};
     return NumVal{specspread<Real>(&amps[0], &freqs[0], centroid, (int)amps.size())};
 }
 static Value fn_specskew(std::vector<Value>& args, Interpreter& I) {
@@ -321,6 +327,8 @@ static Value fn_specskew(std::vector<Value>& args, Interpreter& I) {
     const NumVal& freqs = sig_nvec(args[1], "specskew");
     Real centroid = sig_scalar(args[2], "specskew");
     Real spread = sig_scalar(args[3], "specskew");
+    if (amps.size() != freqs.size())
+        throw Error{I.filename, I.cur_line(), "specskew: amps and freqs must have same length"};
     return NumVal{specskew<Real>(&amps[0], &freqs[0], centroid, spread, (int)amps.size())};
 }
 static Value fn_speckurt(std::vector<Value>& args, Interpreter& I) {
@@ -329,6 +337,8 @@ static Value fn_speckurt(std::vector<Value>& args, Interpreter& I) {
     const NumVal& freqs = sig_nvec(args[1], "speckurt");
     Real centroid = sig_scalar(args[2], "speckurt");
     Real spread = sig_scalar(args[3], "speckurt");
+    if (amps.size() != freqs.size())
+        throw Error{I.filename, I.cur_line(), "speckurt: amps and freqs must have same length"};
     return NumVal{speckurt<Real>(&amps[0], &freqs[0], centroid, spread, (int)amps.size())};
 }
 static Value fn_specflux(std::vector<Value>& args, Interpreter& I) {
@@ -352,6 +362,8 @@ static Value fn_acorrf0(std::vector<Value>& args, Interpreter& I) {
     if (args.size() != 2) throw Error{I.filename, I.cur_line(), "acorrf0: 2 args required (sig, sr)"};
     const NumVal& sig = sig_nvec(args[0], "acorrf0");
     Real sr = sig_scalar(args[1], "acorrf0");
+    if (sr <= 0) throw Error{I.filename, I.cur_line(), "acorrf0: sample rate must be positive"};
+    if (sig.size() == 0) throw Error{I.filename, I.cur_line(), "acorrf0: empty signal"};
     std::valarray<Real> buff(sig.size());
     return NumVal{acfF0Estimate<Real>(sr, &sig[0], &buff[0], (int)sig.size())};
 }
