@@ -1,0 +1,15 @@
+-----------------
+Musil - TODO list
+-----------------
+
+v0.6
+- error messages use wrong file name when files are nested
+- add yield function for IDE + stop function
+- add paths for IDE
+- graphic plots for IDE
+- check/improve speed for vector calculations
+- signals: add sparkle (pvoc), pconv 
+- music library: orchestrate, mp, soundtypes, granular orchestrate, symbolic composition system (notes, midi in and out, musicxml out, algorithmic gen)
+
+v0.5
+- first public release *
