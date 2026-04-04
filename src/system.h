@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <vector>
 #include <arpa/inet.h>
+#include <filesystem>
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -126,9 +127,10 @@ static Value fn_clock(std::vector<Value>& args, Interpreter& interp) {
 
 static Value fn_dirlist(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "dirlist: expected 1 argument", {}};
-    std::string path = sref(args[0], "dirlist");
+    std::string raw_path = sref(args[0], "dirlist");
+    std::string path = interp.resolve_path(raw_path);
     DIR* dir = opendir(path.c_str());
-    if (!dir) throw Error{interp.filename, interp.cur_line(), "dirlist: cannot open '" + path + "'", {}};
+    if (!dir) throw Error{interp.filename, interp.cur_line(), "dirlist: cannot open '" + raw_path + "'", {}};
     std::vector<std::string> names;
     while (auto* ent = readdir(dir)) names.push_back(ent->d_name);
     closedir(dir);
@@ -137,7 +139,8 @@ static Value fn_dirlist(std::vector<Value>& args, Interpreter& interp) {
 
 static Value fn_filestat(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "filestat: expected 1 argument", {}};
-    std::string filename = sref(args[0], "filestat");
+    std::string raw_path = sref(args[0], "filestat");
+    std::string filename = interp.resolve_path(raw_path);
     struct stat st {};
     auto out = std::make_shared<Array>();
     int r = stat(filename.c_str(), &st);
@@ -237,14 +240,16 @@ static Value fn_udpsend(std::vector<Value>& args, Interpreter& interp) {
 
 static Value fn_readcsv(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "readcsv: expected 1 argument", {}};
-    std::ifstream file(sref(args[0], "readcsv"));
+    std::string raw_path = sref(args[0], "readcsv");
+    std::ifstream file(interp.resolve_path(raw_path));
     if (!file) throw Error{interp.filename, interp.cur_line(), "readcsv: cannot open file", {}};
     return csv_table_to_array(readCSV(file));
 }
 
 static Value fn_writecsv(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 2) throw Error{interp.filename, interp.cur_line(), "writecsv: expected 2 arguments", {}};
-    std::ofstream file(sref(args[0], "writecsv"));
+    std::string raw_path = sref(args[0], "writecsv");
+    std::ofstream file(interp.resolve_path(raw_path));
     if (!file) throw Error{interp.filename, interp.cur_line(), "writecsv: cannot open file for writing", {}};
     auto table = aref(args[1], "writecsv");
     auto rows = array_to_csv_table(table);
@@ -260,14 +265,17 @@ static Value fn_writecsv(std::vector<Value>& args, Interpreter& interp) {
 
 static Value fn_readwav(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "readwav: expected 1 argument", {}};
+    std::string raw_path = sref(args[0], "readwav");
+    std::string path = interp.resolve_path(raw_path);
     WAVHeader header{};
-    auto channels = read_wav_raw(sref(args[0], "readwav").c_str(), header);
+    auto channels = read_wav_raw(path.c_str(), header);
     return wav_channels_to_value(header.sampleRate, channels);
 }
 
 static Value fn_writewav(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 3) throw Error{interp.filename, interp.cur_line(), "writewav: expected 3 arguments", {}};
-    std::string fname = sref(args[0], "writewav");
+    std::string raw_path = sref(args[0], "writewav");
+    std::string fname = interp.resolve_path(raw_path);
     double sr = scalar(args[1], "writewav");
     auto chs = aref(args[2], "writewav");
     if (sr <= 0) throw Error{interp.filename, interp.cur_line(), "writewav: sample rate must be > 0", {}};

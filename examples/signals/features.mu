@@ -112,7 +112,7 @@ var zx_hz_plot = vslice(zx_hz, 0, len_f0)
 
 var f0_svg =
     plot("Fundamental frequency",
-         f0b,        "autocorr f0",
+        #  f0b,        "autocorr f0",
          zx_hz_plot, "zero-crossing (Hz approx.)",
          "*")
 

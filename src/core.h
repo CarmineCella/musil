@@ -20,6 +20,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <stdexcept>
+#include <filesystem>
 
 #define BOLDBLUE    "\033[1m\033[34m"
 #define RED     	"\033[31m"
@@ -295,6 +296,45 @@ struct Interpreter {
     YieldFn                         yield_fn;
     std::string                     filename;
     std::vector<std::string>&       call_stack;
+
+    std::filesystem::path current_base_dir() const {
+        namespace fs = std::filesystem;
+        try {
+            if (filename.empty()) return fs::current_path();
+            fs::path cur(filename);
+            std::string cur_s = cur.string();
+            if (!cur_s.empty() && cur_s.front() == '<' && cur_s.back() == '>')
+                return fs::current_path();
+            if (cur.has_parent_path()) return cur.parent_path();
+        } catch (...) {
+        }
+        return std::filesystem::current_path();
+    }
+
+    std::string resolve_path(const std::string& input) const {
+        namespace fs = std::filesystem;
+        if (input.empty()) return input;
+        try {
+            fs::path p(input);
+            if (p.is_absolute()) return p.lexically_normal().string();
+            return (current_base_dir() / p).lexically_normal().string();
+        } catch (...) {
+            return input;
+        }
+    }
+
+    std::string musil_home_fallback_path(const std::string& input) const {
+        namespace fs = std::filesystem;
+        const char* home = std::getenv("HOME");
+        if (!home || !*home) return {};
+        try {
+            fs::path p(input);
+            if (p.is_absolute()) return {};
+            return (fs::path(home) / ".musil" / p).lexically_normal().string();
+        } catch (...) {
+            return {};
+        }
+    }
 
     void maybe_yield() {
         if (yield_fn) yield_fn();
@@ -1058,20 +1098,23 @@ struct Interpreter {
 
         if (nm=="read") {
             chk(1);
-            std::ifstream f(sv(0));
+            std::string path = resolve_path(sv(0));
+            std::ifstream f(path);
             if (!f) throw make_err("read: can't open '" + sv(0) + "'");
             return std::string(std::istreambuf_iterator<char>(f), {});
         }
         if (nm=="write") {
             chk(2);
-            std::ofstream f(sv(0));
+            std::string path = resolve_path(sv(0));
+            std::ofstream f(path);
             if (!f) throw make_err("write: can't open '" + sv(0) + "'");
             f << sv(1);
             return NumVal{0.0};
         }
         if (nm=="append") {
             chk(2);
-            std::ofstream f(sv(0), std::ios::app);
+            std::string path = resolve_path(sv(0));
+            std::ofstream f(path, std::ios::app);
             if (!f) throw make_err("append: can't open '" + sv(0) + "'");
             f << sv(1);
             return NumVal{0.0};
@@ -1079,14 +1122,13 @@ struct Interpreter {
         if (nm=="load") {
             chk(1);
             if (!load_fn) throw make_err("load: not available");
-            std::string path = sv(0);
+            std::string path = resolve_path(sv(0));
             std::ifstream f(path);
             if (!f) {
-                const char* home = getenv("HOME");
-                if (home) {
-                    std::string hp = std::string(home) + "/.musil/" + path;
-                    f.open(hp);
-                    if (f) path = hp;
+                std::string fallback = musil_home_fallback_path(sv(0));
+                if (!fallback.empty()) {
+                    f.open(fallback);
+                    if (f) path = fallback;
                 }
             }
             if (!f) throw make_err("load: can't open '" + sv(0) + "'");
