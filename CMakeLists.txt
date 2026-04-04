@@ -26,12 +26,7 @@ if(BUILD_MUSIL_IDE)
 endif()
 
 # ------------------------------------------------------------------------------
-# Uninstall target
-#
-# Important:
-# - this uninstall target is intentionally standalone
-# - it does NOT rely on any install_manifest.txt from FLTK or dependencies
-# - it only runs our own uninstall script
+# Musil uninstall target
 # ------------------------------------------------------------------------------
 
 configure_file(
@@ -40,7 +35,8 @@ configure_file(
     @ONLY
 )
 
-add_custom_target(uninstall
+# Always create our own uninstall target with a unique name
+add_custom_target(musil_uninstall
     COMMAND ${CMAKE_COMMAND} -P "${CMAKE_BINARY_DIR}/cmake_uninstall.cmake"
     COMMENT "Uninstall Musil"
 )

@@ -82,6 +82,9 @@ To compile, from *root* folder type:
 
 `make`
 
+
+Use `ccmake ..` (notice the double `c`) if you want to build the IDE (depends on FLTK).
+
 # Licensing
 
 The **Musil** language is released under the [BSD 2-Clause license](LICENSE.md).

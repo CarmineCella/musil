@@ -201,9 +201,9 @@ assert_eq(len(ws), 5, "split on space: preserves empty strings between delimiter
 
 # ── for/in over array ─────────────────────────────────────────────────────────
 
-var total = 0
-for (var n in range(1, 11)) { total = total + n }
-assert_eq(total, 55, "for/in: sum 1..10 via range")
+var tot = 0
+for (var n in range(1, 11)) { tot = tot + n }
+assert_eq(tot, 55, "for/in: sum 1..10 via range")
 
 var doubled = []
 for (var n in [3, 1, 4, 1, 5]) { push(doubled, n * 2) }
