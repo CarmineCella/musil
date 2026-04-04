@@ -97,7 +97,10 @@ static std::vector<std::vector<double>> value_to_wav_channels(const ArrayPtr& ch
         if (!std::holds_alternative<NumVal>(v))
             throw Error{"system", -1, "writewav: channel list must contain vectors", {}};
         const auto& nv = std::get<NumVal>(v);
-        if (first) { n = nv.size(); first = false; }
+        if (first) {
+            n = nv.size();
+            first = false;
+        }
         if (nv.size() != n)
             throw Error{"system", -1, "writewav: all channels must have same length", {}};
         out.emplace_back(std::begin(nv), std::end(nv));
@@ -161,7 +164,8 @@ static Value fn_getvar(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "getvar: expected 1 argument", {}};
     const std::string& name = sref(args[0], "getvar");
     const char* c = std::getenv(name.c_str());
-    return c ? Value{std::string(c)} : Value{std::string{}};
+    return c ? Value{std::string(c)} :
+           Value{std::string{}};
 }
 
 static Value fn_udprecv(std::vector<Value>& args, Interpreter& interp) {
@@ -214,7 +218,9 @@ static Value fn_udpsend(std::vector<Value>& args, Interpreter& interp) {
     int res = 0;
     if (is_osc) {
         std::size_t in_sz = payload.size();
-        auto align = [](std::size_t n) { return (n + 3) & ~std::size_t(3); };
+        auto align = [](std::size_t n) {
+            return (n + 3) & ~std::size_t(3);
+        };
         std::size_t pad = align(in_sz) - in_sz;
         std::size_t out_sz = in_sz + pad + 4;
         std::vector<char> out(out_sz, '\0');

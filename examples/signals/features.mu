@@ -147,6 +147,6 @@ var t1    = gen(4096, 1, 0.73, 0.6, 0.20)
 var synth = amps_env * osc(SR, f0s, t1)
 
 # assume writewav(path, sr, [channel1, channel2, ...])
-writewav("f0_synth.wav", SR, [synth])
+writewav("/tmp/f0_synth.wav", SR, [synth])
 
 # eof

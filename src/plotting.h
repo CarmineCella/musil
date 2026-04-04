@@ -83,7 +83,8 @@ static inline Fl_Color series_color(int i) {
     return colors[i % (sizeof(colors) / sizeof(colors[0]))];
 }
 
-class PlotCanvas : public Fl_Widget {
+class PlotCanvas :
+    public Fl_Widget {
 public:
     PlotCanvas(int X, int Y, int W, int H, const PlotRequest& req)
         : Fl_Widget(X, Y, W, H), m_req(req) {
@@ -92,8 +93,14 @@ public:
 
     void reset_view() {
         compute_bounds();
-        if (m_xmax <= m_xmin) { m_xmin = 0.0; m_xmax = 1.0; }
-        if (m_ymax <= m_ymin) { m_ymin = 0.0; m_ymax = 1.0; }
+        if (m_xmax <= m_xmin) {
+            m_xmin = 0.0;
+            m_xmax = 1.0;
+        }
+        if (m_ymax <= m_ymin) {
+            m_ymin = 0.0;
+            m_ymax = 1.0;
+        }
 
         const double dx = m_xmax - m_xmin;
         const double dy = m_ymax - m_ymin;
@@ -103,8 +110,14 @@ public:
         m_view_ymin = m_ymin - 0.05 * dy;
         m_view_ymax = m_ymax + 0.05 * dy;
 
-        if (m_view_xmax <= m_view_xmin) { m_view_xmin = 0.0; m_view_xmax = 1.0; }
-        if (m_view_ymax <= m_view_ymin) { m_view_ymin = 0.0; m_view_ymax = 1.0; }
+        if (m_view_xmax <= m_view_xmin) {
+            m_view_xmin = 0.0;
+            m_view_xmax = 1.0;
+        }
+        if (m_view_ymax <= m_view_ymin) {
+            m_view_ymin = 0.0;
+            m_view_ymax = 1.0;
+        }
 
         redraw();
     }
@@ -162,54 +175,54 @@ public:
 
     int handle(int ev) override {
         switch (ev) {
-            case FL_PUSH:
-                if (Fl::event_button() == FL_LEFT_MOUSE) {
-                    m_dragging = true;
-                    m_drag_x = Fl::event_x();
-                    m_drag_y = Fl::event_y();
-                    return 1;
-                }
-                return 0;
-
-            case FL_DRAG:
-                if (m_dragging) {
-                    const int dx_pix = Fl::event_x() - m_drag_x;
-                    const int dy_pix = Fl::event_y() - m_drag_y;
-                    m_drag_x = Fl::event_x();
-                    m_drag_y = Fl::event_y();
-
-                    const int pl = plot_left();
-                    const int pr = plot_right();
-                    const int pt = plot_top();
-                    const int pb = plot_bottom();
-                    const int pw = std::max(1, pr - pl);
-                    const int ph = std::max(1, pb - pt);
-
-                    const double dx = (double)dx_pix / (double)pw * (m_view_xmax - m_view_xmin);
-                    const double dy = (double)dy_pix / (double)ph * (m_view_ymax - m_view_ymin);
-
-                    m_view_xmin -= dx;
-                    m_view_xmax -= dx;
-                    m_view_ymin += dy;
-                    m_view_ymax += dy;
-                    redraw();
-                    return 1;
-                }
-                return 0;
-
-            case FL_RELEASE:
-                m_dragging = false;
-                return 1;
-
-            case FL_MOUSEWHEEL: {
-                const int dy = Fl::event_dy();
-                if (dy < 0) zoom_at(1.2, Fl::event_x(), Fl::event_y());
-                else if (dy > 0) zoom_at(1.0 / 1.2, Fl::event_x(), Fl::event_y());
+        case FL_PUSH:
+            if (Fl::event_button() == FL_LEFT_MOUSE) {
+                m_dragging = true;
+                m_drag_x = Fl::event_x();
+                m_drag_y = Fl::event_y();
                 return 1;
             }
+            return 0;
 
-            default:
-                return Fl_Widget::handle(ev);
+        case FL_DRAG:
+            if (m_dragging) {
+                const int dx_pix = Fl::event_x() - m_drag_x;
+                const int dy_pix = Fl::event_y() - m_drag_y;
+                m_drag_x = Fl::event_x();
+                m_drag_y = Fl::event_y();
+
+                const int pl = plot_left();
+                const int pr = plot_right();
+                const int pt = plot_top();
+                const int pb = plot_bottom();
+                const int pw = std::max(1, pr - pl);
+                const int ph = std::max(1, pb - pt);
+
+                const double dx = (double)dx_pix / (double)pw * (m_view_xmax - m_view_xmin);
+                const double dy = (double)dy_pix / (double)ph * (m_view_ymax - m_view_ymin);
+
+                m_view_xmin -= dx;
+                m_view_xmax -= dx;
+                m_view_ymin += dy;
+                m_view_ymax += dy;
+                redraw();
+                return 1;
+            }
+            return 0;
+
+        case FL_RELEASE:
+            m_dragging = false;
+            return 1;
+
+        case FL_MOUSEWHEEL: {
+            const int dy = Fl::event_dy();
+            if (dy < 0) zoom_at(1.2, Fl::event_x(), Fl::event_y());
+            else if (dy > 0) zoom_at(1.0 / 1.2, Fl::event_x(), Fl::event_y());
+            return 1;
+        }
+
+        default:
+            return Fl_Widget::handle(ev);
         }
     }
 
@@ -270,8 +283,10 @@ private:
             }
         }
         if (first) {
-            m_xmin = 0.0; m_xmax = 1.0;
-            m_ymin = 0.0; m_ymax = 1.0;
+            m_xmin = 0.0;
+            m_xmax = 1.0;
+            m_ymin = 0.0;
+            m_ymax = 1.0;
         }
     }
 
@@ -291,7 +306,7 @@ private:
 
     bool point_visible(double vx, double vy) const {
         return vx >= m_view_xmin && vx <= m_view_xmax &&
-               vy >= m_view_ymin && vy <= m_view_ymax;
+        vy >= m_view_ymin && vy <= m_view_ymax;
     }
 
     void draw_title() {
@@ -409,7 +424,10 @@ private:
 
         bool any = false;
         for (const auto& s : m_req.series) {
-            if (!s.legend.empty()) { any = true; break; }
+            if (!s.legend.empty()) {
+                any = true;
+                break;
+            }
         }
         if (!any) return;
 
@@ -494,8 +512,8 @@ static void plot_save_cb(Fl_Widget*, void* userdata) {
 
     try {
         std::string tmp = svg_tools::save_svg_plot<double>(
-            pw->req.title, pw->req.series, pw->req.style, pw->req.scatter_mode
-        );
+                              pw->req.title, pw->req.series, pw->req.style, pw->req.scatter_mode
+                          );
 
         std::error_code ec;
         fs::copy_file(tmp, dst, fs::copy_options::overwrite_existing, ec);
@@ -601,7 +619,8 @@ static Value fn_plot(std::vector<Value>& args, Interpreter& I) {
         if (!have_expected) {
             expected_len = y.size();
             have_expected = true;
-        } else if (y.size() != expected_len) {
+        }
+        else if (y.size() != expected_len) {
             throw Error{I.filename, I.cur_line(), "plot: all data arrays must have the same length"};
         }
 

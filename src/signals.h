@@ -65,8 +65,12 @@ static void unpack_biquad_coeffs(const NumVal& coeffs, std::valarray<Real>& b, s
         throw Error{"signals", -1, fn + ": packed coeffs must have length 6 [b0 b1 b2 1 a1 a2]"};
     b.resize(3);
     a.resize(3);
-    b[0] = coeffs[0]; b[1] = coeffs[1]; b[2] = coeffs[2];
-    a[0] = coeffs[3]; a[1] = coeffs[4]; a[2] = coeffs[5];
+    b[0] = coeffs[0];
+    b[1] = coeffs[1];
+    b[2] = coeffs[2];
+    a[0] = coeffs[3];
+    a[1] = coeffs[4];
+    a[2] = coeffs[5];
 }
 
 // ── C++ support functions (unchanged from original) ──────────────────────────
@@ -87,7 +91,10 @@ static void gen10(const std::valarray<Real>& coeff, std::valarray<Real>& values)
 static int next_pow2(int n) {
     if (n == 0 || ceil(log2(n)) == floor(log2(n))) return n;
     int count = 0;
-    while (n != 0) { n >>= 1; count++; }
+    while (n != 0) {
+        n >>= 1;
+        count++;
+    }
     return (1 << count);
 }
 
@@ -101,7 +108,8 @@ static std::valarray<Real> conv_one_channel(const std::valarray<Real>& x, const 
         X[2*i] = (i < x_sz ? x[i] : Real(0));
         Y[2*i] = (i < y_sz ? y[i] : Real(0));
     }
-    fft<Real>(&X[0], N, -1); fft<Real>(&Y[0], N, -1);
+    fft<Real>(&X[0], N, -1);
+    fft<Real>(&Y[0], N, -1);
     for (int i = 0; i < N; ++i) {
         Real xr=X[2*i], xi=X[2*i+1], yr=Y[2*i], yi=Y[2*i+1];
         R[2*i]   = xr*yr - xi*yi;
@@ -123,9 +131,11 @@ static std::valarray<Real> fd_resample(const std::valarray<Real>& x, Real factor
     fft<Real>(&X[0], N1, -1);
     std::valarray<Real> Y(Real(0), 2*N2);
     int N1h = N1/2, N2h = N2/2, Nc = std::min(N1h, N2h);
-    Y[0] = X[0]; Y[1] = X[1];
+    Y[0] = X[0];
+    Y[1] = X[1];
     for (int k = 1; k < Nc; ++k) {
-        Y[2*k]   = X[2*k];   Y[2*k+1]   = X[2*k+1];
+        Y[2*k]   = X[2*k];
+        Y[2*k+1]   = X[2*k+1];
         Y[2*(N2-k)]   = X[2*(N1-k)];
         Y[2*(N2-k)+1] = X[2*(N1-k)+1];
     }
@@ -197,7 +207,11 @@ static Value fn_fft(std::vector<Value>& args, Interpreter& I) {
     const NumVal& sig = sig_nvec(args[0], "fft");
     int d = (int)sig.size(), N = next_pow2(d);
     std::valarray<Real> buf(Real(0), 2 * N);
-    for (int i = 0; i < N; ++i) { if ((i & 1023) == 0) sig_yield(I); buf[2*i] = (i < d ? sig[i] : Real(0)); buf[2*i+1] = Real(0); }
+    for (int i = 0; i < N; ++i) {
+        if ((i & 1023) == 0) sig_yield(I);
+        buf[2*i] = (i < d ? sig[i] : Real(0));
+        buf[2*i+1] = Real(0);
+    }
     fft<Real>(&buf[0], N, -1);
     return NumVal(buf);
 }
@@ -212,7 +226,10 @@ static Value fn_ifft(std::vector<Value>& args, Interpreter& I) {
     std::valarray<Real> buf(spec);
     fft<Real>(&buf[0], N, +1);
     std::valarray<Real> out(Real(0), N);
-    for (int i = 0; i < N; ++i) { if ((i & 1023) == 0) sig_yield(I); out[i] = buf[2*i] / N; }
+    for (int i = 0; i < N; ++i) {
+        if ((i & 1023) == 0) sig_yield(I);
+        out[i] = buf[2*i] / N;
+    }
     return NumVal(out);
 }
 
@@ -260,7 +277,11 @@ static Value fn_deinterleave(std::vector<Value>& args, Interpreter& I) {
         throw Error{I.filename, I.cur_line(), "deinterleave: signal length must be even"};
     int N = L / 2;
     std::valarray<Real> a(Real(0), N), b(Real(0), N);
-    for (int i = 0; i < N; ++i) { if ((i & 1023) == 0) sig_yield(I); a[i] = in[2*i]; b[i] = in[2*i+1]; }
+    for (int i = 0; i < N; ++i) {
+        if ((i & 1023) == 0) sig_yield(I);
+        a[i] = in[2*i];
+        b[i] = in[2*i+1];
+    }
     return pack_pair(NumVal(a), NumVal(b), "deinterleave");
 }
 
@@ -288,7 +309,11 @@ static Value fn_interleave(std::vector<Value>& args, Interpreter& I) {
         throw Error{I.filename, I.cur_line(), "interleave: both channels must have the same length"};
     int N = (int)a.size();
     std::valarray<Real> out(Real(0), 2 * N);
-    for (int i = 0; i < N; ++i) { if ((i & 1023) == 0) sig_yield(I); out[2*i] = a[i]; out[2*i+1] = b[i]; }
+    for (int i = 0; i < N; ++i) {
+        if ((i & 1023) == 0) sig_yield(I);
+        out[2*i] = a[i];
+        out[2*i+1] = b[i];
+    }
     return NumVal(out);
 }
 
@@ -427,8 +452,14 @@ static Value fn_vaddat(std::vector<Value>& args, Interpreter& I) {
     std::size_t need = (std::size_t)pos + src.size();
     std::size_t out_sz = std::max(dst.size(), need);
     std::valarray<Real> out(Real(0), out_sz);
-    for (std::size_t i = 0; i < dst.size(); ++i) { if ((i & 2047u) == 0) sig_yield(I); out[i] = dst[i]; }
-    for (std::size_t i = 0; i < src.size(); ++i) { if ((i & 2047u) == 0) sig_yield(I); out[(std::size_t)pos + i] += src[i]; }
+    for (std::size_t i = 0; i < dst.size(); ++i) {
+        if ((i & 2047u) == 0) sig_yield(I);
+        out[i] = dst[i];
+    }
+    for (std::size_t i = 0; i < src.size(); ++i) {
+        if ((i & 2047u) == 0) sig_yield(I);
+        out[(std::size_t)pos + i] += src[i];
+    }
     return NumVal(out);
 }
 
@@ -441,7 +472,10 @@ static Value fn_dcblock(std::vector<Value>& args, Interpreter& I) {
     std::valarray<Real> y(Real(0), N);
     if (N == 0) return NumVal(y);
     y[0] = x[0];
-    for (int n = 1; n < N; ++n) { if ((n & 1023) == 0) sig_yield(I); y[n] = x[n] - x[n-1] + R * y[n-1]; }
+    for (int n = 1; n < N; ++n) {
+        if ((n & 1023) == 0) sig_yield(I);
+        y[n] = x[n] - x[n-1] + R * y[n-1];
+    }
     return NumVal(y);
 }
 
@@ -464,7 +498,9 @@ static Value fn_reson(std::vector<Value>& args, Interpreter& I) {
         if ((i & 1023) == 0) sig_yield(I);
         Real xi = i < insize ? x[i] : Real(0);
         Real v = gain * xi - a1 * y1 - a2 * y2;
-        y2 = y1; y1 = v; out[i] = v;
+        y2 = y1;
+        y1 = v;
+        out[i] = v;
     }
     return NumVal(out);
 }
@@ -516,13 +552,33 @@ static Value fn_filtdesign(std::vector<Value>& args, Interpreter& I) {
     Real A = pow(Real(10.0), dBg / Real(40.0));
     Real b0=0, b1=0, b2=0, a0=0, a1=0, a2=0;
     if (type == "lowpass") {
-        b0=(1-cosw)/2; b1=1-cosw; b2=(1-cosw)/2; a0=1+alpha; a1=-2*cosw; a2=1-alpha;
+        b0=(1-cosw)/2;
+        b1=1-cosw;
+        b2=(1-cosw)/2;
+        a0=1+alpha;
+        a1=-2*cosw;
+        a2=1-alpha;
     } else if (type == "highpass") {
-        b0=(1+cosw)/2; b1=-(1+cosw); b2=(1+cosw)/2; a0=1+alpha; a1=-2*cosw; a2=1-alpha;
+        b0=(1+cosw)/2;
+        b1=-(1+cosw);
+        b2=(1+cosw)/2;
+        a0=1+alpha;
+        a1=-2*cosw;
+        a2=1-alpha;
     } else if (type == "notch") {
-        b0=1; b1=-2*cosw; b2=1; a0=1+alpha; a1=-2*cosw; a2=1-alpha;
+        b0=1;
+        b1=-2*cosw;
+        b2=1;
+        a0=1+alpha;
+        a1=-2*cosw;
+        a2=1-alpha;
     } else if (type == "peak" || type == "peaking") {
-        b0=1+alpha*A; b1=-2*cosw; b2=1-alpha*A; a0=1+alpha/A; a1=-2*cosw; a2=1-alpha/A;
+        b0=1+alpha*A;
+        b1=-2*cosw;
+        b2=1-alpha*A;
+        a0=1+alpha/A;
+        a1=-2*cosw;
+        a2=1-alpha/A;
     } else if (type == "lowshelf" || type == "loshelf") {
         Real sA = sqrt(A);
         b0=A*((A+1)-(A-1)*cosw+2*sA*alpha);
@@ -542,9 +598,19 @@ static Value fn_filtdesign(std::vector<Value>& args, Interpreter& I) {
     } else {
         throw Error{I.filename, I.cur_line(), "filtdesign: unknown filter type"};
     }
-    b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0; a0 = 1;
+    b0 /= a0;
+    b1 /= a0;
+    b2 /= a0;
+    a1 /= a0;
+    a2 /= a0;
+    a0 = 1;
     std::valarray<Real> out(Real(0), 6);
-    out[0]=b0; out[1]=b1; out[2]=b2; out[3]=1.0; out[4]=a1; out[5]=a2;
+    out[0]=b0;
+    out[1]=b1;
+    out[2]=b2;
+    out[3]=1.0;
+    out[4]=a1;
+    out[5]=a2;
     return NumVal(out);
 }
 

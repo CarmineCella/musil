@@ -254,7 +254,8 @@ static Value fn_eye(std::vector<Value>& args, Interpreter& interp) {
     if (args.size() != 1) throw Error{interp.filename, interp.cur_line(), "eye: 1 argument required"};
     int n = (int)scalar(args[0], "eye");
     if (n <= 0) throw Error{interp.filename, interp.cur_line(), "eye: size must be positive"};
-    Matrix<double> e(n, n); e.id();
+    Matrix<double> e(n, n);
+    e.id();
     return matrix2arr(e, &interp);
 }
 // randvec(n)  -> NumVal of n values in [-1, 1]
@@ -391,7 +392,10 @@ static Value fn_rank(std::vector<Value>& args, Interpreter& interp) {
         double maxv = std::fabs(m(r, c));
         for (std::size_t i = r + 1; i < rows; ++i) {
             double v = std::fabs(m(i, c));
-            if (v > maxv) { maxv = v; piv = i; }
+            if (v > maxv) {
+                maxv = v;
+                piv = i;
+            }
         }
         if (maxv < eps) continue;
         if (piv != r)
@@ -400,7 +404,8 @@ static Value fn_rank(std::vector<Value>& args, Interpreter& interp) {
             double f = m(i, c) / m(r, c);
             for (std::size_t j = c; j < cols; ++j) m(i, j) -= f * m(r, j);
         }
-        ++rank; ++r;
+        ++rank;
+        ++r;
     }
     return NumVal{(double)rank};
 }
@@ -417,10 +422,20 @@ static Value fn_solve(std::vector<Value>& args, Interpreter& interp) {
     std::valarray<double> rhs(b), x((double)0, n);
     const double eps = 1e-12;
     for (std::size_t k = 0; k < n; ++k) {
-        std::size_t piv = k; double maxv = std::fabs(M(k, k));
-        for (std::size_t i = k+1; i < n; ++i) { double v = std::fabs(M(i,k)); if (v > maxv) { maxv = v; piv = i; } }
+        std::size_t piv = k;
+        double maxv = std::fabs(M(k, k));
+        for (std::size_t i = k+1; i < n; ++i) {
+            double v = std::fabs(M(i,k));
+            if (v > maxv) {
+                maxv = v;
+                piv = i;
+            }
+        }
         if (maxv < eps) throw Error{interp.filename, interp.cur_line(), "solve: singular matrix"};
-        if (piv != k) { for (std::size_t j = 0; j < n; ++j) std::swap(M(k,j), M(piv,j)); std::swap(rhs[k], rhs[piv]); }
+        if (piv != k) {
+            for (std::size_t j = 0; j < n; ++j) std::swap(M(k,j), M(piv,j));
+            std::swap(rhs[k], rhs[piv]);
+        }
         for (std::size_t i = k+1; i < n; ++i) {
             double f = M(i,k) / M(k,k);
             for (std::size_t j = k; j < n; ++j) M(i,j) -= f * M(k,j);
@@ -454,7 +469,10 @@ static Value fn_stack2(std::vector<Value>& args, Interpreter& interp) {
     if (x.size() != y.size()) throw Error{interp.filename, interp.cur_line(), "stack2: x and y must have same length"};
     std::size_t n = x.size();
     Matrix<double> m(n, 2);
-    for (std::size_t i = 0; i < n; ++i) { m(i,0) = x[i]; m(i,1) = y[i]; }
+    for (std::size_t i = 0; i < n; ++i) {
+        m(i,0) = x[i];
+        m(i,1) = y[i];
+    }
     return matrix2arr(m, &interp);
 }
 
@@ -467,7 +485,8 @@ static Value fn_hstack(std::vector<Value>& args, Interpreter& interp) {
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<double> m = arr2matrix(args[i], "hstack");
         if (m.rows() != rows) throw Error{interp.filename, interp.cur_line(), "hstack: row count mismatch"};
-        total_cols += m.cols(); mats.push_back(m);
+        total_cols += m.cols();
+        mats.push_back(m);
     }
     Matrix<double> out(rows, total_cols);
     std::size_t off = 0;
@@ -489,7 +508,8 @@ static Value fn_vstack(std::vector<Value>& args, Interpreter& interp) {
     for (std::size_t i = 1; i < args.size(); ++i) {
         Matrix<double> m = arr2matrix(args[i], "vstack");
         if (m.cols() != cols) throw Error{interp.filename, interp.cur_line(), "vstack: column count mismatch"};
-        total_rows += m.rows(); mats.push_back(m);
+        total_rows += m.rows();
+        mats.push_back(m);
     }
     Matrix<double> out(total_rows, cols);
     std::size_t off = 0;
@@ -536,7 +556,9 @@ static Value fn_linefit(std::vector<Value>& args, Interpreter& interp) {
     if (!line.fit(xv, yv)) throw Error{interp.filename, interp.cur_line(), "linefit: cannot fit (vertical line)"};
     double slope, intercept;
     line.get_params(slope, intercept);
-    NumVal r(2); r[0] = slope; r[1] = intercept;
+    NumVal r(2);
+    r[0] = slope;
+    r[1] = intercept;
     return r;
 }
 
@@ -573,7 +595,10 @@ static Value fn_dist(std::vector<Value>& args, Interpreter& interp) {
     if (p == 1) {
         for (std::size_t i = 0; i < x.size(); ++i) result += std::fabs(x[i] - y[i]);
     } else if (p == 2) {
-        for (std::size_t i = 0; i < x.size(); ++i) { double d = x[i]-y[i]; result += d*d; }
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            double d = x[i]-y[i];
+            result += d*d;
+        }
         result = std::sqrt(result);
     } else {
         for (std::size_t i = 0; i < x.size(); ++i) result += std::pow(std::fabs(x[i]-y[i]), (double)p);
@@ -591,14 +616,16 @@ static Value fn_matmean(std::vector<Value>& args, Interpreter& interp) {
     if (axis == 0) {
         NumVal mu(cols);
         for (std::size_t j = 0; j < cols; ++j) {
-            double s = 0; for (std::size_t i = 0; i < rows; ++i) s += a(i,j);
+            double s = 0;
+            for (std::size_t i = 0; i < rows; ++i) s += a(i,j);
             mu[j] = s / rows;
         }
         return mu;
     } else if (axis == 1) {
         NumVal mu(rows);
         for (std::size_t i = 0; i < rows; ++i) {
-            double s = 0; for (std::size_t j = 0; j < cols; ++j) s += a(i,j);
+            double s = 0;
+            for (std::size_t j = 0; j < cols; ++j) s += a(i,j);
             mu[i] = s / cols;
         }
         return mu;
@@ -615,7 +642,10 @@ static Value fn_matstd(std::vector<Value>& args, Interpreter& interp) {
     auto compute = [](std::vector<double>& vals) -> double {
         if (vals.size() < 2) return 0.0;
         double s = 0, s2 = 0;
-        for (double v : vals) { s += v; s2 += v*v; }
+        for (double v : vals) {
+            s += v;
+            s2 += v*v;
+        }
         double mean = s / vals.size();
         double var = s2 / vals.size() - mean*mean;
         return var > 0 ? std::sqrt(var) : 0.0;
@@ -647,7 +677,11 @@ static Value fn_cov(std::vector<Value>& args, Interpreter& interp) {
     std::size_t n = a.rows(), d = a.cols();
     if (n < 2) throw Error{interp.filename, interp.cur_line(), "cov: need at least 2 rows"};
     NumVal mu(d);
-    for (std::size_t j = 0; j < d; ++j) { double s=0; for (std::size_t i=0;i<n;++i) s+=a(i,j); mu[j]=s/n; }
+    for (std::size_t j = 0; j < d; ++j) {
+        double s=0;
+        for (std::size_t i=0; i<n; ++i) s+=a(i,j);
+        mu[j]=s/n;
+    }
     Matrix<double> C(d, d, 0);
     for (std::size_t i = 0; i < n; ++i)
         for (std::size_t j1 = 0; j1 < d; ++j1) {
@@ -657,8 +691,8 @@ static Value fn_cov(std::vector<Value>& args, Interpreter& interp) {
             }
         }
     double denom = (double)(n-1);
-    for (std::size_t j1=0;j1<d;++j1)
-        for (std::size_t j2=0;j2<=j1;++j2) {
+    for (std::size_t j1=0; j1<d; ++j1)
+        for (std::size_t j2=0; j2<=j1; ++j2) {
             C(j1,j2)/=denom;
             if (j1!=j2) C(j2,j1)=C(j1,j2);
         }
@@ -672,19 +706,32 @@ static Value fn_corr(std::vector<Value>& args, Interpreter& interp) {
     std::size_t n = a.rows(), d = a.cols();
     if (n < 2) throw Error{interp.filename, interp.cur_line(), "corr: need at least 2 rows"};
     NumVal mu(d), sigma(d);
-    for (std::size_t j=0;j<d;++j) {
-        double s=0,s2=0; for (std::size_t i=0;i<n;++i){double v=a(i,j);s+=v;s2+=v*v;}
-        double mean=s/n; double var=s2/n-mean*mean;
-        mu[j]=mean; sigma[j]=var>0?std::sqrt(var):0.0;
+    for (std::size_t j=0; j<d; ++j) {
+        double s=0,s2=0;
+        for (std::size_t i=0; i<n; ++i) {
+            double v=a(i,j);
+            s+=v;
+            s2+=v*v;
+        }
+        double mean=s/n;
+        double var=s2/n-mean*mean;
+        mu[j]=mean;
+        sigma[j]=var>0?std::sqrt(var):0.0;
     }
     const double eps=1e-12;
     Matrix<double> R(d,d,0);
-    for (std::size_t j1=0;j1<d;++j1)
-        for (std::size_t j2=0;j2<=j1;++j2) {
-            if (j1==j2){R(j1,j2)=1;continue;}
-            if (sigma[j1]<eps||sigma[j2]<eps){R(j1,j2)=R(j2,j1)=0;continue;}
+    for (std::size_t j1=0; j1<d; ++j1)
+        for (std::size_t j2=0; j2<=j1; ++j2) {
+            if (j1==j2) {
+                R(j1,j2)=1;
+                continue;
+            }
+            if (sigma[j1]<eps||sigma[j2]<eps) {
+                R(j1,j2)=R(j2,j1)=0;
+                continue;
+            }
             double s=0;
-            for (std::size_t i=0;i<n;++i) s+=(a(i,j1)-mu[j1])*(a(i,j2)-mu[j2]);
+            for (std::size_t i=0; i<n; ++i) s+=(a(i,j1)-mu[j1])*(a(i,j2)-mu[j2]);
             double r=s/((n-1)*sigma[j1]*sigma[j2]);
             R(j1,j2)=R(j2,j1)=r;
         }
@@ -698,15 +745,22 @@ static Value fn_zscore(std::vector<Value>& args, Interpreter& interp) {
     std::size_t n = a.rows(), d = a.cols();
     if (n == 0 || d == 0) return matrix2arr(a, &interp);
     NumVal mu(d), sigma(d);
-    for (std::size_t j=0;j<d;++j) {
-        double s=0,s2=0; for(std::size_t i=0;i<n;++i){double v=a(i,j);s+=v;s2+=v*v;}
-        double mean=s/n; double var=s2/n-mean*mean;
-        mu[j]=mean; sigma[j]=var>0?std::sqrt(var):0.0;
+    for (std::size_t j=0; j<d; ++j) {
+        double s=0,s2=0;
+        for(std::size_t i=0; i<n; ++i) {
+            double v=a(i,j);
+            s+=v;
+            s2+=v*v;
+        }
+        double mean=s/n;
+        double var=s2/n-mean*mean;
+        mu[j]=mean;
+        sigma[j]=var>0?std::sqrt(var):0.0;
     }
     const double eps=1e-12;
     Matrix<double> z(n,d);
-    for (std::size_t i=0;i<n;++i)
-        for (std::size_t j=0;j<d;++j)
+    for (std::size_t i=0; i<n; ++i)
+        for (std::size_t j=0; j<d; ++j)
             z(i,j)=sigma[j]<eps ? 0.0 : (a(i,j)-mu[j])/sigma[j];
     return matrix2arr(z);
 }
@@ -720,12 +774,12 @@ static Value fn_pca(std::vector<Value>& args, Interpreter& interp) {
     int rows = (int)X.rows(), cols = (int)X.cols();
     if (rows == 0 || cols == 0) throw Error{interp.filename, interp.cur_line(), "pca: empty matrix"};
     std::vector<double> data_flat(rows*cols);
-    for (int i=0;i<rows;++i) for (int j=0;j<cols;++j) data_flat[i*cols+j]=X(i,j);
+    for (int i=0; i<rows; ++i) for (int j=0; j<cols; ++j) data_flat[i*cols+j]=X(i,j);
     int eig_cols = cols+1;
     std::vector<double> eig_flat(cols*eig_cols, 0.0);
     PCA<double>(data_flat.data(), eig_flat.data(), cols, rows);
     Matrix<double> eigm(cols, eig_cols);
-    for (int i=0;i<cols;++i) for (int j=0;j<eig_cols;++j) eigm(i,j)=eig_flat[i*eig_cols+j];
+    for (int i=0; i<cols; ++i) for (int j=0; j<eig_cols; ++j) eigm(i,j)=eig_flat[i*eig_cols+j];
     return matrix2arr(eigm);
 }
 
@@ -740,14 +794,14 @@ static Value fn_kmeans(std::vector<Value>& args, Interpreter& interp) {
     if (n == 0 || m == 0) throw Error{interp.filename, interp.cur_line(), "kmeans: empty matrix"};
     if (K <= 0 || K > n) throw Error{interp.filename, interp.cur_line(), "kmeans: invalid K"};
     std::vector<double> data_flat(n*m);
-    for (int i=0;i<n;++i) for (int j=0;j<m;++j) data_flat[i*m+j]=X(i,j);
+    for (int i=0; i<n; ++i) for (int j=0; j<m; ++j) data_flat[i*m+j]=X(i,j);
     std::vector<int>  labels_vec(n);
     std::vector<double> centroids_flat(K*m, 0.0);
     kmeans<double>(data_flat.data(), n, m, K, (double)1e-5, labels_vec.data(), centroids_flat.data());
     Matrix<double> centroids(K, m);
-    for (int i=0;i<K;++i) for (int j=0;j<m;++j) centroids(i,j)=centroids_flat[i*m+j];
+    for (int i=0; i<K; ++i) for (int j=0; j<m; ++j) centroids(i,j)=centroids_flat[i*m+j];
     NumVal labels_va(n);
-    for (int i=0;i<n;++i) labels_va[i]=(double)labels_vec[i];
+    for (int i=0; i<n; ++i) labels_va[i]=(double)labels_vec[i];
     auto res = std::make_shared<Array>();
     res->elems.push_back(labels_va);
     res->elems.push_back(matrix2arr(centroids));
@@ -811,7 +865,7 @@ inline void add_scientific(Environment& env) {
     env.register_builtin("matvec",   fn_matvec);
     env.register_builtin("vecmat",   fn_vecmat);
     env.register_builtin("matscale", fn_matscale);
-    env.register_builtin("matshift", fn_matshift);    
+    env.register_builtin("matshift", fn_matshift);
     env.register_builtin("hadamard",  fn_hadamard);
     env.register_builtin("transpose", fn_transpose);
     env.register_builtin("nrows",     fn_nrows);

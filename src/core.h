@@ -1,4 +1,4 @@
-// core.h 
+// core.h
 //
 
 #ifndef CORE_H
@@ -22,7 +22,7 @@
 #include <stdexcept>
 
 #define BOLDBLUE    "\033[1m\033[34m"
-#define RED     	"\033[31m" 
+#define RED     	"\033[31m"
 #define RESET   	"\033[0m"
 
 struct Error {
@@ -39,10 +39,16 @@ using EnvPtr   = std::shared_ptr<Env>;
 using ArrayPtr = std::shared_ptr<Array>;
 using ProcVal  = std::shared_ptr<Proc>;
 using Value    = std::variant<NumVal, std::string, ArrayPtr, ProcVal>;
-struct Array { std::vector<Value> elems; };
+struct Array {
+    std::vector<Value> elems;
+};
 
-inline double nv_scalar(const NumVal& v) { return v[0]; }
-inline bool   nv_is_scalar(const NumVal& v) { return v.size() == 1; }
+inline double nv_scalar(const NumVal& v) {
+    return v[0];
+}
+inline bool   nv_is_scalar(const NumVal& v) {
+    return v.size() == 1;
+}
 std::string to_str(const Value& v);   // forward declaration — defined after Proc
 double to_bool(const Value& v);       // forward declaration — defined after Proc
 bool values_equal(const Value& a, const Value& b);  // forward declaration
@@ -55,31 +61,65 @@ enum TK {
     LT, GT, LE, GE, EQ, NEQ,
     LPAREN, RPAREN, LBRACE, RBRACE, LBRACKET, RBRACKET, COMMA, END
 };
-struct Token { TK type; std::string val; int line = 1; };
+struct Token {
+    TK type;
+    std::string val;
+    int line = 1;
+};
 std::vector<Token> lex(const std::string& src, const std::string& filename = "<stdin>") {
     std::vector<Token> toks;
-    size_t i = 0, n = src.size(); int line = 1;
+    size_t i = 0, n = src.size();
+    int line = 1;
     while (i < n) {
-        if (src[i] == '\n') { line++; i++; continue; }
-        if (isspace((unsigned char)src[i])) { i++; continue; }
-        if (src[i] == '#') { while (i < n && src[i] != '\n') i++; continue; }
+        if (src[i] == '\n') {
+            line++;
+            i++;
+            continue;
+        }
+        if (isspace((unsigned char)src[i])) {
+            i++;
+            continue;
+        }
+        if (src[i] == '#') {
+            while (i < n && src[i] != '\n') i++;
+            continue;
+        }
         if (src[i] == '"') {
-            std::string s; i++;
+            std::string s;
+            i++;
             while (i < n && src[i] != '"') {
                 if (src[i] == '\\' && i+1 < n) {
                     switch (src[++i]) {
-                        case 'n': s+='\n'; break; case 't': s+='\t'; break;
-                        case '\\':s+='\\'; break; case '"': s+='"';  break;
-                        default:  s+='\\'; s+=src[i]; break;
+                    case 'n':
+                        s+='\n';
+                        break;
+                    case 't':
+                        s+='\t';
+                        break;
+                    case '\\':
+                        s+='\\';
+                        break;
+                    case '"':
+                        s+='"';
+                        break;
+                    default:
+                        s+='\\';
+                        s+=src[i];
+                        break;
                     }
-                } else { s += src[i]; }
+                } else {
+                    s += src[i];
+                }
                 i++;
             }
-            toks.push_back({STR, s, line}); i++; continue;
+            toks.push_back({STR, s, line});
+            i++;
+            continue;
         }
         if (isdigit((unsigned char)src[i]) ||
                 (src[i] == '.' && i+1 < n && isdigit((unsigned char)src[i+1]))) {
-            std::string s; bool has_dot = false;
+            std::string s;
+            bool has_dot = false;
             while (i < n && (isdigit((unsigned char)src[i]) || src[i] == '.')) {
                 if (src[i] == '.') {
                     if (has_dot) throw Error{filename, line, "malformed number '" + s + ".'", {}};
@@ -92,44 +132,76 @@ std::vector<Token> lex(const std::string& src, const std::string& filename = "<s
                 s += src[i++];
                 if (i < n && (src[i] == '+' || src[i] == '-')) s += src[i++];
                 if (i >= n || !isdigit((unsigned char)src[i]))
-                    throw Error{filename, line, "malformed number '" + s + "'"  , {}};
+                    throw Error{filename, line, "malformed number '" + s + "'", {}};
                 while (i < n && isdigit((unsigned char)src[i])) s += src[i++];
             }
-            toks.push_back({NUM, s, line}); continue;
+            toks.push_back({NUM, s, line});
+            continue;
         }
         if (isalpha((unsigned char)src[i]) || src[i] == '_') {
             std::string s;
             while (i < n && (isalnum((unsigned char)src[i]) || src[i] == '_')) s += src[i++];
             TK t = IDENT;
-            if      (s=="var")    t=VAR;   else if (s=="proc")   t=PROC;
-            else if (s=="while")  t=WHILE; else if (s=="for")    t=FOR;
-            else if (s=="in")     t=IN;    else if (s=="if")     t=IF;
-            else if (s=="else")   t=ELSE;  else if (s=="return") t=RETURN;
-            else if (s=="print")  t=PRINT; else if (s=="break")  t=BREAK;
+            if      (s=="var")    t=VAR;
+            else if (s=="proc")   t=PROC;
+            else if (s=="while")  t=WHILE;
+            else if (s=="for")    t=FOR;
+            else if (s=="in")     t=IN;
+            else if (s=="if")     t=IF;
+            else if (s=="else")   t=ELSE;
+            else if (s=="return") t=RETURN;
+            else if (s=="print")  t=PRINT;
+            else if (s=="break")  t=BREAK;
             else if (s=="continue") t=CONTINUE;
-            else if (s=="and")    t=AND;   else if (s=="or")     t=OR;
+            else if (s=="and")    t=AND;
+            else if (s=="or")     t=OR;
             else if (s=="not")    t=NOT;
-            toks.push_back({t, s, line}); continue;
+            toks.push_back({t, s, line});
+            continue;
         }
         if (i+1 < n) {
             char a=src[i], b=src[i+1];
-            if (a=='<'&&b=='='){toks.push_back({LE,"<=",line}); i+=2; continue;}
-            if (a=='>'&&b=='='){toks.push_back({GE,">=",line}); i+=2; continue;}
-            if (a=='='&&b=='='){toks.push_back({EQ,"==",line}); i+=2; continue;}
-            if (a=='!'&&b=='='){toks.push_back({NEQ,"!=",line}); i+=2; continue;}
+            if (a=='<'&&b=='=') {
+                toks.push_back({LE,"<=",line});
+                i+=2;
+                continue;
+            }
+            if (a=='>'&&b=='=') {
+                toks.push_back({GE,">=",line});
+                i+=2;
+                continue;
+            }
+            if (a=='='&&b=='=') {
+                toks.push_back({EQ,"==",line});
+                i+=2;
+                continue;
+            }
+            if (a=='!'&&b=='=') {
+                toks.push_back({NEQ,"!=",line});
+                i+=2;
+                continue;
+            }
         }
         static const std::string ops = "=+-*/<>(),{}[]";
         static const TK opt[] = {ASSIGN,PLUS,MINUS,STAR,SLASH,LT,GT,
-                                  LPAREN,RPAREN,COMMA,LBRACE,RBRACE,LBRACKET,RBRACKET};
+                                 LPAREN,RPAREN,COMMA,LBRACE,RBRACE,LBRACKET,RBRACKET
+                                };
         size_t p = ops.find(src[i]);
-        if (p != std::string::npos) { toks.push_back({opt[p], std::string(1,src[i]), line}); i++; continue; }
+        if (p != std::string::npos) {
+            toks.push_back({opt[p], std::string(1,src[i]), line});
+            i++;
+            continue;
+        }
         throw Error{filename, line, std::string("unknown character '") + src[i] + "'", {}};
     }
-    toks.push_back({END, "", line}); return toks;
+    toks.push_back({END, "", line});
+    return toks;
 }
 
 static constexpr size_t MAX_CALL_DEPTH = 128;
-struct ReturnSignal { Value val; };
+struct ReturnSignal {
+    Value val;
+};
 struct BreakSignal  {};
 struct ContinueSignal {};
 struct Proc {
@@ -148,19 +220,26 @@ struct Env {
 std::string to_str(const Value& v) {
     if (auto* nv = std::get_if<NumVal>(&v)) {
         if (nv->size() == 1) {
-            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[0]); return buf;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.15g", (*nv)[0]);
+            return buf;
         }
         std::string r = "<";
         for (size_t i = 0; i < nv->size(); i++) {
             if (i) r += " ";
-            char buf[32]; snprintf(buf, sizeof(buf), "%.15g", (*nv)[i]); r += buf;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.15g", (*nv)[i]);
+            r += buf;
         }
         return r + ">";
     }
     if (auto* s = std::get_if<std::string>(&v)) return *s;
     if (auto* p = std::get_if<ProcVal>(&v)) {
         std::string r = "<proc(";
-        for (size_t i = 0; i < (*p)->params.size(); i++) { if (i) r += ", "; r += (*p)->params[i]; }
+        for (size_t i = 0; i < (*p)->params.size(); i++) {
+            if (i) r += ", ";
+            r += (*p)->params[i];
+        }
         return r + ")>";
     }
     const auto& el = std::get<ArrayPtr>(v)->elems;
@@ -217,16 +296,32 @@ struct Interpreter {
     std::string                     filename;
     std::vector<std::string>&       call_stack;
 
-    void maybe_yield() { if (yield_fn) yield_fn(); }
-    Token consume()    { return T[pos++]; }
-    bool  check(TK t)  { return T[pos].type == t; }
-    bool  match(TK t)  { if (check(t)) { pos++; return true; } return false; }
+    void maybe_yield() {
+        if (yield_fn) yield_fn();
+    }
+    Token consume()    {
+        return T[pos++];
+    }
+    bool  check(TK t)  {
+        return T[pos].type == t;
+    }
+    bool  match(TK t)  {
+        if (check(t)) {
+            pos++;
+            return true;
+        }
+        return false;
+    }
     Token expect(TK t) {
         if (!check(t)) throw Error{filename, T[pos].line, "unexpected '" + T[pos].val + "'", call_stack};
         return consume();
     }
-    int cur_line() { return T[pos].line; }
-    Error make_err(const std::string& msg) { return Error{filename, cur_line(), msg, call_stack}; }
+    int cur_line() {
+        return T[pos].line;
+    }
+    Error make_err(const std::string& msg) {
+        return Error{filename, cur_line(), msg, call_stack};
+    }
 
     EnvPtr root_env() const {
         EnvPtr e = env;
@@ -253,7 +348,10 @@ struct Interpreter {
     void assign_var(const std::string& n, Value v) {
         for (EnvPtr e = env; e; e = e->parent) {
             auto it = e->vars.find(n);
-            if (it != e->vars.end()) { it->second = std::move(v); return; }
+            if (it != e->vars.end()) {
+                it->second = std::move(v);
+                return;
+            }
         }
         env->vars[n] = std::move(v);
     }
@@ -262,21 +360,39 @@ struct Interpreter {
         size_t sa = a.size(), sb = b.size();
         if (sa == sb) {
             switch(op) {
-                case '+': return a + b; case '-': return a - b;
-                case '*': return a * b; case '/': return a / b;
+            case '+':
+                return a + b;
+            case '-':
+                return a - b;
+            case '*':
+                return a * b;
+            case '/':
+                return a / b;
             }
         }
         if (sb == 1) {
             switch(op) {
-                case '+': return a + b[0]; case '-': return a - b[0];
-                case '*': return a * b[0]; case '/': return a / b[0];
+            case '+':
+                return a + b[0];
+            case '-':
+                return a - b[0];
+            case '*':
+                return a * b[0];
+            case '/':
+                return a / b[0];
             }
         }
         if (sa == 1) {
             NumVal ra(a[0], sb);
             switch(op) {
-                case '+': return ra + b; case '-': return ra - b;
-                case '*': return ra * b; case '/': return ra / b;
+            case '+':
+                return ra + b;
+            case '-':
+                return ra - b;
+            case '*':
+                return ra * b;
+            case '/':
+                return ra / b;
             }
         }
         throw make_err("vector size mismatch: " + std::to_string(sa) + " vs " + std::to_string(sb));
@@ -291,13 +407,26 @@ struct Interpreter {
         NumVal r(ra.size());
         for (size_t i = 0; i < ra.size(); i++) {
             switch(op) {
-                case LT:  r[i] = ra[i] <  rb[i] ? 1.0 : 0.0; break;
-                case GT:  r[i] = ra[i] >  rb[i] ? 1.0 : 0.0; break;
-                case LE:  r[i] = ra[i] <= rb[i] ? 1.0 : 0.0; break;
-                case GE:  r[i] = ra[i] >= rb[i] ? 1.0 : 0.0; break;
-                case EQ:  r[i] = ra[i] == rb[i] ? 1.0 : 0.0; break;
-                case NEQ: r[i] = ra[i] != rb[i] ? 1.0 : 0.0; break;
-                default: break;
+            case LT:
+                r[i] = ra[i] <  rb[i] ? 1.0 : 0.0;
+                break;
+            case GT:
+                r[i] = ra[i] >  rb[i] ? 1.0 : 0.0;
+                break;
+            case LE:
+                r[i] = ra[i] <= rb[i] ? 1.0 : 0.0;
+                break;
+            case GE:
+                r[i] = ra[i] >= rb[i] ? 1.0 : 0.0;
+                break;
+            case EQ:
+                r[i] = ra[i] == rb[i] ? 1.0 : 0.0;
+                break;
+            case NEQ:
+                r[i] = ra[i] != rb[i] ? 1.0 : 0.0;
+                break;
+            default:
+                break;
             }
         }
         return r;
@@ -327,39 +456,61 @@ struct Interpreter {
     void stmt() {
         maybe_yield();
         if (check(VAR)) {
-            consume(); std::string n = expect(IDENT).val; expect(ASSIGN); decl_var(n, expr());
-        }
-        else if (check(PROC))   { proc_decl(); }
-        else if (check(IF))     { if_stmt(); }
-        else if (check(WHILE))  { while_stmt(); }
-        else if (check(FOR))    { for_stmt(); }
-        else if (check(PRINT))  { print_stmt(); }
-        else if (check(RETURN)) { consume(); throw ReturnSignal{expr()}; }
-        else if (check(BREAK))  { consume(); throw BreakSignal{}; }
-        else if (check(CONTINUE)) { consume(); throw ContinueSignal{}; }
-        else if (check(IDENT) && T[pos+1].type == LBRACKET) { indexed_assign(); }
-        else if (check(IDENT) && T[pos+1].type == ASSIGN) {
-            std::string n = consume().val; consume(); assign_var(n, expr());
-        }
-        else if (check(IDENT) && T[pos+1].type == LPAREN) { expr(); }
-        else if (!check(RBRACE) && !check(END))
+            consume();
+            std::string n = expect(IDENT).val;
+            expect(ASSIGN);
+            decl_var(n, expr());
+        } else if (check(PROC))   {
+            proc_decl();
+        } else if (check(IF))     {
+            if_stmt();
+        } else if (check(WHILE))  {
+            while_stmt();
+        } else if (check(FOR))    {
+            for_stmt();
+        } else if (check(PRINT))  {
+            print_stmt();
+        } else if (check(RETURN)) {
+            consume();
+            throw ReturnSignal{expr()};
+        } else if (check(BREAK))  {
+            consume();
+            throw BreakSignal{};
+        } else if (check(CONTINUE)) {
+            consume();
+            throw ContinueSignal{};
+        } else if (check(IDENT) && T[pos+1].type == LBRACKET) {
+            indexed_assign();
+        } else if (check(IDENT) && T[pos+1].type == ASSIGN) {
+            std::string n = consume().val;
+            consume();
+            assign_var(n, expr());
+        } else if (check(IDENT) && T[pos+1].type == LPAREN) {
+            expr();
+        } else if (!check(RBRACE) && !check(END))
             throw make_err("unexpected '" + T[pos].val + "'");
     }
     void indexed_assign() {
         std::string n = consume().val;
-        expect(LBRACKET); Value idx = expr(); expect(RBRACKET);
+        expect(LBRACKET);
+        Value idx = expr();
+        expect(RBRACKET);
         if (check(LBRACKET)) {
             Value outer = get_var(n);
             auto& ap = std::get<ArrayPtr>(outer);
             int i = checked_arr_index(ap, idx, n);
-            expect(LBRACKET); Value idx2 = expr(); expect(RBRACKET);
-            expect(ASSIGN); Value rhs = expr();
+            expect(LBRACKET);
+            Value idx2 = expr();
+            expect(RBRACKET);
+            expect(ASSIGN);
+            Value rhs = expr();
             auto& inner = std::get<ArrayPtr>(ap->elems[i]);
             int j = checked_arr_index(inner, idx2, n);
             inner->elems[j] = rhs;
             return;
         }
-        expect(ASSIGN); Value rhs = expr();
+        expect(ASSIGN);
+        Value rhs = expr();
         Value* stored = get_var_ptr(n);
         if (!stored) throw make_err("undefined '" + n + "'");
         if (std::holds_alternative<NumVal>(*stored)) {
@@ -384,7 +535,8 @@ struct Interpreter {
         return i;
     }
     void proc_decl() {
-        consume(); std::string name = expect(IDENT).val;
+        consume();
+        std::string name = expect(IDENT).val;
         expect(LPAREN);
         std::vector<std::string> params;
         while (!check(RPAREN)) {
@@ -396,7 +548,8 @@ struct Interpreter {
         body.push_back(expect(LBRACE));
         int depth = 1;
         while (depth > 0) {
-            if (check(LBRACE)) depth++; else if (check(RBRACE)) depth--;
+            if (check(LBRACE)) depth++;
+            else if (check(RBRACE)) depth--;
             body.push_back(consume());
         }
         body.push_back({END, ""});
@@ -405,103 +558,158 @@ struct Interpreter {
     }
     void run_block() {
         expect(LBRACE);
-        try { while (!check(RBRACE) && !check(END)) stmt(); }
-        catch (...) {
+        try {
+            while (!check(RBRACE) && !check(END)) stmt();
+        } catch (...) {
             int depth = 0;
             while (!check(END)) {
-                if      (check(LBRACE)) { depth++; pos++; }
-                else if (check(RBRACE)) { if (depth==0) break; depth--; pos++; }
-                else pos++;
+                if      (check(LBRACE)) {
+                    depth++;
+                    pos++;
+                } else if (check(RBRACE)) {
+                    if (depth==0) break;
+                    depth--;
+                    pos++;
+                } else pos++;
             }
-            expect(RBRACE); throw;
+            expect(RBRACE);
+            throw;
         }
         expect(RBRACE);
     }
 
     void skip_block() {
-        expect(LBRACE); int depth = 1;
+        expect(LBRACE);
+        int depth = 1;
         while (depth > 0) {
-            if (check(LBRACE)) depth++; else if (check(RBRACE)) depth--;
+            if (check(LBRACE)) depth++;
+            else if (check(RBRACE)) depth--;
             pos++;
         }
     }
     void if_stmt() {
         consume();
-        expect(LPAREN); bool taken = to_bool(expr()) != 0.0; expect(RPAREN);
-        if (taken) run_block(); else skip_block();
+        expect(LPAREN);
+        bool taken = to_bool(expr()) != 0.0;
+        expect(RPAREN);
+        if (taken) run_block();
+        else skip_block();
         while (check(ELSE)) {
             consume();
             if (check(IF)) {
                 consume();
-                expect(LPAREN); bool c = to_bool(expr()) != 0.0; expect(RPAREN);
-                if (!taken && c) { run_block(); taken = true; } else skip_block();
+                expect(LPAREN);
+                bool c = to_bool(expr()) != 0.0;
+                expect(RPAREN);
+                if (!taken && c) {
+                    run_block();
+                    taken = true;
+                } else skip_block();
             } else {
-                if (!taken) run_block(); else skip_block(); break;
+                if (!taken) run_block();
+                else skip_block();
+                break;
             }
         }
     }
     void while_stmt() {
-        consume(); size_t cond = pos;
+        consume();
+        size_t cond = pos;
         while (true) {
             maybe_yield();
             pos = cond;
-            expect(LPAREN); bool c = to_bool(expr()) != 0.0; expect(RPAREN);
-            if (!c) { skip_block(); break; }
-            try { run_block(); }
-            catch (ContinueSignal&) { continue; }
-            catch (BreakSignal&) { break; }
+            expect(LPAREN);
+            bool c = to_bool(expr()) != 0.0;
+            expect(RPAREN);
+            if (!c) {
+                skip_block();
+                break;
+            }
+            try {
+                run_block();
+            } catch (ContinueSignal&) {
+                continue;
+            } catch (BreakSignal&) {
+                break;
+            }
         }
     }
     void for_stmt() {
-        consume(); expect(LPAREN); expect(VAR);
+        consume();
+        expect(LPAREN);
+        expect(VAR);
         std::string var_name = expect(IDENT).val;
-        expect(IN); Value collection = expr(); expect(RPAREN);
+        expect(IN);
+        Value collection = expr();
+        expect(RPAREN);
         size_t body_start = pos;
 
         auto run_body_with = [&](Value v) {
             maybe_yield();
             pos = body_start;
             env->vars[var_name] = std::move(v);
-            try { run_block(); }
-            catch (ContinueSignal&) { return; }
+            try {
+                run_block();
+            } catch (ContinueSignal&) {
+                return;
+            }
         };
 
         if (std::holds_alternative<NumVal>(collection)) {
             const NumVal& nv = std::get<NumVal>(collection);
             bool broken = false;
             for (size_t i = 0; i < nv.size() && !broken; i++) {
-                try { run_body_with(NumVal{nv[i]}); }
-                catch (BreakSignal&) { broken = true; }
+                try {
+                    run_body_with(NumVal{nv[i]});
+                } catch (BreakSignal&) {
+                    broken = true;
+                }
             }
-            if (!broken) { pos = body_start; skip_block(); }
+            if (!broken) {
+                pos = body_start;
+                skip_block();
+            }
         } else if (std::holds_alternative<ArrayPtr>(collection)) {
             const auto& elems = std::get<ArrayPtr>(collection)->elems;
             bool broken = false;
             for (size_t i = 0; i < elems.size() && !broken; i++) {
-                try { run_body_with(elems[i]); }
-                catch (BreakSignal&) { broken = true; }
+                try {
+                    run_body_with(elems[i]);
+                } catch (BreakSignal&) {
+                    broken = true;
+                }
             }
-            if (!broken) { pos = body_start; skip_block(); }
+            if (!broken) {
+                pos = body_start;
+                skip_block();
+            }
         } else if (std::holds_alternative<std::string>(collection)) {
             const std::string& s = std::get<std::string>(collection);
             bool broken = false;
             for (size_t i = 0; i < s.size() && !broken; i++) {
-                try { run_body_with(std::string(1, s[i])); }
-                catch (BreakSignal&) { broken = true; }
+                try {
+                    run_body_with(std::string(1, s[i]));
+                } catch (BreakSignal&) {
+                    broken = true;
+                }
             }
-            if (!broken) { pos = body_start; skip_block(); }
+            if (!broken) {
+                pos = body_start;
+                skip_block();
+            }
         } else {
             throw make_err("'for in' requires number, array, or string");
         }
     }
     void print_stmt() {
-        int pl = T[pos].line; consume();
+        int pl = T[pos].line;
+        consume();
         std::string out;
         while (!check(END)   && !check(RBRACE) && !check(VAR)   && !check(PROC)
-            && !check(WHILE) && !check(FOR)    && !check(IF)    && !check(ELSE)
-            && !check(BREAK) && !check(CONTINUE) && !check(PRINT)  && !check(RETURN)
-            && !(check(IDENT) && T[pos+1].type == ASSIGN)
-            && T[pos].line == pl)
+                && !check(WHILE) && !check(FOR)    && !check(IF)    && !check(ELSE)
+                && !check(BREAK) && !check(CONTINUE) && !check(PRINT)  && !check(RETURN)
+                && !(check(IDENT) && T[pos+1].type == ASSIGN)
+                && T[pos].line == pl)
             out += to_str(expr());
         std::cout << out << "\n";
     }
@@ -554,18 +762,56 @@ struct Interpreter {
                 throw make_err(fn + ": argument must be an array");
         };
 
-        if (nm=="floor") { chk(1); return nv_apply(nv(0), std::floor); }
-        if (nm=="ceil")  { chk(1); return nv_apply(nv(0), std::ceil);  }
-        if (nm=="abs")   { chk(1); return nv_apply(nv(0), std::abs);   }
-        if (nm=="sqrt")  { chk(1); return nv_apply(nv(0), std::sqrt);  }
-        if (nm=="sin")   { chk(1); return nv_apply(nv(0), std::sin);   }
-        if (nm=="cos")   { chk(1); return nv_apply(nv(0), std::cos);   }
-        if (nm=="tan")   { chk(1); return nv_apply(nv(0), std::tan);   }
-        if (nm=="exp")   { chk(1); return nv_apply(nv(0), std::exp);   }
-        if (nm=="log")   { chk(1); return nv_apply(nv(0), std::log);   }
-        if (nm=="log2")  { chk(1); return nv_apply(nv(0), [](double x){ return std::log2(x); }); }
-        if (nm=="atan2") { chk(2); return nv_apply2(nv(0), nv(1), std::atan2); }
-        if (nm=="pow")   { chk(2); return nv_apply2(nv(0), nv(1), std::pow); }
+        if (nm=="floor") {
+            chk(1);
+            return nv_apply(nv(0), std::floor);
+        }
+        if (nm=="ceil")  {
+            chk(1);
+            return nv_apply(nv(0), std::ceil);
+        }
+        if (nm=="abs")   {
+            chk(1);
+            return nv_apply(nv(0), std::abs);
+        }
+        if (nm=="sqrt")  {
+            chk(1);
+            return nv_apply(nv(0), std::sqrt);
+        }
+        if (nm=="sin")   {
+            chk(1);
+            return nv_apply(nv(0), std::sin);
+        }
+        if (nm=="cos")   {
+            chk(1);
+            return nv_apply(nv(0), std::cos);
+        }
+        if (nm=="tan")   {
+            chk(1);
+            return nv_apply(nv(0), std::tan);
+        }
+        if (nm=="exp")   {
+            chk(1);
+            return nv_apply(nv(0), std::exp);
+        }
+        if (nm=="log")   {
+            chk(1);
+            return nv_apply(nv(0), std::log);
+        }
+        if (nm=="log2")  {
+            chk(1);
+            return nv_apply(nv(0), [](double x) {
+                return std::log2(x);
+            });
+        }
+        if (nm=="atan2") {
+            chk(2);
+            return nv_apply2(nv(0), nv(1), std::atan2);
+        }
+        if (nm=="pow")   {
+            chk(2);
+            return nv_apply2(nv(0), nv(1), std::pow);
+        }
 
         if (nm=="vec") {
             NumVal r(a.size());
@@ -573,7 +819,9 @@ struct Interpreter {
             return r;
         }
         if (nm=="linspace") {
-            chk(3); double lo=d(0), hi=d(1); int n=(int)d(2);
+            chk(3);
+            double lo=d(0), hi=d(1);
+            int n=(int)d(2);
             if (n <= 0) return NumVal{};
             if (n == 1) return NumVal{lo};
             NumVal r(n);
@@ -604,7 +852,8 @@ struct Interpreter {
         }
 
         if (nm=="to_vec") {
-            chk(1); chk_arr(0, "to_vec");
+            chk(1);
+            chk_arr(0, "to_vec");
             const auto& el = ap(0)->elems;
             NumVal r(el.size());
             for (size_t i = 0; i < el.size(); i++) {
@@ -632,19 +881,42 @@ struct Interpreter {
         }
 
         if (nm=="sub")  {
-            chk(3); auto s=sv(0); int lo=(int)d(1), hi=(int)d(2);
-            if (lo<0) lo=0; if (hi>(int)s.size()) hi=(int)s.size();
+            chk(3);
+            auto s=sv(0);
+            int lo=(int)d(1), hi=(int)d(2);
+            if (lo<0) lo=0;
+            if (hi>(int)s.size()) hi=(int)s.size();
             return lo<hi ? s.substr(lo,hi-lo) : std::string{};
         }
         if (nm=="find") {
-            chk(2); auto p=sv(0).find(sv(1));
+            chk(2);
+            auto p=sv(0).find(sv(1));
             return NumVal{p==std::string::npos ? -1.0 : (double)p};
         }
-        if (nm=="str")  { chk(1); return to_str(a[0]); }
-        if (nm=="num")  { chk(1); return NumVal{std::stod(sv(0))}; }
-        if (nm=="upper"){ chk(1); std::string s=sv(0); for(char&c:s)c=toupper((unsigned char)c); return s; }
-        if (nm=="lower"){ chk(1); std::string s=sv(0); for(char&c:s)c=tolower((unsigned char)c); return s; }
-        if (nm=="char") { chk(1); return std::string(1,(char)(int)d(0)); }
+        if (nm=="str")  {
+            chk(1);
+            return to_str(a[0]);
+        }
+        if (nm=="num")  {
+            chk(1);
+            return NumVal{std::stod(sv(0))};
+        }
+        if (nm=="upper") {
+            chk(1);
+            std::string s=sv(0);
+            for(char&c:s)c=toupper((unsigned char)c);
+            return s;
+        }
+        if (nm=="lower") {
+            chk(1);
+            std::string s=sv(0);
+            for(char&c:s)c=tolower((unsigned char)c);
+            return s;
+        }
+        if (nm=="char") {
+            chk(1);
+            return std::string(1,(char)(int)d(0));
+        }
         if (nm=="asc")  {
             chk(1);
             if (sv(0).empty()) throw make_err("asc: empty string");
@@ -675,9 +947,12 @@ struct Interpreter {
             return a[0];
         }
         if (nm=="pop") {
-            chk(1); chk_arr(0, "pop");
+            chk(1);
+            chk_arr(0, "pop");
             if (ap(0)->elems.empty()) throw make_err("pop: empty array");
-            Value v = ap(0)->elems.back(); ap(0)->elems.pop_back(); return v;
+            Value v = ap(0)->elems.back();
+            ap(0)->elems.pop_back();
+            return v;
         }
         if (nm=="insert") {
             if (a.size() != 3) throw make_err("insert: needs 3 args");
@@ -688,7 +963,8 @@ struct Interpreter {
             return a[0];
         }
         if (nm=="remove") {
-            chk(2); chk_arr(0, "remove");
+            chk(2);
+            chk_arr(0, "remove");
             int i = (int)d(1);
             if (i < 0) i += (int)ap(0)->elems.size();
             if (i < 0 || i >= (int)ap(0)->elems.size()) throw make_err("remove: index out of bounds");
@@ -697,39 +973,53 @@ struct Interpreter {
             return v;
         }
         if (nm=="slice") {
-            chk(3); chk_arr(0, "slice");
+            chk(3);
+            chk_arr(0, "slice");
             int lo=(int)d(1), hi=(int)d(2), sz=(int)ap(0)->elems.size();
-            if (lo<0) lo=0; if (hi>sz) hi=sz;
+            if (lo<0) lo=0;
+            if (hi>sz) hi=sz;
             auto r = std::make_shared<Array>();
             if (lo < hi) r->elems.assign(ap(0)->elems.begin()+lo, ap(0)->elems.begin()+hi);
             return r;
         }
         if (nm=="concat") {
-            chk(2); chk_arr(0, "concat"); chk_arr(1, "concat");
+            chk(2);
+            chk_arr(0, "concat");
+            chk_arr(1, "concat");
             auto r = std::make_shared<Array>(Array{ap(0)->elems});
             r->elems.insert(r->elems.end(), ap(1)->elems.begin(), ap(1)->elems.end());
             return r;
         }
         if (nm=="join") {
-            chk(2); chk_arr(0, "join");
+            chk(2);
+            chk_arr(0, "join");
             std::string sep = sv(1), out;
             const auto& el = ap(0)->elems;
-            for (size_t i = 0; i < el.size(); i++) { if(i) out+=sep; out+=to_str(el[i]); }
+            for (size_t i = 0; i < el.size(); i++) {
+                if(i) out+=sep;
+                out+=to_str(el[i]);
+            }
             return out;
         }
         if (nm=="split") {
-            chk(2); std::string s=sv(0), delim=sv(1);
+            chk(2);
+            std::string s=sv(0), delim=sv(1);
             auto r = std::make_shared<Array>();
             size_t dlen = delim.size();
             while (true) {
                 size_t p = s.find(delim);
-                if (p == std::string::npos) { r->elems.push_back(s); break; }
-                r->elems.push_back(s.substr(0, p)); s = s.substr(p + dlen);
+                if (p == std::string::npos) {
+                    r->elems.push_back(s);
+                    break;
+                }
+                r->elems.push_back(s.substr(0, p));
+                s = s.substr(p + dlen);
             }
             return r;
         }
         if (nm=="copy") {
-            chk(1); chk_arr(0, "copy");
+            chk(1);
+            chk_arr(0, "copy");
             return std::make_shared<Array>(Array{ap(0)->elems});
         }
         if (nm=="range") {
@@ -741,7 +1031,8 @@ struct Interpreter {
             return r;
         }
         if (nm=="shuffle") {
-            chk(1); chk_arr(0, "shuffle");
+            chk(1);
+            chk_arr(0, "shuffle");
             auto r = std::make_shared<Array>(Array{ap(0)->elems});
             auto& el = r->elems;
             if (!el.empty()) {
@@ -757,33 +1048,46 @@ struct Interpreter {
             auto r = std::make_shared<Array>();
             std::unordered_map<std::string, bool> seen;
             for (EnvPtr e = env; e; e = e->parent) {
-                for (auto& [k, _] : e->vars) if (!seen[k]) { seen[k] = true; r->elems.push_back(k); }
+                for (auto& [k, _] : e->vars) if (!seen[k]) {
+                        seen[k] = true;
+                        r->elems.push_back(k);
+                    }
             }
             return r;
         }
 
         if (nm=="read") {
-            chk(1); std::ifstream f(sv(0));
+            chk(1);
+            std::ifstream f(sv(0));
             if (!f) throw make_err("read: can't open '" + sv(0) + "'");
             return std::string(std::istreambuf_iterator<char>(f), {});
         }
         if (nm=="write") {
-            chk(2); std::ofstream f(sv(0));
+            chk(2);
+            std::ofstream f(sv(0));
             if (!f) throw make_err("write: can't open '" + sv(0) + "'");
-            f << sv(1); return NumVal{0.0};
+            f << sv(1);
+            return NumVal{0.0};
         }
         if (nm=="append") {
-            chk(2); std::ofstream f(sv(0), std::ios::app);
+            chk(2);
+            std::ofstream f(sv(0), std::ios::app);
             if (!f) throw make_err("append: can't open '" + sv(0) + "'");
-            f << sv(1); return NumVal{0.0};
+            f << sv(1);
+            return NumVal{0.0};
         }
         if (nm=="load") {
             chk(1);
             if (!load_fn) throw make_err("load: not available");
-            std::string path = sv(0); std::ifstream f(path);
+            std::string path = sv(0);
+            std::ifstream f(path);
             if (!f) {
                 const char* home = getenv("HOME");
-                if (home) { std::string hp = std::string(home) + "/.musil/" + path; f.open(hp); if (f) path = hp; }
+                if (home) {
+                    std::string hp = std::string(home) + "/.musil/" + path;
+                    f.open(hp);
+                    if (f) path = hp;
+                }
             }
             if (!f) throw make_err("load: can't open '" + sv(0) + "'");
             load_fn(std::string(std::istreambuf_iterator<char>(f), {}), path);
@@ -819,8 +1123,11 @@ struct Interpreter {
                 return call_procval(std::get<ProcVal>(*vp), args, proc_name);
             return call_builtin(proc_name, args);
         }
-        if (nm=="exit")  { chk(1); std::exit((int)d(0)); }
-        if (nm=="assert"){
+        if (nm=="exit")  {
+            chk(1);
+            std::exit((int)d(0));
+        }
+        if (nm=="assert") {
             if (a.size() < 1 || a.size() > 2) throw make_err("assert: 1 or 2 args");
             if (!to_bool(a[0])) {
                 std::string msg = a.size() == 2 ? sv(1) : "assertion failed";
@@ -838,22 +1145,34 @@ struct Interpreter {
     }
     Value or_expr()  {
         Value l = and_expr();
-        while (check(OR)) { consume(); Value r = and_expr(); l = NumVal{(to_bool(l)||to_bool(r)) ? 1.0 : 0.0}; }
+        while (check(OR)) {
+            consume();
+            Value r = and_expr();
+            l = NumVal{(to_bool(l)||to_bool(r)) ? 1.0 : 0.0};
+        }
         return l;
     }
     Value and_expr() {
         Value l = not_expr();
-        while (check(AND)) { consume(); Value r = not_expr(); l = NumVal{(to_bool(l)&&to_bool(r)) ? 1.0 : 0.0}; }
+        while (check(AND)) {
+            consume();
+            Value r = not_expr();
+            l = NumVal{(to_bool(l)&&to_bool(r)) ? 1.0 : 0.0};
+        }
         return l;
     }
     Value not_expr() {
-        if (check(NOT)) { consume(); return NumVal{to_bool(not_expr()) == 0.0 ? 1.0 : 0.0}; }
+        if (check(NOT)) {
+            consume();
+            return NumVal{to_bool(not_expr()) == 0.0 ? 1.0 : 0.0};
+        }
         return cmp();
     }
     Value cmp() {
         Value l = add();
         if (check(LT)||check(GT)||check(LE)||check(GE)||check(EQ)||check(NEQ)) {
-            TK op = consume().type; Value r = add();
+            TK op = consume().type;
+            Value r = add();
             if (std::holds_alternative<std::string>(l) || std::holds_alternative<std::string>(r)) {
                 bool eq = values_equal(l, r);
                 if (op==EQ)  return NumVal{eq ? 1.0 : 0.0};
@@ -882,10 +1201,10 @@ struct Interpreter {
             bool plus = consume().type == PLUS;
             Value r = mul();
             if (plus &&
-                (std::holds_alternative<std::string>(l) ||
-                std::holds_alternative<std::string>(r))) {
+                    (std::holds_alternative<std::string>(l) ||
+                     std::holds_alternative<std::string>(r))) {
                 if (std::holds_alternative<ArrayPtr>(l) ||
-                    std::holds_alternative<ArrayPtr>(r)) {
+                        std::holds_alternative<ArrayPtr>(r)) {
                     throw make_err("operator '+': cannot concatenate matrices to string");
                 }
                 std::string ls = to_str(l);
@@ -894,13 +1213,13 @@ struct Interpreter {
                 continue;
             }
             if (std::holds_alternative<NumVal>(l) &&
-                std::holds_alternative<NumVal>(r)) {
+                    std::holds_alternative<NumVal>(r)) {
                 if (plus) l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '+');
                 else      l = nv_binop(std::get<NumVal>(l), std::get<NumVal>(r), '-');
                 continue;
             }
             if (std::holds_alternative<ArrayPtr>(l) ||
-                std::holds_alternative<ArrayPtr>(r)) {
+                    std::holds_alternative<ArrayPtr>(r)) {
                 throw make_err(
                     plus
                     ? "operator '+': not defined for matrices; use matadd(A, B) or matshift(A, s)"
@@ -921,9 +1240,9 @@ struct Interpreter {
             bool star = consume().type==STAR;
             Value r = unary();
             if (!std::holds_alternative<NumVal>(l) ||
-                !std::holds_alternative<NumVal>(r)) {
+                    !std::holds_alternative<NumVal>(r)) {
                 if (std::holds_alternative<ArrayPtr>(l) ||
-                    std::holds_alternative<ArrayPtr>(r)) {
+                        std::holds_alternative<ArrayPtr>(r)) {
                     throw make_err(
                         star
                         ? "operator '*': not defined for matrices; use matmul(A, B)"
@@ -944,14 +1263,19 @@ struct Interpreter {
         return l;
     }
     Value unary() {
-        if (check(MINUS)) { consume(); return -std::get<NumVal>(unary()); }
+        if (check(MINUS)) {
+            consume();
+            return -std::get<NumVal>(unary());
+        }
         return index_expr();
     }
     Value index_expr() {
         Value v = atom();
         while (check(LBRACKET) || (check(LPAREN) && std::holds_alternative<ProcVal>(v))) {
             if (check(LBRACKET)) {
-                consume(); Value idx = expr(); expect(RBRACKET);
+                consume();
+                Value idx = expr();
+                expect(RBRACKET);
                 if (std::holds_alternative<NumVal>(v)) {
                     const NumVal& n = std::get<NumVal>(v);
                     int i = (int)nv_scalar(std::get<NumVal>(idx));
@@ -972,7 +1296,10 @@ struct Interpreter {
             } else {
                 consume();
                 std::vector<Value> args;
-                while (!check(RPAREN)) { args.push_back(expr()); if (!check(RPAREN)) expect(COMMA); }
+                while (!check(RPAREN)) {
+                    args.push_back(expr());
+                    if (!check(RPAREN)) expect(COMMA);
+                }
                 expect(RPAREN);
                 v = call_procval(std::get<ProcVal>(v), args);
             }
@@ -982,7 +1309,12 @@ struct Interpreter {
     Value atom() {
         if (check(NUM))     return NumVal{std::stod(consume().val)};
         if (check(STR))     return consume().val;
-        if (check(LPAREN))  { consume(); Value v=expr(); expect(RPAREN); return v; }
+        if (check(LPAREN))  {
+            consume();
+            Value v=expr();
+            expect(RPAREN);
+            return v;
+        }
 
         if (check(PROC)) {
             consume();
@@ -997,7 +1329,8 @@ struct Interpreter {
             body.push_back(expect(LBRACE));
             int depth = 1;
             while (depth > 0) {
-                if (check(LBRACE)) depth++; else if (check(RBRACE)) depth--;
+                if (check(LBRACE)) depth++;
+                else if (check(RBRACE)) depth--;
                 body.push_back(consume());
             }
             body.push_back({END, ""});
@@ -1040,7 +1373,9 @@ struct Interpreter {
 };
 
 
-static inline void sig_yield(Interpreter& I) { I.maybe_yield(); }
+static inline void sig_yield(Interpreter& I) {
+    I.maybe_yield();
+}
 struct Environment {
     void register_builtin(const std::string& name, Builtin fn) {
         builtins[name] = std::move(fn);
@@ -1051,7 +1386,9 @@ struct Environment {
     void exec(const std::string& src, const std::string& filename = "<stdin>") {
         auto toks = lex(src, filename);
         Interpreter interp{std::move(toks), 0, global, builtins, {}, yield_fn, filename, call_stack};
-        interp.load_fn = [this](const std::string& s, const std::string& f){ this->exec(s, f); };
+        interp.load_fn = [this](const std::string& s, const std::string& f) {
+            this->exec(s, f);
+        };
         interp.run();
     }
 
@@ -1071,27 +1408,39 @@ std::string format_error(const Error& e) {
     return msg;
 }
 int brace_depth(const std::string& s) {
-    int d = 0; bool in_str = false;
+    int d = 0;
+    bool in_str = false;
     for (char c : s) {
         if (c == '"') in_str = !in_str;
-        else if (!in_str) { if (c=='{') d++; else if (c=='}') d--; }
+        else if (!in_str) {
+            if (c=='{') d++;
+            else if (c=='}') d--;
+        }
     }
     return d;
 }
 void repl(Environment& env) {
-    std::string buf; int depth = 0;
+    std::string buf;
+    int depth = 0;
     while (true) {
         std::cout << (depth==0 ? ">> " : ".. ") << std::flush;
         std::string line;
-        if (!std::getline(std::cin, line)) { std::cout << "\n"; break; }
+        if (!std::getline(std::cin, line)) {
+            std::cout << "\n";
+            break;
+        }
         depth += brace_depth(line);
         buf += line + "\n";
         if (depth <= 0) {
             depth = 0;
             if (buf.find_first_not_of(" \t\n") != std::string::npos) {
-                try { env.exec(buf, "<stdin>"); }
-                catch (Error& e)         { std::cerr << RED << format_error(e) <<  RESET << "\n"; }
-                catch (std::exception& e){ std::cerr << "error: " << e.what() << "\n"; }
+                try {
+                    env.exec(buf, "<stdin>");
+                } catch (Error& e)         {
+                    std::cerr << RED << format_error(e) <<  RESET << "\n";
+                } catch (std::exception& e) {
+                    std::cerr << "error: " << e.what() << "\n";
+                }
             }
             buf.clear();
         }
