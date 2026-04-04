@@ -2,8 +2,16 @@
 #
 # Command-line Musil interpreter.
 
+set(MUSIL_CLI_SOURCES
+    musil.cpp
+    ../src/musil.h
+    ../src/core.h
+    ../src/scientific.h
+    ../src/signals.h
+)
+
 add_executable(musil
-    musil.cpp ../src/musil.h ../src/core.h ../src/scientific.h ../src/signals.h
+    ${MUSIL_CLI_SOURCES}
 )
 
 # Include the core headers
@@ -12,10 +20,24 @@ target_include_directories(musil
         ${CMAKE_SOURCE_DIR}/src
 )
 
+if(BUILD_MUSIL_RTSOUND)
+    target_include_directories(musil
+        PRIVATE
+            ${miniaudio_SOURCE_DIR}
+    )
+endif()
+
+if(BUILD_MUSIL_RTSOUND)
+    target_compile_definitions(musil
+        PRIVATE
+            BUILD_MUSIL_RTSOUND
+    )
+endif()
+
 # C++ standard and warnings/optimizations (per-target, not global)
 target_compile_features(musil PRIVATE cxx_std_17)
 
-if (MSVC)
+if(MSVC)
     target_compile_options(musil PRIVATE /W4)
 else()
     target_compile_options(musil PRIVATE
@@ -27,11 +49,20 @@ else()
     )
 endif()
 
+if(APPLE AND BUILD_MUSIL_RTSOUND)
+    target_link_libraries(musil PRIVATE
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework AudioUnit"
+        "-framework CoreFoundation"
+    )
+endif()
+
 #
 # Installation
 #
 # 1) Install the executable under "bin" in the install prefix.
-# 2) Install .musil files into $HOME/.musil
+# 2) Install .mu files into $HOME/.musil
 #    and, on Unix, chown them back to the invoking user if run via sudo.
 #
 
@@ -49,14 +80,12 @@ install(FILES
     DESTINATION $ENV{HOME}/.musil
 )
 
-# On Unix: if install is run with sudo, chown the .scm files to $SUDO_USER
+# On Unix: if install is run with sudo, chown the .mu files to $SUDO_USER
 # so the normal user can overwrite them later from the IDE.
 install(CODE "
     if(NOT WIN32)
-      # HOME at install time (under sudo this is usually the original user's HOME)
       set(MUSIL_HOME \"$ENV{HOME}\")
 
-      # Determine the owner we want: prefer SUDO_USER if present
       if(DEFINED ENV{SUDO_USER} AND NOT \"\$ENV{SUDO_USER}\" STREQUAL \"\")
         set(MUSIL_OWNER \"\$ENV{SUDO_USER}\")
       else()
@@ -66,9 +95,9 @@ install(CODE "
           OUTPUT_STRIP_TRAILING_WHITESPACE
         )
       endif()
-        
-      file(GLOB scm_files \"\${MUSIL_HOME}/.musil/*.mu\")
-      foreach(f \${scm_files})
+
+      file(GLOB mu_files \"\${MUSIL_HOME}/.musil/*.mu\")
+      foreach(f \${mu_files})
         execute_process(
           COMMAND chown \${MUSIL_OWNER} \"\${f}\"
         )

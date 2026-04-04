@@ -499,7 +499,8 @@ void init_musil_env() {
     add_scientific(musil_env);
     add_system(musil_env);
     add_plotting(musil_env);
-
+    add_rtsound(musil_env);
+    
     // Override the built-in `load` to also search env.paths
     musil_env.register_builtin("load",
     [](std::vector<Value>& args, Interpreter& I) -> Value {

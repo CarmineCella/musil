@@ -8,6 +8,7 @@
 #include "system.h"
 #include "signals.h"
 #include "plotting.h"
+#include "rtsound.h"
 
 #endif // MUSIL_H
 

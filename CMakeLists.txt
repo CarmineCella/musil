@@ -14,6 +14,27 @@ add_compile_definitions(COPYRIGHT="2026")
 # ------------------------------------------------------------------------------
 
 option(BUILD_MUSIL_IDE "Build Musil FLTK-based IDE" OFF)
+option(BUILD_MUSIL_RTSOUND "Build Musil realtime audio support" OFF)
+
+# ------------------------------------------------------------------------------
+# Realtime audio dependency (miniaudio)
+# ------------------------------------------------------------------------------
+
+if(BUILD_MUSIL_RTSOUND)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        miniaudio
+        URL https://github.com/mackron/miniaudio/archive/refs/heads/master.zip
+    )
+
+    FetchContent_GetProperties(miniaudio)
+    if(NOT miniaudio_POPULATED)
+        FetchContent_MakeAvailable(miniaudio)
+    endif()
+
+    add_compile_definitions(BUILD_MUSIL_RTSOUND)
+endif()
 
 # ------------------------------------------------------------------------------
 # Subprojects
@@ -35,7 +56,6 @@ configure_file(
     @ONLY
 )
 
-# Always create our own uninstall target with a unique name
 add_custom_target(musil_uninstall
     COMMAND ${CMAKE_COMMAND} -P "${CMAKE_BINARY_DIR}/cmake_uninstall.cmake"
     COMMENT "Uninstall Musil"

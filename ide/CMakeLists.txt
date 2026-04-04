@@ -56,13 +56,31 @@ set(MUSIL_SIG    "${CMAKE_SOURCE_DIR}/src/signals.mu")
 set(MUSIL_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/musil.icns")
 
 # ------------------------------------------------------------------------------
+# Sources
+# ------------------------------------------------------------------------------
+
+set(MUSIL_IDE_SOURCES
+    musil_ide.cpp
+    ../src/musil.h
+    ../src/core.h
+    ../src/scientific.h
+    ../src/signals.h
+)
+
+if(APPLE)
+    list(APPEND MUSIL_IDE_SOURCES
+        ${MUSIL_ICON_FILE}
+    )
+endif()
+
+
+# ------------------------------------------------------------------------------
 # Target
 # ------------------------------------------------------------------------------
 
 if(APPLE)
     add_executable(musil_ide MACOSX_BUNDLE
-        musil_ide.cpp
-        ${MUSIL_ICON_FILE}
+        ${MUSIL_IDE_SOURCES}
     )
 
     set_source_files_properties(${MUSIL_ICON_FILE}
@@ -106,7 +124,7 @@ if(APPLE)
 
 else()
     add_executable(musil_ide
-        musil_ide.cpp
+        ${MUSIL_IDE_SOURCES}
     )
 
     add_custom_command(TARGET musil_ide POST_BUILD
@@ -131,10 +149,24 @@ target_include_directories(musil_ide
         ${CMAKE_SOURCE_DIR}/src
 )
 
+if(BUILD_MUSIL_RTSOUND)
+    target_include_directories(musil_ide
+        PRIVATE
+            ${miniaudio_SOURCE_DIR}
+    )
+endif()
+
 target_compile_definitions(musil_ide
     PRIVATE
         BUILD_MUSIL_IDE
 )
+
+if(BUILD_MUSIL_RTSOUND)
+    target_compile_definitions(musil_ide
+        PRIVATE
+            BUILD_MUSIL_RTSOUND
+    )
+endif()
 
 target_compile_features(musil_ide PRIVATE cxx_std_17)
 
@@ -157,6 +189,15 @@ else()
     target_link_libraries(musil_ide PRIVATE ${FLTK_LIBRARIES})
 endif()
 
+if(APPLE AND BUILD_MUSIL_RTSOUND)
+    target_link_libraries(musil_ide PRIVATE
+        "-framework CoreAudio"
+        "-framework AudioToolbox"
+        "-framework AudioUnit"
+        "-framework CoreFoundation"
+    )
+endif()
+
 if(APPLE)
     add_custom_command(TARGET musil_ide POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E echo "---- Linked libraries for musil_ide ----"
@@ -175,22 +216,6 @@ endif()
 # Install
 # ------------------------------------------------------------------------------
 
-# # Install .mu libraries to ~/.musil for all platforms.
-# install(CODE [[
-#     if(DEFINED ENV{HOME})
-#         set(MUSIL_HOME "$ENV{HOME}/.musil")
-#         message(STATUS "Installing Musil libraries to ${MUSIL_HOME}")
-#         file(MAKE_DIRECTORY "${MUSIL_HOME}")
-#         file(COPY "${CMAKE_SOURCE_DIR}/src/stdlib.mu"     DESTINATION "${MUSIL_HOME}")
-#         file(COPY "${CMAKE_SOURCE_DIR}/src/scientific.mu" DESTINATION "${MUSIL_HOME}")
-#         file(COPY "${CMAKE_SOURCE_DIR}/src/plotting.mu"   DESTINATION "${MUSIL_HOME}")
-#         file(COPY "${CMAKE_SOURCE_DIR}/src/signals.mu"    DESTINATION "${MUSIL_HOME}")
-#     else()
-#         message(WARNING "HOME is not defined; skipping ~/.musil installation")
-#     endif()
-# ]])
-
-# Install .mu files into ~/.musil
 install(FILES
     ${CMAKE_SOURCE_DIR}/src/stdlib.mu
     ${CMAKE_SOURCE_DIR}/src/scientific.mu
@@ -200,8 +225,6 @@ install(FILES
 )
 
 if(APPLE)
-    # Copy the already-built app into /Applications during install.
-    # This avoids the fragile BUNDLE DESTINATION /Applications path.
     install(CODE [[
         set(APP_SRC "$<TARGET_BUNDLE_DIR:musil_ide>")
         set(APP_DST "/Applications/Musil IDE.app")

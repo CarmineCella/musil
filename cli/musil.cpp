@@ -19,6 +19,7 @@ int main (int argc, char* argv[]) {
     add_system(interpreter);
     add_signals(interpreter);
     add_plotting(interpreter);
+	add_rtsound(interpreter);
 
 	try {
 		bool interactive = false;
