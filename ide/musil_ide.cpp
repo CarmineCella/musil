@@ -573,8 +573,8 @@ Fl_Text_Display::Style_Table_Entry styletable[] = {
     { FL_BLACK,      FL_SCREEN,       16 }, // A  plain
     { FL_DARK_GREEN, FL_SCREEN,       16 }, // B  comment
     { FL_BLUE,       FL_SCREEN,       16 }, // C  string
-    { FL_DARK_RED,   FL_SCREEN_BOLD,  16 }, // D  keyword
-    { FL_DARK_BLUE,  FL_SCREEN_BOLD,  16 }, // E  bracket
+    { FL_DARK_BLUE,   FL_SCREEN,  16 }, // D  keyword
+    { FL_DARK_RED,  FL_SCREEN_BOLD,  16 }, // E  bracket
     { FL_RED,        FL_SCREEN_BOLD,  16 }  // F  matching bracket
 };
 const int N_STYLES = sizeof(styletable) / sizeof(styletable[0]);

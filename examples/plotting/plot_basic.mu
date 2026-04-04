@@ -13,14 +13,14 @@ var Ycos = cos(X)
 plot("Sine and Cosine",
      Ysin, "sin(x)",
      Ycos, "cos(x)",
-     "*")
+     "-")
 
 var N = 200
 var NOISE = rand(N)
 
 plot("Random noise",
      NOISE, "rand in [-1,1]",
-     ".")
+     "-")
 
 # x from 0 to 2π (roughly)
 X = vec(0,
@@ -42,7 +42,7 @@ var Ynoisy = Yclean + smallnoise
 plot("Sine with noise",
      Yclean, "clean sin(x)",
      Ynoisy, "noisy sin(x)",
-     "*")
+     "-")
 
 N = 200
 
@@ -75,4 +75,4 @@ Ynoisy = Ycos2 + smallnoise
 plot("Cosine vs noisy cosine",
      Ycos2, "cos(2x)",
      Ynoisy, "cos(2x) + noise",
-     "*")
+     "-")

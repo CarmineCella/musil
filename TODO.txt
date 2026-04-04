@@ -7,6 +7,9 @@ v0.6
 - check/improve speed for vector calculations
 - signals: add sparkle (pvoc), pconv 
 - music library: orchestrate, mp, soundtypes, granular orchestrate, symbolic composition system (notes, midi in and out, musicxml out, algorithmic gen)
+- system interaction: exists(path), isfile(path), isdir(path), mkdir(path), remove(path), rename(a, b), listdir(path), or exec with return value
+- regex
+- IDE: shortcut for commenting/uncommenting
 
 v0.51
 - add paths for IDE or find solution  (path resolver) *
@@ -18,6 +21,6 @@ v0.5
 - first public release *
 
 
-BUGS
+CURRENT BUGS
 
-- error messages use wrong file name when files are nested *
+- does not check arg types for builtin (eg. "d" for sub and linspace)

@@ -40,7 +40,7 @@ scatter("Linear regression (data)",
 plot("Linear regression (true vs noisy)",
      Yclean, "true 2x+1",
      Ynoisy, "noisy samples",
-     "*")
+     "-")
 
 # Example B: k-means on clearly separated 2D clusters
 
@@ -76,7 +76,7 @@ scatter("k-means: input clusters",
 scatter("k-means: data + centroids",
         Xdata, Ydata, "data",
         Xcent, Ycent, "centroids",
-        ".")
+        "*")
 
 # Example C: PCA – original vs PCA-projected coordinates
 
@@ -123,7 +123,7 @@ var sig = matstd(M, 0)
 plot("Column statistics (random matrix)",
      mu, "mean",
      sig, "std",
-     "*")
+     "-")
 
 # Example E: median filtering
 
@@ -149,4 +149,4 @@ var y = median(x, 10)
 plot("Median filtering",
      x, "noisy signal",
      y, "filtered signal",
-     "*")
+     "-")
