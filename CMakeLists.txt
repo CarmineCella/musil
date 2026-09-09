@@ -12,18 +12,18 @@ option(MUSIL_READLINE "Use GNU readline in the REPL when available" ON)
 option(MUSIL_TESTS    "Build the test targets" ON)
 
 # --- The language: header-only, zero dependencies -------------------------
-add_library(musil_core INTERFACE)
-target_include_directories(musil_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_features(musil_core INTERFACE cxx_std_17)
+add_library(musil_base INTERFACE)
+target_include_directories(musil_base INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(musil_base INTERFACE cxx_std_17)
 if(MSVC)
-  target_compile_options(musil_core INTERFACE /W3)
+  target_compile_options(musil_base INTERFACE /W3)
 else()
-  target_compile_options(musil_core INTERFACE -Wall -Wextra -Wno-unused-parameter)
+  target_compile_options(musil_base INTERFACE -Wall -Wextra -Wno-unused-parameter)
 endif()
 
 # --- The command-line interpreter -----------------------------------------
 add_executable(musil cli/main.cpp)
-target_link_libraries(musil PRIVATE musil_core)
+target_link_libraries(musil PRIVATE musil_base)
 
 if(MUSIL_READLINE)
   find_path(READLINE_INCLUDE_DIR readline/readline.h)
@@ -45,7 +45,7 @@ install(FILES src/core.h src/std.h src/system.h src/musil.h DESTINATION include/
 if(MUSIL_TESTS)
   enable_testing()
   set(T ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-  add_test(NAME core    COMMAND musil ${T}/test_core.mu)
+  add_test(NAME base    COMMAND musil ${T}/test_base.mu)
   add_test(NAME stress  COMMAND musil ${T}/test_stress.mu)
   add_test(NAME smoke   COMMAND musil ${T}/test_smoke.mu)
   add_test(NAME load    COMMAND musil ${T}/test_load.mu WORKING_DIRECTORY ${T})

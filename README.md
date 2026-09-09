@@ -22,7 +22,7 @@ print "squares of evens:" (map (filter v (function (x) (== (mod x 2) 0))) (funct
 ## Build
 
 ```sh
-git clone https://github.com/<you>/Musil.git
+git clone https://github.com/CarmineCella/Musil.git
 cd Musil
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
@@ -32,26 +32,6 @@ ctest --test-dir build                  # run the tests
 ```
 
 GNU readline is used in the REPL when found (`-DMUSIL_READLINE=OFF` to disable).
-
-## Layout
-
-```
-src/core.h         the language: reader, evaluator, value model, primitive builtins (zero dependencies)
-src/std.h          the standard library: vector constructors, slicing, strings, files, map/filter/reduce, assert
-src/system.h       operating-system access: exec, getenv, cwd, ls, sleep
-src/musil.h        umbrella header: core + every bundled library, via add_all(interp&)
-cli/main.cpp       the command-line interpreter: musil [-i] [-e code] a.mu b.mu ... [-- args]
-examples/          reference.mu and other example programs
-tests/             test_core.mu (systematic, self-checking), stress, smoke and load tests,
-                   golden output of reference.mu
-```
-
-The core is the language and nothing else: special forms, arithmetic and
-comparison, list and vector primitives, `print`, `error`, `load`, `eval`.
-Everything that can be built on those lives in a library header exposing an
-`add_<name>(interp&)` that registers its functions with
-`interp::def(name, fn, min, max)`. Planned: `signals.h`, `scientific.h`,
-`learning.h`, `plotting.h`. The core never includes a library; `musil.h` does.
 
 ## The language in one page
 
@@ -108,7 +88,7 @@ Tail calls run in constant space, so `loop`-style recursion is the normal way to
 ## Embedding
 
 ```cpp
-#include "core.h"      // the language only; add "std.h" + add_std(I) for strings, map, files...
+#include "musil.h"     
 musil::interp I;
 // name, function, min args, max args (-1 = unbounded); eval checks the count
 I.def("hello", [](musil::vlist& a, musil::interp& i) -> musil::vptr {
@@ -123,28 +103,6 @@ the builtin, with file and line (`hello: expected string, got number`);
 `i.bad("message")` raises one with a custom text. `interp::call_fn` calls a
 Musil function from C++. `interp::yield_fn` is called every 1024 evaluations,
 for hosts that need to service an event loop.
-
-## Tests
-
-- `tests/test_core.mu` — one `assert` per language feature; prints one line on success.
-- `tests/test_stress.mu`, `tests/test_smoke.mu` — deep recursion, currying, I/O, broadcasting.
-- `tests/golden/reference.out` — frozen output of `examples/reference.mu`. After an
-  intended change to the reference, refresh it with
-  `cmake -DMUSIL=build/musil -DINPUT=examples/reference.mu -DGOLDEN=tests/golden/reference.out -DUPDATE=1 -P tests/golden.cmake`.
-
-## Roadmap
-
-1. Harden the core, run everything through `reference.mu` and `test_core.mu`. **Done.**
-   Speed: `fib(25)` in 0.17 s, on par with the fastest of the earlier attempts.
-2. Port `system`, `signals` (offline DSP on vectors) and `scientific` from Musil 1.
-3. Choose the multimedia backend; add plotting and real-time sound.
-4. Live coding.
-
-## History
-
-This repository continues the core of "Musil 3". The earlier attempts at the
-same idea (`f8`, `musil 1` with its FLTK IDE and full library set, `pure0`,
-`flux`) are archived in the `musil_legacy` repository.
 
 ## License
 

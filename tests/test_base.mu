@@ -1,7 +1,7 @@
-# test_core.mu — systematic, self-checking test of the Musil core.
+# test_base.mu — systematic, self-checking test of the Musil core + std.
 #
 # Every check is an (assert ...). A passing run prints only the final line.
-# Run with: musil tests/test_core.mu
+# Run with: musil tests/test_base.mu
 
 var checks 0
 function check (cond msg) {
@@ -320,7 +320,7 @@ check (equal? (type (add3 1)) "function") "curry: partial is a function"
 # --- errors --------------------------------------------------------------
 var msg (error-of (function () (error "boom")))
 check (contains? msg "boom") "error: message"
-check (contains? msg "test_core.mu:") "error: carries file name"
+check (contains? msg "test_base.mu:") "error: carries file name"
 function lvl3 () (error "deep")
 function lvl2 () (lvl3)
 function lvl1 () {
@@ -488,7 +488,7 @@ function uses-eval (x) (eval x)
 check (== (uses-eval '(+ 1 1)) 2) "eval: in tail position of a function"
 
 # --- I/O -----------------------------------------------------------------
-var path "/tmp/musil_test_core.txt"
+var path "/tmp/musil_test_base.txt"
 write path "hello\n"
 append-file path "world\n"
 check (equal? (read path) "hello\nworld\n") "write/append-file/read"
@@ -506,4 +506,4 @@ check (>= (find (vars) 'square) 0) "vars lists globals"
 check (> (clock) 0) "clock"
 check (== (length (vars)) (length (vars))) "vars is stable"
 
-print "test_core: all" checks "checks passed"
+print "test_base: all" checks "checks passed"
