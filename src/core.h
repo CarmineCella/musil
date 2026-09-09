@@ -433,6 +433,46 @@ inline vptr make_partial(interp& i, const vptr& fn, const vlist& args) {
     curr->params = std::vector<std::string>(fn->params.begin() + args.size(), fn->params.end());
     return curr;
 }
+// Early returns without exceptions. A (return X) reached in tail position is
+// free; one reached inside a nested form has to unwind with a C++ exception,
+// which costs microseconds. Bodies are rewritten at definition time so that
+//     (do A (if c (return X)) B C)   becomes   (do A (if c (return X) (do B C)))
+// which puts the return, and everything after the if, in tail position.
+// The rewrite is applied only where at least one branch ends in a return, so
+// no code is duplicated and evaluation order is unchanged.
+inline bool is_form(const vptr& v, const char* name) { return v && v->t == value::LIST && !v->l.empty() && v->l[0]->t == value::SYM && v->l[0]->s == name; }
+inline bool ends_in_return(const vptr& v) {
+    if (is_form(v, "return")) return true;
+    if (is_form(v, "do")) return v->l.size() > 1 && ends_in_return(v->l.back());
+    if (is_form(v, "if")) return v->l.size() == 4 && ends_in_return(v->l[2]) && ends_in_return(v->l[3]);
+    return false;
+}
+inline vptr hoist_returns(const vptr& v) {
+    if (!v || v->t != value::LIST || v->l.empty()) return v;
+    if (is_form(v, "if")) {
+        vlist n = v->l; for (size_t k=2; k<n.size(); k++) n[k] = hoist_returns(n[k]);
+        return v_list(std::move(n), v->line, v->file);
+    }
+    if (!is_form(v, "do")) return v;
+    vlist out = { v->l[0] };
+    for (size_t k=1; k<v->l.size(); k++) {
+        vptr f = hoist_returns(v->l[k]);
+        bool last = k + 1 == v->l.size();
+        if (!last && is_form(f, "if") && (f->l.size() == 3 || f->l.size() == 4)) {
+            vptr T = f->l[2], E = f->l.size() == 4 ? f->l[3] : nullptr;
+            if (ends_in_return(T) || (E && ends_in_return(E))) {
+                vlist rest = { v->l[0] }; for (size_t j=k+1; j<v->l.size(); j++) rest.push_back(v->l[j]);
+                vptr rest_do = hoist_returns(v_list(std::move(rest), v->line, v->file));
+                if (!ends_in_return(T)) T = v_list({ v->l[0], T, rest_do }, T->line, T->file);
+                if (!E) E = rest_do; else if (!ends_in_return(E)) E = v_list({ v->l[0], E, rest_do }, E->line, E->file);
+                out.push_back(v_list({ f->l[0], f->l[1], T, E }, f->line, f->file));
+                return v_list(std::move(out), v->line, v->file);
+            }
+        }
+        out.push_back(f);
+    }
+    return v_list(std::move(out), v->line, v->file);
+}
 inline std::string frame_label(const frame& f) {
     return (f.name && f.name->t == value::SYM ? f.name->s : std::string("<anon>")) + "() at " +
         (f.file ? *f.file : "?") + ":" + std::to_string(f.line);
@@ -515,7 +555,7 @@ try {
             if (l.size() == 4 && l[1]->t == value::SYM && l[2]->t == value::LIST) { named = true;  pi = 2; bi = 3; }
             else if (l.size() == 3 && l[1]->t == value::LIST)                     { named = false; pi = 1; bi = 2; }
             else err("function: expected (function [name] (params) body)");
-            auto fn = v_nil(); fn->t = value::FN; fn->closure = e; fn->body = l[bi];
+            auto fn = v_nil(); fn->t = value::FN; fn->closure = e; fn->body = hoist_returns(l[bi]);
             for (auto& p : l[pi]->l) {
                 if (p->t != value::SYM) err("function: parameter must be a symbol, got " + str_of(p));
                 fn->params.push_back(p->s);
@@ -956,11 +996,17 @@ inline vptr fn_each(vlist& a, interp& i) {    // (each x fn) — call for side e
 inline interp::interp() {
     rng.seed((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count());
     global = make_env();
+#ifdef _WIN32
+    const char sep = ';'; const char* home = std::getenv("USERPROFILE");
+#else
+    const char sep = ':'; const char* home = std::getenv("HOME");
+#endif
     if (const char* mp = std::getenv("MUSIL_PATH")) {
         std::string s = mp; size_t st = 0, p;
-        while ((p = s.find(':', st)) != std::string::npos) { if (p > st) load_path.push_back(s.substr(st, p-st)); st = p+1; }
+        while ((p = s.find(sep, st)) != std::string::npos) { if (p > st) load_path.push_back(s.substr(st, p-st)); st = p+1; }
         if (st < s.size()) load_path.push_back(s.substr(st));
     }
+    if (home) load_path.push_back((fs::path(home) / ".musil").string());
     auto a = [&](const char* n, op_t f) { def(n, f); };
     // Constants
     def("nil", v_nil()); def("true", v_num(1)); def("false", v_num(0));
@@ -1012,19 +1058,23 @@ inline interp::~interp() {
 }
 
 // === load / run / repl =====
+// Search order for a relative path: the directory of the file doing the
+// loading, the current directory, each entry of MUSIL_PATH, ~/.musil, and
+// <exe dir>/../lang (for installed layouts). A file is loaded once per
+// interpreter, keyed by its canonical path, so mutual loads are safe.
 inline void interp::load(const std::string& path) {
     fs::path p(path), resolved;
-    auto try_path = [&](const fs::path& q) { if (resolved.empty() && !q.empty() && fs::exists(q)) resolved = q; };
+    auto try_path = [&](const fs::path& q) { std::error_code ec; if (resolved.empty() && !q.empty() && fs::is_regular_file(q, ec)) resolved = q; };
     if (p.is_absolute()) try_path(p);
     else {
         if (current_file) { fs::path base = fs::path(*current_file).parent_path(); if (!base.empty()) try_path(base / p); }
         try_path(p);
         for (auto& d : load_path) try_path(fs::path(d) / p);
-        try_path(fs::path("./lang") / p);
     }
     if (resolved.empty()) err("load: not found: " + path);
-    resolved = fs::weakly_canonical(resolved);
-    std::string canon = resolved.string();
+    std::error_code ec;
+    fs::path canon_p = fs::weakly_canonical(resolved, ec);
+    std::string canon = (ec ? fs::absolute(resolved) : canon_p).generic_string();
     if (loaded_files.count(canon)) return;
     loaded_files.insert(canon);
     std::ifstream f(canon); if (!f) err("load: cannot open " + canon);

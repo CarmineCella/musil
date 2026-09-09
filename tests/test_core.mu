@@ -221,6 +221,72 @@ check (== ((make-adder 10) 5) 15) "closure over parameter"
 check (equal? (type square) "function") "function type"
 check (equal? (type +) "function") "builtin type"
 
+# --- early return (rewritten to tail position at definition time) --------
+var log (list)
+function er1 (x) {
+    push log "a"
+    if (> x 0) { return "pos" }
+    push log "b"
+    if (< x 0) {
+        push log "c"
+        return "neg"
+    }
+    push log "d"
+    return "zero"
+}
+check (equal? (er1 1) "pos") "early return: first if"
+check (equal? log (list "a")) "early return: statements after a taken return do not run"
+var log (list)
+check (equal? (er1 -1) "neg") "early return: second if"
+check (equal? log (list "a" "b" "c")) "early return: order of side effects"
+var log (list)
+check (equal? (er1 0) "zero") "early return: fallthrough"
+check (equal? log (list "a" "b" "d")) "early return: fallthrough side effects"
+function er2 (x) {
+    if (> x 0) { return "pos" } { push log "else" }
+    return (concat "after-" (str x))
+}
+var log (list)
+check (equal? (er2 -5) "after--5") "early return: if with else, else branch continues"
+check (equal? log (list "else")) "early return: else branch side effect"
+check (equal? (er2 5) "pos") "early return: if with else, then branch returns"
+function er3 (x) {
+    if (> x 0) { push log "t" } { return "neg-or-zero" }
+    return "pos"
+}
+check (equal? (er3 0) "neg-or-zero") "early return: return in else branch"
+check (equal? (er3 1) "pos") "early return: then branch continues"
+function er4 (n) {
+    var i 0
+    while 1 {
+        if (== i n) { return i }
+        var i (+ i 1)
+    }
+}
+check (== (er4 5) 5) "early return: inside a loop (non-tail, still correct)"
+function er5 (x) {
+    if (> x 0) {
+        if (> x 10) { return "big" }
+        return "small"
+    }
+    return "non-pos"
+}
+check (equal? (er5 20) "big") "early return: nested ifs"
+check (equal? (er5 5) "small") "early return: nested ifs, inner fallthrough"
+check (equal? (er5 -1) "non-pos") "early return: nested ifs, outer fallthrough"
+function er6 (x) {
+    var r (if (> x 0) "p" "n")
+    if (== r "p") { return 1 }
+    0
+}
+check (== (er6 1) 1) "early return: last statement is a literal"
+check (== (er6 -1) 0) "early return: literal fallthrough"
+function fib-er (n) {
+    if (< n 2) { return n }
+    return (+ (fib-er (- n 1)) (fib-er (- n 2)))
+}
+check (== (fib-er 20) 6765) "early return: fib"
+
 # --- tail calls ----------------------------------------------------------
 function loop (n acc) {
     if (== n 0) {

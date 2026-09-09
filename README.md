@@ -127,6 +127,7 @@ evaluations, for hosts that need to service an event loop.
 ## Roadmap
 
 1. Harden the core, run everything through `reference.mu` and `test_core.mu`. **Done.**
+   Speed: `fib(25)` in 0.17 s, on par with the fastest of the earlier attempts.
 2. Port `system`, `signals` (offline DSP on vectors) and `scientific` from Musil 1.
 3. Choose the multimedia backend; add plotting and real-time sound.
 4. Live coding.

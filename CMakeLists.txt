@@ -48,6 +48,7 @@ if(MUSIL_TESTS)
   add_test(NAME core    COMMAND musil ${T}/test_core.mu)
   add_test(NAME stress  COMMAND musil ${T}/test_stress.mu)
   add_test(NAME smoke   COMMAND musil ${T}/test_smoke.mu)
+  add_test(NAME load    COMMAND musil ${T}/test_load.mu WORKING_DIRECTORY ${T})
   # reference.mu output frozen in tests/golden/reference.out (timing lines filtered)
   add_test(NAME reference-golden
            COMMAND ${CMAKE_COMMAND}

@@ -24,6 +24,10 @@ static void usage(std::ostream& o) {
 int main(int argc, char** argv) {
     musil::interp I;
     musil::add_all(I);
+    // Installed layout: <prefix>/bin/musil and <prefix>/share/musil/lang
+    std::error_code ec;
+    auto exe = std::filesystem::weakly_canonical(std::filesystem::absolute(argv[0], ec), ec);
+    if (!ec) I.load_path.push_back((exe.parent_path().parent_path() / "share" / "musil" / "lang").string());
 
     bool interactive = false;
     std::string file, code;
