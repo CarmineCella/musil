@@ -36,17 +36,22 @@ GNU readline is used in the REPL when found (`-DMUSIL_READLINE=OFF` to disable).
 ## Layout
 
 ```
-src/core.h         the language: reader, evaluator, core builtins (zero dependencies)
-src/musil.h        umbrella header: core + bundled libraries
-cli/main.cpp       the command-line interpreter
+src/core.h         the language: reader, evaluator, value model, primitive builtins (zero dependencies)
+src/std.h          the standard library: vector constructors, slicing, strings, files, map/filter/reduce, assert
+src/system.h       operating-system access: exec, getenv, cwd, ls, sleep
+src/musil.h        umbrella header: core + every bundled library, via add_all(interp&)
+cli/main.cpp       the command-line interpreter: musil [-i] [-e code] a.mu b.mu ... [-- args]
 examples/          reference.mu and other example programs
-tests/             test_core.mu (systematic, self-checking), stress and smoke tests,
+tests/             test_core.mu (systematic, self-checking), stress, smoke and load tests,
                    golden output of reference.mu
 ```
 
-Libraries live next to the core as headers (`src/system.h`, `src/signals.h`, ...),
-each exposing an `add_<name>(interp&)` that registers its functions with
-`interp::def(name, fn)`. The core never includes them; `musil.h` does.
+The core is the language and nothing else: special forms, arithmetic and
+comparison, list and vector primitives, `print`, `error`, `load`, `eval`.
+Everything that can be built on those lives in a library header exposing an
+`add_<name>(interp&)` that registers its functions with
+`interp::def(name, fn, min, max)`. Planned: `signals.h`, `scientific.h`,
+`learning.h`, `plotting.h`. The core never includes a library; `musil.h` does.
 
 ## The language in one page
 
@@ -80,6 +85,7 @@ var v (vec 1 2 3)              # numbers are vectors; scalars are vectors of siz
 var L (list 1 "two" 'three)    # lists hold anything; 'x quotes a symbol or form
 (map L str) (filter v (function (n) (> n 1))) (reduce v + 0)
 (head L) (tail L) (last L) (length L) (push L 4) (pop L)
+var M (copy L)                 # copy is shallow: a new list, same elements (nested lists/vectors stay shared)
 
 var code '(+ 1 2)              # code is data
 (eval code)                    # => 3
@@ -102,19 +108,21 @@ Tail calls run in constant space, so `loop`-style recursion is the normal way to
 ## Embedding
 
 ```cpp
-#include "core.h"
+#include "core.h"      // the language only; add "std.h" + add_std(I) for strings, map, files...
 musil::interp I;
+// name, function, min args, max args (-1 = unbounded); eval checks the count
 I.def("hello", [](musil::vlist& a, musil::interp& i) -> musil::vptr {
-    i.argc(a, 1, "hello");
-    return musil::v_str("hello, " + i.str(a[0], "hello"));
-});
+    return musil::v_str("hello, " + i.str(a[0]));
+}, 1, 1);
 I.run("print (hello \"world\")");
 ```
 
-`interp::argc`, `num`, `scalar`, `index`, `str`, `list`, `fn` check an argument
-and raise a Musil error with file and line if it is wrong. `interp::call_fn`
-calls a Musil function from C++. `interp::yield_fn` is called every 1024
-evaluations, for hosts that need to service an event loop.
+Inside a builtin, `i.num(v)`, `i.scalar(v)`, `i.index(v)`, `i.str(v)`,
+`i.list(v)` and `i.fn(v)` return the payload or raise a Musil error that names
+the builtin, with file and line (`hello: expected string, got number`);
+`i.bad("message")` raises one with a custom text. `interp::call_fn` calls a
+Musil function from C++. `interp::yield_fn` is called every 1024 evaluations,
+for hosts that need to service an event loop.
 
 ## Tests
 

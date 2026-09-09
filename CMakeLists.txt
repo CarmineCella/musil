@@ -39,7 +39,7 @@ if(MUSIL_READLINE)
 endif()
 
 install(TARGETS musil RUNTIME DESTINATION bin)
-install(FILES src/core.h src/musil.h DESTINATION include/musil)
+install(FILES src/core.h src/std.h src/system.h src/musil.h DESTINATION include/musil)
 
 # --- Tests -----------------------------------------------------------------
 if(MUSIL_TESTS)

@@ -303,6 +303,7 @@ check (== (even? 50001) 0) "TCO: mutual recursion"
 function deep (n) (if (== n 0) 0 (+ 1 (deep (- n 1))))
 check (== (deep 1000) 1000) "non-tail recursion to depth 1000"
 check (contains? (error-of (function () (deep 1000000))) "stack overflow") "non-tail recursion too deep is a clean error"
+check (== (deep 1000) 1000) "recursion still works after the overflow was caught"
 
 # --- currying ------------------------------------------------------------
 function add3 (a b c) (+ a b c)

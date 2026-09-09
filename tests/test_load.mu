@@ -10,4 +10,7 @@ assert (== (length loads) 3) "reloading by another spelling of the same path is 
 assert (>= (find (try (load "load/nope.mu") catch e e) "not found") 0) "missing file is a clean error"
 var err (try (load "load/bad.mu") catch e e)
 assert (>= (find err "bad.mu:2") 0) "errors inside a loaded file name that file and line:" err
+var err2 (try (load "load/bad.mu") catch e e)
+assert (equal? err err2) "a module that failed is not cached: loading it again reports the error again"
+assert (equal? (type (try (load "load/bad.mu") catch e 0)) "scalar") "and it still fails the third time"
 print "test_load: ok"

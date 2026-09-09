@@ -7,14 +7,16 @@
 
 #pragma once
 #include "core.h"
-// Libraries register themselves through interp::def(name, op_t).
-// #include "system.h"
+// Libraries register themselves through interp::def(name, fn, min, max).
+#include "std.h"
+#include "system.h"
 // #include "signals.h"
 // #include "scientific.h"
 
 namespace musil {
 inline void add_all(interp& i) {
-    (void)i;
-    // add_system(i); add_signals(i); add_scientific(i);
+    add_std(i);
+    add_system(i);
+    // add_signals(i); add_scientific(i);
 }
 }
