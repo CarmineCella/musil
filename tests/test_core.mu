@@ -1,30 +1,14 @@
-# test_base.mu — systematic, self-checking test of the Musil core + std.
+# test_core.mu — systematic, self-checking test of the language core (core.h).
 #
-# Every check is an (assert ...). A passing run prints only the final line.
-# Run with: musil tests/test_base.mu
-
-var checks 0
-function check (cond msg) {
-    assert cond msg
-    var checks (+ checks 1)
-}
-# (fails? thunk) => 1 if calling thunk raises an error, else 0
-function fails? (thunk) {
-    try {
-        thunk
-        0
-    } catch e 1
-}
-# (error-of thunk) => the error message text, or "" if none
-function error-of (thunk) {
-    try {
-        thunk
-        ""
-    } catch e e
-}
-function contains? (s sub) (>= (find s sub) 0)
+# Tooling from std (assert, find) is used to write the checks; the features
+# under test are the reader, evaluator and core builtins only.
+#
+# Every check is a (check ...) from test.mu. A passing run prints only the final line.
+# Run with: musil tests/test_core.mu
 
 # --- reader ------------------------------------------------------------
+load "test.mu"
+
 check (== 1 1) "reader: numbers"
 check (equal? '(a b c) (list 'a 'b 'c)) "reader: quote"
 check (equal? (quote (1 2)) (list 1 2)) "reader: quote long form"
@@ -81,6 +65,9 @@ check (equal? (min (vec 1 5) (vec 3 2)) (vec 1 2)) "min: elementwise"
 check (== (< 1 2) 1) "<"
 check (== (>= 2 2) 1) ">="
 check (== (!= 1 2) 1) "!="
+check (== (< "apple" "pear") 1) "<: strings compare lexicographically"
+check (== (>= "b" "a") 1) ">=: strings"
+check (contains? (error-of (function () (< "a" 1))) "expected number") "<: mixed types are an error"
 check (equal? (== (vec 1 2 3) (vec 1 0 3)) (vec 1 0 1)) "==: elementwise on vectors"
 check (== (== "a" "a") 1) "==: strings compare structurally"
 check (== (== "a" "b") 0) "==: different strings"
@@ -117,18 +104,34 @@ check (fails? (function () (expr (x +)))) "expr: dangling operator is an error"
 check (fails? (function () (expr (x y)))) "expr: missing operator is an error"
 check (fails? (function () (expr (1 + "a")))) "expr: arithmetic on string is an error"
 
-# --- var and scope -------------------------------------------------------
+# --- var, set and scope --------------------------------------------------
 var g 1
-function set-g () (var g 2)
+function shadow () {
+    var g 2
+    return g
+}
+check (== (shadow) 2) "var: defines in the function's own environment"
+check (== g 1) "var: a function's var never touches an outer variable of the same name"
+function set-g () (set g 3)
 set-g
-check (== g 2) "var: assigns an existing outer binding"
+check (== g 3) "set: assigns to the nearest existing binding, however far out"
+check (contains? (error-of (function () (set never-defined 1))) "set: undefined") "set: undefined name is an error"
 function local-only () {
     var fresh 99
     return fresh
 }
-check (== (local-only) 99) "var: creates a local when unbound"
+check (== (local-only) 99) "var: creates a local"
 check (not (defined? 'fresh)) "var: local does not leak"
 check (== (var z 5) 5) "var: returns the value"
+check (== (set z 6) 6) "set: returns the value"
+var outer-count 0
+function bump () (set outer-count (+ outer-count 1))
+bump
+bump
+check (== outer-count 2) "set: from inside a function"
+var blockvar 1
+if 1 { var blockvar 2 }
+check (== blockvar 2) "var: blocks do not open a scope (same environment as the surrounding code)"
 
 # --- control flow --------------------------------------------------------
 check (== (if 1 "a" "b") "a") "if: then"
@@ -206,7 +209,7 @@ check (contains? (try (eval '(return 1)) catch e e) "return outside function") "
 function make-counter () {
     var c 0
     return (function () {
-        var c (+ c 1)
+        set c (+ c 1)
         return c
     })
 }
@@ -320,7 +323,7 @@ check (equal? (type (add3 1)) "function") "curry: partial is a function"
 # --- errors --------------------------------------------------------------
 var msg (error-of (function () (error "boom")))
 check (contains? msg "boom") "error: message"
-check (contains? msg "test_base.mu:") "error: carries file name"
+check (contains? msg "test_core.mu:") "error: carries file name"
 function lvl3 () (error "deep")
 function lvl2 () (lvl3)
 function lvl1 () {
@@ -345,34 +348,22 @@ check (contains? t2 "after-catch()") "error: call stack is consistent after a ca
 check (contains? (error-of (function () (+ 1 "a"))) "expected number") "+: type error"
 check (contains? (error-of (function () (+ (vec 1 2) (vec 1 2 3)))) "size mismatch") "+: broadcast size error"
 check (contains? (error-of (function () (sqrt))) "expected 1 argument") "sqrt: arity"
-check (contains? (error-of (function () (range))) "range: expected") "range: arity"
-check (contains? (error-of (function () (getidx (vec 1 2) 5))) "out of range") "getidx: range"
 check (contains? (error-of (function () (getidx (vec 1 2) 1.5))) "integer") "getidx: non-integer index"
 check (contains? (error-of (function () (head "s"))) "expected list or number") "head: type"
-check (contains? (error-of (function () (upper 5))) "expected string") "upper: type"
-check (contains? (error-of (function () (map "s" square))) "expected list or number") "map: type"
-check (contains? (error-of (function () (map (list 1) 5))) "expected function") "map: fn type"
 check (contains? (error-of (function () (if 1))) "if:") "if: malformed"
 check (contains? (error-of (function () (undefined-thing 1))) "undefined: undefined-thing") "undefined symbol"
 check (contains? (error-of (function () (5 1))) "not callable") "calling a number"
-check (contains? (error-of (function () (mean (vec)))) "empty") "mean: empty vector"
 check (contains? (error-of (function () (max (vec)))) "empty") "max: empty vector"
 check (== (sum (vec)) 0) "sum: empty vector is 0"
-check (== (prod (vec)) 1) "prod: empty vector is 1"
-check (contains? (error-of (function () (zeros -1))) "negative") "zeros: negative size"
-check (contains? (error-of (function () (assert 0 "custom" 42))) "custom 42") "assert: message"
-check (contains? (error-of (function () (assert 0))) "assertion failed") "assert: default message"
+check (contains? (error-of (function () (error "custom" 42))) "custom42") "error: message from arguments"
 
 # --- lists ---------------------------------------------------------------
 var L (list 1 "two" 3)
 check (== (length L) 3) "list: length"
 check (== (head L) 1) "list: head"
 check (equal? (tail L) (list "two" 3)) "list: tail"
-check (== (last L) 3) "list: last"
 check (equal? (cons 0 L) (list 0 1 "two" 3)) "cons"
 check (equal? (append L 4 5) (list 1 "two" 3 4 5)) "append"
-check (equal? (concat-list (list 1) (list 2 3) (list)) (list 1 2 3)) "concat-list"
-check (equal? (reverse (list 1 2 3)) (list 3 2 1)) "reverse: list"
 var M (list)
 push M 1
 push M 2
@@ -383,11 +374,6 @@ check (equal? (getidx L 1) "two") "getidx: list"
 check (equal? (getidx L -1) 3) "getidx: negative index"
 setidx L 0 100
 check (== (head L) 100) "setidx: list"
-check (equal? (slice (list 1 2 3 4 5) 1 3) (list 2 3 4)) "slice: list"
-check (equal? (slice (list 1 2 3 4 5) 3) (list 4 5)) "slice: to end"
-check (equal? (slice (list 1 2 3 4 5) -2) (list 4 5)) "slice: negative start"
-check (== (find (list 1 "x" 3) "x") 1) "find: list"
-check (== (find (list 1 2) 9) -1) "find: missing"
 check (== (empty? (list)) 1) "empty?: list"
 check (== (empty? L) 0) "empty?: nonempty list"
 var shared L
@@ -406,72 +392,12 @@ check (equal? (* v v) (vec 1 4 9)) "elementwise: vec * vec"
 check (equal? (- v) (vec -1 -2 -3)) "unary minus on vec"
 check (equal? (vec (list 4 5)) (vec 4 5)) "vec from list"
 check (equal? (vec v 4 (vec 5 6)) (vec 1 2 3 4 5 6)) "vec concatenates"
-check (equal? (range 4) (vec 0 1 2 3)) "range n"
-check (equal? (range 2 5) (vec 2 3 4)) "range a b"
-check (equal? (range 0 1 0.25) (vec 0 0.25 0.5 0.75)) "range a b step"
-check (equal? (range 5 0 -2) (vec 5 3 1)) "range negative step"
-check (== (length (range 0)) 0) "range 0 is empty"
-check (equal? (linspace 0 1 5) (vec 0 0.25 0.5 0.75 1)) "linspace"
-check (equal? (zeros 3) (vec 0 0 0)) "zeros"
-check (equal? (ones 2) (vec 1 1)) "ones"
 check (== (sum v) 6) "sum"
-check (== (prod v) 6) "prod"
-check (== (mean v) 2) "mean"
-check (== (dot v v) 14) "dot"
-check (equal? (sort (vec 3 1 2)) (vec 1 2 3)) "sort"
-check (equal? (reverse v) (vec 3 2 1)) "reverse: vec"
 check (== (head v) 1) "head: vec"
 check (equal? (tail v) (vec 2 3)) "tail: vec"
-check (== (last v) 3) "last: vec"
-check (equal? (slice (range 10) 2 3) (vec 2 3 4)) "slice: vec"
-check (== (find v 3) 2) "find: vec"
 check (== (getidx v -1) 3) "getidx: vec negative"
 setidx v 1 20
 check (equal? v (vec 1 20 3)) "setidx: vec"
-seed 42
-var r1 (rand 5)
-seed 42
-var r2 (rand 5)
-check (equal? r1 r2) "seed makes rand reproducible"
-check (== (length r1) 5) "rand n"
-check (and (>= (rand) 0) (< (rand) 1)) "rand in [0,1)"
-check (equal? (map v (function (x) (* x 2))) (vec 2 40 6)) "map: vec"
-check (equal? (filter (range 10) (function (x) (== (mod x 3) 0))) (vec 0 3 6 9)) "filter: vec"
-check (== (reduce (range 5) (function (a b) (+ a b)) 0) 10) "reduce: vec"
-check (contains? (error-of (function () (map (vec 1) (function (x) "s")))) "expected number") "map on vec requires numeric results"
-
-# --- strings -------------------------------------------------------------
-check (equal? (concat "a" "b" 42 (list 1)) "ab42(1)") "concat"
-check (equal? (split "a,b,c" ",") (list "a" "b" "c")) "split"
-check (equal? (split "abc" "") (list "a" "b" "c")) "split: chars"
-check (equal? (join (list "x" "y") "-") "x-y") "join"
-check (equal? (upper "musil") "MUSIL") "upper"
-check (equal? (lower "MUSIL") "musil") "lower"
-check (equal? (trim "  hi \n") "hi") "trim"
-check (equal? (format "{} + {} = {}" 1 2 3) "1 + 2 = 3") "format"
-check (contains? (error-of (function () (format "{} {}" 1))) "not enough") "format: arity"
-check (== (length "hello") 5) "length: string"
-check (equal? (getidx "hello" 1) "e") "getidx: string"
-check (equal? (slice "hello" 1 3) "ell") "slice: string"
-check (== (find "hello" "ll") 2) "find: string"
-check (equal? (reverse "abc") "cba") "reverse: string"
-check (equal? (chr 65) "A") "chr"
-check (== (ord "A") 65) "ord"
-check (== (num "3.5") 3.5) "num"
-check (== (num 4) 4) "num: passthrough"
-check (contains? (error-of (function () (num "x"))) "not a number") "num: bad"
-check (equal? (str 'sym) "sym") "str: symbol"
-check (equal? (sym "abc") 'abc) "sym"
-check (== (empty? "") 1) "empty?: string"
-
-# --- higher-order on lists ---------------------------------------------
-check (equal? (map (list 1 2 3) square) (list 1 4 9)) "map: list"
-check (equal? (filter (list 1 2 3 4) (function (x) (> x 2))) (list 3 4)) "filter: list"
-check (equal? (reduce (list "a" "b") (function (acc x) (concat acc x)) "") "ab") "reduce: list"
-var seen (list)
-each (list 1 2) (function (x) (push seen x))
-check (equal? seen (list 1 2)) "each"
-check (equal? (map (list) square) (list)) "map: empty list"
 
 # --- quote, eval, apply ----------------------------------------------------
 var code '(+ 1 2)
@@ -487,18 +413,6 @@ check (== (eval (list 'square 6)) 36) "eval: sees globals"
 function uses-eval (x) (eval x)
 check (== (uses-eval '(+ 1 1)) 2) "eval: in tail position of a function"
 
-# --- I/O -----------------------------------------------------------------
-var path "/tmp/musil_test_base.txt"
-write path "hello\n"
-append-file path "world\n"
-check (equal? (read path) "hello\nworld\n") "write/append-file/read"
-check (== (exists? path) 1) "exists?"
-check (== (exists? "/tmp/definitely/not/here") 0) "exists?: missing"
-check (contains? (error-of (function () (read "/tmp/definitely/not/here"))) "cannot open") "read: missing file"
-check (equal? (trim (exec "echo ok")) "ok") "exec"
-check (equal? (type args) "list") "args is a list"
-check (equal? version "3.0.0") "version"
-
 # --- meta ----------------------------------------------------------------
 check (== (defined? 'square) 1) "defined?: yes"
 check (== (defined? "nope") 0) "defined?: no"
@@ -506,4 +420,5 @@ check (>= (find (vars) 'square) 0) "vars lists globals"
 check (> (clock) 0) "clock"
 check (== (length (vars)) (length (vars))) "vars is stable"
 
-print "test_base: all" checks "checks passed"
+
+report "test_core"

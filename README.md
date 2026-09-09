@@ -48,30 +48,74 @@ This duality mirrors the purpose of the Musil language:
 To call this language **Musil** is to acknowledge an intellectual lineage where  
 mathematics, sound, and imagination are not separate disciplines but different faces of the same creative activity.
 
-## Build
+## Build and install
 
 ```sh
 git clone https://github.com/CarmineCella/musil.git
 cd musil
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/musil examples/reference.mu     # tour of every core feature
+./build/musil examples/reference.mu     # tour of the core language
+MUSIL_PATH=src ./build/musil examples/reference_std.mu    # ... and of the standard library
 ./build/musil                           # REPL
 ctest --test-dir build                  # run the tests
+cmake --install build                   # musil -> /usr/local/bin, *.mu -> ~/.musil
+cmake --build build --target uninstall  # removes exactly what install put in place
 ```
 
-GNU readline is used in the REPL when found (`-DMUSIL_READLINE=OFF` to disable).
+`cmake --install build --prefix ~/.local` installs the binary under your home
+instead. Nothing is loaded automatically: a program that wants the Musil halves
+of the libraries says `load "std.mu"` (or `load "system.mu"`, which loads
+std.mu itself), and `load` finds them in `~/.musil`, in `MUSIL_PATH`, or next
+to the file doing the loading. During development, `MUSIL_PATH=src` points at
+the source tree; the test suite sets it for you. GNU readline is used in the REPL when found (`-DMUSIL_READLINE=OFF`
+to disable).
+
+## Layout
+
+```
+src/core.h         the language: reader, evaluator, value model, primitive builtins (zero dependencies)
+src/std.h          the standard library, C++ half: range, sort, strings, files, map/filter/reduce, assert
+src/std.mu         the standard library, Musil half: zeros, linspace, mean, last, take, zip, compose, ...
+src/system.h       operating-system access, C++ half: exec, ls, stat, CSV, WAV, UDP/OSC
+src/system.mu      operating-system access, Musil half: file-lines, basename, wav-duration, ...
+src/system/        WAV and CSV readers used by system.h
+src/scientific.h   linear algebra and machine learning, C++ half: mat-mul, transpose, det/inv/solve, eig-sym, kmeans, knn
+src/scientific.mu  Musil half: construction, elementwise ops, statistics, cov/corr/pca, regression, bpf, model helpers
+src/scientific/    the algorithms used by scientific.h (k-means, KNN, running median)
+src/signals.h      offline signal processing, C++ half: fft, ifft, osc, iir, delay, resample, autocorr
+src/signals.mu     Musil half: generators, windows, spectra, stft, features, biquads, reverb, envelopes
+src/musil.h        umbrella header: make_env registers the C++ halves, load_prelude loads the Musil halves
+cli/main.cpp       the command-line interpreter: musil [-i] [-e code] a.mu b.mu ... [-- args]
+examples/          one reference per library (core, std, system, scientific, signals)
+                   and short programs, one per topic; every example runs as a test
+tests/             one test per library (test_core, test_std, test_system) on a shared harness
+                   (test.mu: check, fails?, error-of, report), plus stress, smoke, load tests
+                   and the golden outputs of the references
+```
+
+A library is a pair: `<name>.h` for what needs C++ and `<name>.mu` for what can be
+written in Musil. The rule for choosing: an element-by-element loop runs about a
+hundred times faster in C++, so it goes in the `.h`; anything that composes vector
+operations (`(pow (sum (pow (abs v) p)) (/ 1 p))` is `lp-norm`) runs at C++ speed
+in Musil already, so it goes in the `.mu`. Operating-system access is C++ by
+necessity.
+The `.h` exposes `add_<name>(Interp&)` and is registered by `make_env`; the
+`.mu` is loaded explicitly by the program, through the normal `load` search
+path (`~/.musil` after `cmake --install`, `MUSIL_PATH`, or next to the file).
 
 ## The language in one page
 
 ```
-var x 10                       # define or assign (assigns an existing binding if there is one)
+var x 10                       # define in the current environment (a function's var is always local)
+set x 11                       # assign to an existing variable, however far out; error if none
 print "x =" x                  # a line is a command; its words are the arguments
 var y (+ x 1)                  # (...) is a sub-expression
 var z (expr (x * 2 + y))       # infix inside expr; ( ) groups, calls are allowed: (expr ((sqrt x) + 1))
 
 if (< x y) { print "less" } { print "not less" }
 while (< x 20) { var x (+ x 1) }
+{ var a 1; var b 2 }           # ; separates commands on one line
 for (var i 0) (< i 3) (var i (+ i 1)) { print i }      # break / continue inside blocks: { break }
 
 function sq (n) (* n n)        # named function, one-expression body
@@ -96,6 +140,9 @@ var L (list 1 "two" 'three)    # lists hold anything; 'x quotes a symbol or form
 (head L) (tail L) (last L) (length L) (push L 4) (pop L)
 var M (copy L)                 # copy is shallow: a new list, same elements (nested lists/vectors stay shared)
 
+load "std.mu"                  # the Musil half of the standard library, from ~/.musil or MUSIL_PATH
+(take (range 10) 3) (fmt-fixed pi 4) (lerp 0 10 0.5) (stdev (vec 1 2 3 4))
+
 var code '(+ 1 2)              # code is data
 (eval code)                    # => 3
 (apply + (list 1 2 3))         # => 6
@@ -117,10 +164,11 @@ Tail calls run in constant space, so `loop`-style recursion is the normal way to
 ## Embedding
 
 ```cpp
-#include "musil.h"     
-musil::interp I;
+#include "musil.h"
+musil::Interp I;
+musil::make_env(I);      // C++ halves of std and system; omit for the bare language
 // name, function, min args, max args (-1 = unbounded); eval checks the count
-I.def("hello", [](musil::vlist& a, musil::interp& i) -> musil::vptr {
+I.def("hello", [](musil::vlist& a, musil::Interp& i) -> musil::vptr {
     return musil::v_str("hello, " + i.str(a[0]));
 }, 1, 1);
 I.run("print (hello \"world\")");
@@ -129,8 +177,8 @@ I.run("print (hello \"world\")");
 Inside a builtin, `i.num(v)`, `i.scalar(v)`, `i.index(v)`, `i.str(v)`,
 `i.list(v)` and `i.fn(v)` return the payload or raise a Musil error that names
 the builtin, with file and line (`hello: expected string, got number`);
-`i.bad("message")` raises one with a custom text. `interp::call_fn` calls a
-Musil function from C++. `interp::yield_fn` is called every 1024 evaluations,
+`i.bad("message")` raises one with a custom text. `Interp::call_fn` calls a
+Musil function from C++. `Interp::yield_fn` is called every 1024 evaluations,
 for hosts that need to service an event loop.
 
 For an example on how to integrate the language in your application, please check the [command line interpreter](cli/main.cpp).

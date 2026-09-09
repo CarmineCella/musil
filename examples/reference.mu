@@ -1,7 +1,9 @@
-# musil — language reference
+# musil — language reference: the core (core.h)
 #
-# A single, self-contained file demonstrating every feature of the language.
-# Run with: ./musil reference.mu
+# A single, self-contained file demonstrating every feature of the language
+# itself. It loads nothing: only what core.h provides is used. The libraries
+# have their own references: reference_std.mu, reference_system.mu.
+# Run with: musil reference.mu
 #
 # Surface conventions (f8-style hybrid):
 #   - Top level and inside {}: each line is auto-listified as a command.
@@ -12,7 +14,7 @@
 
 print ""
 print "================================================================"
-print "  musil: language reference"
+print "  musil: language reference (core)"
 print "================================================================"
 
 # --- 1. Variables and arithmetic ---------------------------------
@@ -30,6 +32,20 @@ print "(- 7) (unary) =" (- 7)
 print "abs (- 7) =" (abs (- 7))
 print "mod 17 5 =" (mod 17 5)
 
+# var defines (or redefines) a variable in the current environment;
+# set assigns to an existing one, however far out. A function's var is
+# always local, so a library can never clobber your variables by accident.
+var counter 0
+function bump () (set counter (+ counter 1))
+bump
+bump
+function shadow () {
+    var counter 99             # a different, local counter
+    return counter
+}
+print "counter after two bumps =" counter ", shadow returns" (shadow) ", counter still" counter
+print "set on an unknown name:" (try (set unknown 1) catch e e)
+
 # --- 2. Comparisons and booleans ---------------------------------
 print ""
 print "--- comparisons and booleans ---"
@@ -43,6 +59,13 @@ print "or  0 1:" (or 0 1)
 print "not 0  :" (not 0)
 print "min:" (min (vec 5 2 9 1 7))
 print "max:" (max (vec 5 2 9 1 7))
+# Comparisons are elementwise on vectors, lexicographic on two strings
+print "vec == vec :" (== (vec 1 2 3) (vec 1 0 3))
+print "\"a\" < \"b\"  :" (< "a" "b")
+# == on non-numbers and equal? compare structure
+print "equal? lists:" (equal? (list 1 (list 2)) (list 1 (list 2)))
+# Constants
+print "true false nil pi inf:" true false nil pi inf
 
 # --- 3. expr Pratt: infix math inside (expr ...) -----------------
 print ""
@@ -72,11 +95,10 @@ print "log e      :" (log (exp 1))
 print "floor 3.7  :" (floor 3.7)
 print "ceil  3.2  :" (ceil 3.2)
 print "round 3.5  :" (round 3.5)
-
-# Random numbers
-seed 42
-print "rand       :" (rand)
-print "rand 5     :" (rand 5)
+print "pow 2 10   :" (pow 2 10)
+print "atan2 1 1  :" (atan2 1 1)
+# Every math function is elementwise on vectors
+print "sqrt vec   :" (sqrt (vec 1 4 9 16))
 
 # --- 5. Vectors and broadcast ------------------------------------
 print ""
@@ -89,16 +111,15 @@ print "v * 2      :" (* v 2)
 print "v + v      :" (+ v v)
 print "sin v      :" (sin v)
 
-# Constructors
-print "range 5      :" (range 5)
-print "linspace 0 1 5:" (linspace 0 1 5)
-print "zeros 4      :" (zeros 4)
-print "ones 3       :" (ones 3)
+# vec builds from numbers, vectors and lists of numbers; a scalar is a vector of size 1
+print "vec 1 (vec 2 3) 4 :" (vec 1 (vec 2 3) 4)
+print "vec (list 7 8)    :" (vec (list 7 8))
+print "type 3 / type v   :" (type 3) (type v)
 
 # Reductions
 print "sum v        :" (sum v)
-print "mean v       :" (mean v)
-print "sort         :" (sort (vec 3 1 4 1 5 9 2 6))
+print "min v, max v :" (min v) (max v)
+# range, linspace, zeros, mean, sort, ...: see reference_std.mu
 
 # --- 6. Lists (heterogeneous ordered collections) ----------------
 print ""
@@ -129,36 +150,27 @@ print "tail   list:" (tail lst)   "  vec:" (tail vc)
 print "empty? ()  :" (empty? (list)) "  empty? L:" (empty? L)
 print "getidx vec :" (getidx vc 2)
 print "getidx str :" (getidx "hello" 1)
+print "getidx -1  :" (getidx lst -1) "(negative indices count from the end)"
 
 # Mutation via setidx
 setidx vc 0 999
 print "vc after setidx:" vc
 
-# --- 8. Higher-order: map, filter, reduce ------------------------
+# --- 8. Strings in the core -------------------------------------
 print ""
-print "--- higher-order (polymorphic on list and vec) ---"
+print "--- strings (core) ---"
 
-print "map sqr list:" (map (list 1 2 3 4) (function (x) (* x x)))
-print "map sqr vec :" (map (vec  1 2 3 4) (function (x) (* x x)))
+# The core knows how to make, print, compare, index and convert strings.
+# split, join, upper, format, ...: see reference_std.mu
+var greeting "hello"
+print "length     :" (length greeting)
+print "getidx 0   :" (getidx greeting 0)
+print "== / <     :" (== greeting "hello") (< "apple" "pear")
+print "str 3.5    :" (str 3.5) "  num \"42\":" (num "42") "  sym \"abc\":" (sym "abc")
+print "escapes    :" "tab\there, quote \" and newline:"
+print "  multi-line strings are fine\n  (the newline is in the string)"
 
-print "filter list :" (filter (list 1 2 3 4 5 6) (function (x) (== (mod x 2) 0)))
-print "filter vec  :" (filter (vec  1 2 3 4 5 6) (function (x) (> x 3)))
-
-print "reduce sum  :" (reduce (list 1 2 3 4 5) (function (a b) (+ a b)) 0)
-print "reduce prod :" (reduce (vec  1 2 3 4 5) (function (a b) (* a b)) 1)
-
-# --- 9. Strings --------------------------------------------------
-print ""
-print "--- strings ---"
-
-print "concat   :" (concat "hello, " "world" "! " 42)
-print "split    :" (split "a,b,c,d" ",")
-print "join     :" (join (list "x" "y" "z") "-")
-print "upper    :" (upper "musil")
-print "lower    :" (lower "MUSIL")
-print "trim     :" (concat "[" (trim "  hi  ") "]")
-
-# --- 10. Control flow --------------------------------------------
+# --- 9. Control flow --------------------------------------------
 print ""
 print "--- control flow ---"
 
@@ -212,7 +224,7 @@ while (< k 10) {
 }
 print "odds 1..10 :" odds
 
-# --- 11. Functions: named, lambda, multi-line, closure -----------
+# --- 10. Functions: named, lambda, multi-line, closure -----------
 print ""
 print "--- functions ---"
 
@@ -243,14 +255,14 @@ print "closure add5 100:" (add5 100)
 function make-counter () {
     var c 0
     return (function () {
-        var c (+ c 1)
+        set c (+ c 1)
         return c
     })
 }
 var ctr (make-counter)
 print "counter:" (ctr) (ctr) (ctr) (ctr)
 
-# --- 12. Currying (implicit partial application) -----------------
+# --- 11. Currying (implicit partial application) -----------------
 print ""
 print "--- currying: too few args returns a partial ---"
 
@@ -259,16 +271,17 @@ var p (add3 1)
 var q (p 2)
 print "((add3 1) 2) 100:" (q 100)
 
-# Useful with map
+# A partial is an ordinary function value
 function mul (a b) (* a b)
-print "doubled vec:" (map (vec 1 2 3 4 5) (mul 2))
+var double (mul 2)
+print "double 21  :" (double 21)
 
 # Too many args: the result is applied to the remaining args
 function twice (f) (function (x) (f (f x)))
 function inc1 (n) (+ n 1)
 print "(twice inc1 5) :" (twice inc1 5)
 
-# --- 13. Recursion + TCO -----------------------------------------
+# --- 12. Recursion + TCO -----------------------------------------
 print ""
 print "--- recursion ---"
 
@@ -315,7 +328,7 @@ function oddp (n) {
 print "even? 100 :" (evenp 100)
 print "odd?  101 :" (oddp 101)
 
-# --- 14. Quote: data vs code -------------------------------------
+# --- 13. Quote: data vs code -------------------------------------
 print ""
 print "--- quote: code as data ---"
 
@@ -326,7 +339,7 @@ print "'foo (a symbol)   :" 'foo
 print "type of '(+ 1 2)  :" (type '(+ 1 2))
 print "type of 'foo      :" (type 'foo)
 
-# --- 15. eval and apply: first-class code execution --------------
+# --- 14. eval and apply: first-class code execution --------------
 print ""
 print "--- eval and apply ---"
 
@@ -344,7 +357,7 @@ function add4 (a b c d) (+ a b c d)
 var args (list 1 2 3 4)
 print "apply add4:" (apply add4 args)
 
-# --- 16. Meta: type, str, num ------------------------------------
+# --- 15. Meta: type, str, num ------------------------------------
 print ""
 print "--- meta ---"
 
@@ -358,6 +371,10 @@ print "type square    :" (type square)
 print "str 42         :" (str 42)
 print "str (list 1 2) :" (str (list 1 2))
 print "num \"3.14\"     :" (num "3.14")
+print "defined? square:" (defined? 'square) "  defined? nope:" (defined? 'nope)
+print "vars has print :" (> (length (vars)) 50)
+print "version        :" (type version)
+# (exit [code]) ends the program; clock is a monotonic time in seconds
 
 # Time measurement
 var t0 (clock)
@@ -370,7 +387,7 @@ while (< k 100000) {
 var dt (- (clock) t0)
 print "100k iterations took:" dt "seconds"
 
-# --- 17. References and explicit copy ----------------------------
+# --- 16. References and explicit copy ----------------------------
 print ""
 print "--- shared references vs explicit copy ---"
 
@@ -387,7 +404,7 @@ setidx dup 0 99
 print "src (untouched by dup)  :" src
 print "dup                      :" dup
 
-# --- 18. Error handling: try / catch / error ---------------------
+# --- 17. Error handling: try / catch / error ---------------------
 print ""
 print "--- errors ---"
 
@@ -416,9 +433,8 @@ print "type error :" (try (+ 1 "a") catch e e)
 print "arity error:" (try (sqrt) catch e e)
 print "size error :" (try (+ (vec 1 2) (vec 1 2 3)) catch e e)
 
-# assert stops with a message when its condition is false
-assert (== (+ 2 2) 4) "arithmetic works"
-print "assert     :" (try (assert (== 1 2) "one is not two") catch e e)
+# error inside a nested try propagates to the nearest handler
+print "nested     :" (try (try (error "inner") catch e (error "outer saw " e)) catch e e)
 
 # Errors carry file, line and the call stack (innermost first)
 function inner (x) (error "from inner")
@@ -428,37 +444,23 @@ function outer (x) {
 }
 print "call stack :" (try (outer 1) catch e e)
 
-# --- 19. File I/O and exec ---------------------------------------
-print ""
-print "--- file I/O ---"
-
-write "/tmp/musil_demo.txt" "first line\nsecond line\n"
-append-file "/tmp/musil_demo.txt" "third line\n"
-print "contents of /tmp/musil_demo.txt:"
-print (read "/tmp/musil_demo.txt")
-
-print "exec stat:"
-print (trim (exec "wc -l /tmp/musil_demo.txt"))
-
-# --- 20. load: bring in another .mu file -------------------------
-# Uncomment if you have a sibling file to load:
-#   load "lib.mu"
-# load tracks files by canonical path, so a second load is a no-op
-# (cycle protection).
+# --- 18. load: bring in another .mu file -------------------------
 print ""
 print "--- load ---"
-print "(see comment in source — load \"file.mu\" pulls in another .mu;"
-print " loaded files are cached so cycles and double-loads are safe)"
+# (load "file.mu") runs another file once, in the global environment.
+# Search order: the directory of the loading file, the current directory,
+# each entry of MUSIL_PATH, then ~/.musil (where `cmake --install` puts the
+# libraries). A file that ran is not run again; a file that failed is.
+print "(load \"std.mu\") would bring in the standard library from ~/.musil or MUSIL_PATH"
+print "missing file:" (try (load "no-such-file.mu") catch e e)
 
-# --- 21. Closing demo: Newton's method for sqrt ------------------
+# --- 19. Closing demo: Newton's method for sqrt ------------------
 print ""
 print "--- closing: Newton's method for sqrt ---"
 
-function abs-diff (a b) (abs (- a b))
-
 function newton-sqrt (target guess) {
     var next (/ (+ guess (/ target guess)) 2)
-    if (< (abs-diff next guess) 0.0000001) {
+    if (< (max (abs (- next guess))) 0.0000001) {
         return next
     }
     return (newton-sqrt target next)
@@ -468,9 +470,8 @@ print "newton sqrt 2   :" (newton-sqrt 2 1)
 print "newton sqrt 612 :" (newton-sqrt 612 10)
 print "math   sqrt 612 :" (sqrt 612)
 
-# Compose with map: sqrt of every element via Newton's method
-function nsqrt (x) (newton-sqrt x 1)
-print "newton on vector:" (map (vec 1 4 9 16 25) nsqrt)
+# Newton's iteration works on a whole vector at once, since / and + broadcast
+print "newton on vector:" (newton-sqrt (vec 1 4 9 16 25) (vec 1 1 1 1 1))
 
 print ""
 print "================================================================"

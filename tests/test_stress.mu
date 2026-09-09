@@ -46,7 +46,7 @@ print "expr :" (expr (u + w * 2))
 function make-counter () {
     var c 0
     return (function () {
-        var c (+ c 1)
+        set c (+ c 1)
         return c
     })
 }

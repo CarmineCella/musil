@@ -1,5 +1,5 @@
 ================================================================
-  musil: language reference
+  musil: language reference (core)
 ================================================================
 
 --- variables and arithmetic ---
@@ -11,6 +11,8 @@ x / y = 3.33333333333333
 (- 7) (unary) = -7
 abs (- 7) = 7
 mod 17 5 = 2
+counter after two bumps = 2 , shadow returns 99 , counter still 2
+set on an unknown name: reference.mu:47: set: undefined: unknown
 
 --- comparisons and booleans ---
 x < y : 0
@@ -22,6 +24,10 @@ or  0 1: 1
 not 0  : 1
 min: 1
 max: 9
+vec == vec : (1 0 1)
+"a" < "b"  : 1
+equal? lists: 1
+true false nil pi inf: 1 0 nil 3.14159265358979 inf
 
 --- expr Pratt: infix math ---
 x + y * 2     = 16
@@ -40,6 +46,9 @@ log e      : 1
 floor 3.7  : 3
 ceil  3.2  : 4
 round 3.5  : 4
+pow 2 10   : 1024
+atan2 1 1  : 0.785398163397448
+sqrt vec   : (1 2 3 4)
 
 --- vectors and broadcast ---
 v          : (1 2 3 4 5)
@@ -47,13 +56,11 @@ v + 10     : (11 12 13 14 15)
 v * 2      : (2 4 6 8 10)
 v + v      : (2 4 6 8 10)
 sin v      : (0.841470984807897 0.909297426825682 0.141120008059867 -0.756802495307928 -0.958924274663138)
-range 5      : (0 1 2 3 4)
-linspace 0 1 5: (0 0.25 0.5 0.75 1)
-zeros 4      : (0 0 0 0)
-ones 3       : (1 1 1)
+vec 1 (vec 2 3) 4 : (1 2 3 4)
+vec (list 7 8)    : (7 8)
+type 3 / type v   : scalar vec
 sum v        : 15
-mean v       : 3
-sort         : (1 1 2 3 4 5 6 9)
+min v, max v : 1 5
 
 --- lists ---
 L            : (1 two 3 (4 5))
@@ -71,23 +78,17 @@ tail   list: (20 30)   vec: (20 30)
 empty? ()  : 1   empty? L: 0
 getidx vec : 30
 getidx str : e
+getidx -1  : 30 (negative indices count from the end)
 vc after setidx: (999 20 30)
 
---- higher-order (polymorphic on list and vec) ---
-map sqr list: (1 4 9 16)
-map sqr vec : (1 4 9 16)
-filter list : (2 4 6)
-filter vec  : (4 5 6)
-reduce sum  : 15
-reduce prod : 120
-
---- strings ---
-concat   : hello, world! 42
-split    : (a b c d)
-join     : x-y-z
-upper    : MUSIL
-lower    : musil
-trim     : [hi]
+--- strings (core) ---
+length     : 5
+getidx 0   : h
+== / <     : 1 1
+str 3.5    : 3.5   num "42": 42   sym "abc": abc
+escapes    : tab	here, quote " and newline:
+  multi-line strings are fine
+  (the newline is in the string)
 
 --- control flow ---
 x > 5: yes
@@ -106,7 +107,7 @@ counter: 1 2 3 4
 
 --- currying: too few args returns a partial ---
 ((add3 1) 2) 100: 103
-doubled vec: (2 4 6 8 10)
+double 21  : 42
 (twice inc1 5) : 7
 
 --- recursion ---
@@ -138,6 +139,9 @@ type square    : function
 str 42         : 42
 str (list 1 2) : (1 2)
 num "3.14"     : 3.14
+defined? square: 1   defined? nope: 0
+vars has print : 1
+version        : string
 
 --- shared references vs explicit copy ---
 orig (shared with alias): (99 2 3)
@@ -145,31 +149,22 @@ src (untouched by dup)  : (1 2 3)
 dup                      : (99 2 3)
 
 --- errors ---
-num parse -> caught: reference.mu:395: num: not a number: not a number
-head empty: caught: reference.mu:400: head: empty list
+num parse -> caught: reference.mu:412: num: not a number: not a number
+head empty: caught: reference.mu:417: head: empty list
 check 5  : 5
-check -3 : reference.mu:407: negative not allowed: -3
-  1> check-positive() at reference.mu:412
-type error : reference.mu:415: +: expected number, got string
-arity error: reference.mu:416: sqrt: expected 1 argument, got 0
-size error : reference.mu:417: +: size mismatch (2 vs 3)
-assert     : reference.mu:421: assertion failed: one is not two
-call stack : reference.mu:424: from inner
-  1> inner() at reference.mu:426
-  2> outer() at reference.mu:429
-
---- file I/O ---
-contents of /tmp/musil_demo.txt:
-first line
-second line
-third line
-
-exec stat:
-3 /tmp/musil_demo.txt
+check -3 : reference.mu:424: negative not allowed: -3
+  1> check-positive() at reference.mu:429
+type error : reference.mu:432: +: expected number, got string
+arity error: reference.mu:433: sqrt: expected 1 argument, got 0
+size error : reference.mu:434: +: size mismatch (2 vs 3)
+nested     : reference.mu:437: outer saw reference.mu:437: inner
+call stack : reference.mu:440: from inner
+  1> inner() at reference.mu:442
+  2> outer() at reference.mu:445
 
 --- load ---
-(see comment in source — load "file.mu" pulls in another .mu;
- loaded files are cached so cycles and double-loads are safe)
+(load "std.mu") would bring in the standard library from ~/.musil or MUSIL_PATH
+missing file: reference.mu:455: load: not found: no-such-file.mu
 
 --- closing: Newton's method for sqrt ---
 newton sqrt 2   : 1.41421356237309

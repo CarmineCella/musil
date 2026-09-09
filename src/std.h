@@ -1,4 +1,7 @@
-// std.h — the general-purpose standard library
+// std.h — the general-purpose standard library, C++ half.
+// The other half is std.mu, written in Musil; what can be expressed in the
+// language lives there. Only what needs C++ (speed on vectors, strings, files,
+// higher-order over both list and vector) is here.
 // Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
 //
 
@@ -20,15 +23,6 @@ inline vptr fn_range(vlist& a, Interp& i) {   // (range n) | (range a b) | (rang
     varr r(n); for (long k=0; k<n; k++) r[k] = lo + k*step;
     return v_arr(std::move(r));
 }
-inline vptr fn_linspace(vlist& a, Interp& i) {
-    
-    double a0=i.scalar(a[0]), a1=i.scalar(a[1]); long n=i.index(a[2]);
-    if (n<2) i.err("linspace: n must be >= 2");
-    varr r(n); for (long k=0; k<n; k++) r[k]=a0+(a1-a0)*k/(n-1);
-    return v_arr(std::move(r));
-}
-inline vptr fn_zeros(vlist& a, Interp& i) { return v_arr(varr(0.0, checked_size(i, a[0]))); }
-inline vptr fn_ones(vlist& a, Interp& i) {  return v_arr(varr(1.0, checked_size(i, a[0]))); }
 inline vptr fn_seed(vlist& a, Interp& i) { i.rng.seed((uint64_t)i.scalar(a[0])); return v_nil(); }
 inline vptr fn_rand(vlist& a, Interp& i) {
     
@@ -38,17 +32,8 @@ inline vptr fn_rand(vlist& a, Interp& i) {
     return v_arr(std::move(r));
 }
 inline vptr fn_sort(vlist& a, Interp& i) { varr r=i.num(a[0]); std::sort(std::begin(r), std::end(r)); return v_arr(std::move(r)); }
-inline vptr fn_prod(vlist& a, Interp& i) { const varr& v=i.num(a[0]); double p=1; for (size_t k=0; k<v.size(); k++) p*=v[k]; return v_num(p); }
-inline vptr fn_mean(vlist& a, Interp& i) { const varr& v=i.num(a[0]); if (v.size()==0) i.err("mean: empty vector"); double s=0; for (size_t k=0; k<v.size(); k++) s+=v[k]; return v_num(s/v.size()); }
-inline vptr fn_dot(vlist& a, Interp& i) { const varr& x=i.num(a[0]); const varr& y=i.num(a[1]);
-    if (x.size()!=y.size()) i.err("dot: size mismatch (" + std::to_string(x.size()) + " vs " + std::to_string(y.size()) + ")");
-    double s=0; for (size_t k=0; k<x.size(); k++) s+=x[k]*y[k]; return v_num(s); }
 
 // list, vector, string
-inline vptr fn_last(vlist& a, Interp& i) { auto& v=a[0];
-    if (v->t==Value::LIST) { if (v->l.empty()) i.err("last: empty list"); return v->l.back(); }
-    if (v->t==Value::NUM)  { if (v->num.size()==0) i.err("last: empty vector"); return v_num(v->num[v->num.size()-1]); }
-    i.err(std::string("last: expected list or number, got ") + type_name(v)); }
 inline vptr fn_reverse(vlist& a, Interp& i) {
     if (a[0]->t == Value::LIST) { vlist r(a[0]->l.rbegin(), a[0]->l.rend()); return v_list(std::move(r)); }
     if (a[0]->t == Value::NUM)  { varr r(a[0]->num.size()); for (size_t k=0; k<r.size(); k++) r[k] = a[0]->num[r.size()-1-k]; return v_arr(std::move(r)); }
@@ -74,7 +59,6 @@ inline vptr fn_find(vlist& a, Interp& i) {    // index of first element equal to
     if (v->t==Value::NUM)  { double x = i.scalar(a[1]); for (size_t k=0; k<v->num.size(); k++) if (v->num[k]==x) return v_num((double)k); return v_num(-1); }
     if (v->t==Value::STR)  { size_t p = v->s.find(i.str(a[1])); return v_num(p==std::string::npos ? -1.0 : (double)p); }
     i.err(std::string("find: expected list, number or string, got ") + type_name(v)); }
-inline vptr fn_concat_list(vlist& a, Interp& i) { vlist r; for (auto& x : a) for (auto& y : i.list(x)) r.push_back(y); return v_list(std::move(r)); }
 
 // strings
 inline vptr fn_concat(vlist& a, Interp&) { std::string s; for (auto& x : a) s+=str_of(x); return v_str(std::move(s)); }
@@ -165,12 +149,6 @@ inline vptr fn_reduce(vlist& a, Interp& i) {
     if (a[0]->t==Value::NUM)  { for (size_t k=0; k<a[0]->num.size(); k++) { vlist arg={acc, v_num(a[0]->num[k])}; acc=i.call_fn(a[1], arg); } return acc; }
     i.err(std::string("reduce: expected list or number, got ") + type_name(a[0]));
 }
-inline vptr fn_each(vlist& a, Interp& i) {    // (each x fn) — call for side effects, return nil
-    i.fn(a[1]);
-    if (a[0]->t==Value::LIST) { for (auto& x : a[0]->l) { vlist arg={x}; i.call_fn(a[1], arg); } return v_nil(); }
-    if (a[0]->t==Value::NUM)  { for (size_t k=0; k<a[0]->num.size(); k++) { vlist arg={v_num(a[0]->num[k])}; i.call_fn(a[1], arg); } return v_nil(); }
-    i.err(std::string("each: expected list or number, got ") + type_name(a[0]));
-}
 
 // helpers
 inline vptr fn_assert(vlist& a, Interp& i) {   // (assert cond [message...])
@@ -182,24 +160,19 @@ inline vptr fn_assert(vlist& a, Interp& i) {   // (assert cond [message...])
 inline void add_std(Interp& i) {
     const int N = -1;   // unbounded
     // vectors
-    i.def("range", fn_range, 1, 3); i.def("linspace", fn_linspace, 3, 3); i.def("zeros", fn_zeros, 1, 1);
-    i.def("ones", fn_ones, 1, 1); i.def("seed", fn_seed, 1, 1); i.def("rand", fn_rand, 0, 1);
-    i.def("sort", fn_sort, 1, 1); i.def("prod", fn_prod, 1, 1); i.def("mean", fn_mean, 1, 1);
-    i.def("dot", fn_dot, 2, 2);
+    i.def("range", fn_range, 1, 3); i.def("seed", fn_seed, 1, 1); i.def("rand", fn_rand, 0, 1); i.def("sort", fn_sort, 1, 1);
     // sequences: list, vector, string
-    i.def("last", fn_last, 1, 1); i.def("reverse", fn_reverse, 1, 1); i.def("slice", fn_slice, 2, 3);
-    i.def("find", fn_find, 2, 2); i.def("concat-list", fn_concat_list, 0, N);
+    i.def("reverse", fn_reverse, 1, 1); i.def("slice", fn_slice, 2, 3); i.def("find", fn_find, 2, 2);
     // strings
     i.def("concat", fn_concat, 0, N); i.def("split", fn_split, 2, 2); i.def("join", fn_join, 2, 2);
     i.def("format", fn_format, 1, N); i.def("upper", fn_upper, 1, 1); i.def("lower", fn_lower, 1, 1);
     i.def("trim", fn_trim, 1, 1); i.def("chr", fn_chr, 1, 1); i.def("ord", fn_ord, 1, 1);
-    // I/O
+    // files and console
     i.def("read", fn_read, 1, 1); i.def("write", fn_write, 2, 2); i.def("append-file", fn_appendf, 2, 2);
     i.def("exists?", fn_existsp, 1, 1); i.def("input", fn_input, 0, 1);
     // higher-order, polymorphic on list and vector
     i.def("map", fn_map, 2, 2); i.def("filter", fn_filter, 2, 2); i.def("reduce", fn_reduce, 3, 3);
-    i.def("each", fn_each, 2, 2);
-    // Testing
+    // testing
     i.def("assert", fn_assert, 1, N);
 }
 

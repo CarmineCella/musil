@@ -6,6 +6,7 @@
 //   - (form ...) is a Lisp list. Newlines inside parens are whitespace.
 //   - {form ...} is a (do form ...) block of newline-separated sub-lists.
 //   - "..." string. 'x is (quote x). # comment. \ at line end continues.
+//   - ; separates commands on one line: { var a 1; var b 2 }
 //
 // Numbers are valarray<double>; size-1 vectors broadcast.
 // Values are shared_ptr — sharing by default; copy is explicit.
@@ -185,7 +186,7 @@ struct Parser {
             break;
         }
     }
-    void skip_all() { while (true) { skip_h(); if (eof() || peek() != '\n') break; pos++; line++; } }
+    void skip_all() { while (true) { skip_h(); if (eof()) break; if (peek() == ';') { pos++; continue; } if (peek() != '\n') break; pos++; line++; } }
     vptr read() {
         skip_h();
         if (eof()) err(line, "unexpected end of input");
@@ -204,6 +205,7 @@ struct Parser {
                 if (eof()) err(ln, "missing }");
                 if (peek() == '}') { pos++; break; }
                 if (peek() == '\n') { pos++; line++; continue; }
+                if (peek() == ';') { pos++; continue; }
                 vptr lf = read_line('}');
                 if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
             }
@@ -254,6 +256,7 @@ struct Parser {
             skip_h();
             if (eof()) break;
             if (peek() == '\n') { pos++; line++; continue; }
+            if (peek() == ';') { pos++; continue; }
             vptr lf = read_line(0);
             if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
         }
@@ -417,6 +420,7 @@ inline vptr fn_if      (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_while   (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_for     (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_var     (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_set     (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_function(vlist&, Interp&) { return v_nil(); }
 inline vptr fn_return  (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_break   (vlist&, Interp&) { return v_nil(); }
@@ -533,11 +537,18 @@ try {
             catch (break_signal&) {}
             --loop_depth; cleanup(); return last;
         }
-        if (op == fn_var) {
+        if (op == fn_var) {   // define (or redefine) in the current environment: a function's var never touches an outer one
             if (l.size() != 3) err("var: expected (var name value)");
             if (l[1]->t != Value::SYM) err("var: name must be a symbol, got " + str_of(l[1]));
             vptr v = eval(l[2], e);
-            if (!e->assign(l[1]->s, v)) e->vars[l[1]->s] = v;
+            e->vars[l[1]->s] = v;
+            cleanup(); return v;
+        }
+        if (op == fn_set) {   // assign to the nearest existing binding, however far out; error if there is none
+            if (l.size() != 3) err("set: expected (set name value)");
+            if (l[1]->t != Value::SYM) err("set: name must be a symbol, got " + str_of(l[1]));
+            vptr v = eval(l[2], e);
+            if (!e->assign(l[1]->s, v)) err("set: undefined: " + l[1]->s);
             cleanup(); return v;
         }
         if (op == fn_function) {
@@ -678,7 +689,10 @@ inline vptr Interp::call_fn(vptr f, vlist args) {
         return v_arr(std::move(r)); }
 BINOP(fn_add, +, 0.0, false) BINOP(fn_sub, -, 0.0, true)
 BINOP(fn_mul, *, 1.0, false) BINOP(fn_div, /, 1.0, true)
-#define CMP(name, sym) inline vptr name(vlist& a, Interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){return x sym y ? 1.0 : 0.0;}, i)); }
+// Comparisons are elementwise on numbers and lexicographic on two strings.
+#define CMP(name, sym) inline vptr name(vlist& a, Interp& i) { \
+    if (a[0]->t == Value::STR && a[1]->t == Value::STR) return v_bool(a[0]->s sym a[1]->s); \
+    return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){return x sym y ? 1.0 : 0.0;}, i)); }
 CMP(fn_lt, <) CMP(fn_gt, >) CMP(fn_le, <=) CMP(fn_ge, >=)
 inline vptr fn_eq(vlist& a, Interp& i) {
     if (a[0]->t == Value::NUM && a[1]->t == Value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x == y ? 1.0 : 0.0;}, i));
@@ -762,7 +776,7 @@ inline vptr fn_sum(vlist& a, Interp& i) {
     if (a[0]->t==Value::LIST) { double s=0; for (auto& x : a[0]->l) s+=i.scalar(x); return v_num(s); }
     i.err(std::string("sum: expected number or list, got ") + type_name(a[0]));
 }
-inline vptr fn_print(vlist& a, Interp& i) { for (size_t k=0; k<a.size(); k++) { if (k) *i.out<<" "; *i.out<<str_of(a[k]); } *i.out<<"\n"; return v_nil(); }
+inline vptr fn_print(vlist& a, Interp& i) { for (size_t k=0; k<a.size(); k++) { if (k) *i.out<<" "; *i.out<<str_of(a[k]); } *i.out<<"\n"<<std::flush; return v_nil(); }
 inline vptr fn_exit(vlist& a, Interp& i) { throw Exit_signal{ a.empty() ? 0 : (int)i.scalar(a[0]) }; }
 inline vptr fn_type(vlist& a, Interp& i) {
     if (a[0]->t==Value::NUM) return v_str(a[0]->num.size()==1 ? "scalar" : "vec");
@@ -822,7 +836,7 @@ inline Interp::Interp() {
     def("pi", v_num(3.14159265358979323846)); def("inf", v_num(INFINITY));
     def("version", v_str(MUSIL_VERSION));
     // Special forms (arity checked in eval)
-    a("quote", fn_quote); a("do", fn_do); a("if", fn_if); a("while", fn_while); a("for", fn_for); a("var", fn_var);
+    a("quote", fn_quote); a("do", fn_do); a("if", fn_if); a("while", fn_while); a("for", fn_for); a("var", fn_var); a("set", fn_set);
     a("function", fn_function); a("return", fn_return); a("break", fn_break); a("continue", fn_continue);
     a("try", fn_try); a("expr", fn_expr); a("eval", fn_eval); a("apply", fn_apply);
     // Arithmetic                                   name        fn        min max

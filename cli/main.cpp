@@ -17,7 +17,7 @@ static void usage(std::ostream& o) {
     o << "usage: musil [options] [file.mu ...] [-- args...]\n"
          "  -i           enter the REPL after running the files\n"
          "  -e CODE      evaluate CODE before running the files\n"
-         "  --stack N    maximum evaluation depth (default 10000)\n"
+         "  --stack N    maximum evaluation depth (default 100000)\n"
          "  --version    print version and exit\n"
          "  --help       this text\n"
          "Files are loaded in order into one interpreter. Arguments after -- are\n"

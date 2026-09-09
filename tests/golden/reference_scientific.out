@@ -1,0 +1,115 @@
+================================================================
+  musil: library reference (scientific)
+================================================================
+
+--- construction ---
+a literal       : ((1 2) (3 4))
+list->mat       : ((1 2) (3 4))
+mat-zeros 2 3   : ((0 0 0) (0 0 0))
+mat-ones 1 2    : ((1 1))
+mat-fill 2 2 7  : ((7 7) (7 7))
+eye 3           : ((1 0 0) (0 1 0) (0 0 1))
+diag (vec 2 3)  : ((2 0) (0 3))
+col-stack       : ((1 4) (2 5) (3 6)) (the vectors become columns)
+
+--- shape and access ---
+nrows, ncols    : 3 3   mat-shape: (3 3)
+mat-get M 1 2   : 6
+mat-row M 0     : (1 2 3)
+mat-col M 2     : (3 6 10)
+mat-diag M      : (1 5 10)
+get-rows M 1 2  : ((4 5 6) (7 8 10)) (2 rows from row 1)
+get-cols M 0 2  : ((1 2) (4 5) (7 8)) (2 columns from column 0)
+mat-set in place: ((0 9) (0 0))
+
+--- elementwise and stacking ---
+mat-add A B     : ((6 8) (10 12))
+mat-sub B A     : ((4 4) (4 4))
+hadamard A B    : ((5 12) (21 32))
+mat-scale A 3   : ((3 6) (9 12))
+mat-shift A 10  : ((11 12) (13 14))
+mat-map A sqrt  : ((1 1.4142135623731) (1.73205080756888 2))
+vstack A B      : ((1 2) (3 4) (5 6) (7 8))
+hstack A B      : ((1 2 5 6) (3 4 7 8))
+
+--- products and decompositions ---
+mat-mul A B     : ((19 22) (43 50))
+mat-mul A B A   : ((85 126) (193 286)) (left to right)
+mat-vec A (1 1) : (3 7)
+vec-mat (1 1) A : (4 6)
+outer (1 2) (3 4): ((3 4) (6 8))
+trace M         : 16
+transpose M     : ((1 4 7) (2 5 8) (3 6 10))
+det A, det M    : -2 -3
+rank M          : 3   rank of (1 2; 2 4): 1
+inv A           : ((-2 1) (1.5 -0.5))
+A inv(A)        : ((1 0) (0 1))
+solve A (5 11)  : (1 2)
+singular        : reference_scientific.mu:74: inv: matrix is singular
+not square      : reference_scientific.mu:75: det: matrix must be square (1x3)
+ragged          : reference_scientific.mu:76: transpose: ragged matrix: row 1 has 1 columns, expected 2
+eig-sym         : ((3 1) ((0.707106781186547 0.707106781186547) (0.707106781186547 -0.707106781186547))) (eigenvalues, then eigenvectors as rows)
+A v = lambda v  : (2.12132034355964 2.12132034355964) = (2.12132034355964 2.12132034355964)
+
+--- statistics ---
+median-filter 3 : (1 1 1 1 1 1 1 1) (spikes removed; median itself is in std)
+linefit         : (2 1) (slope intercept)
+lp-norm 1, 2, 3 : 7 5 4.4979
+dist, dist-p 1  : 5 7
+dist-matrix     : ((0 5 10) (5 0 5) (10 5 0))
+nearest         : 1
+center          : ((-1 -5) (1 5))
+axis 0 is down the columns, axis 1 along the rows:
+mat-sum  0, 1   : (12 15 19) (6 15 25)
+mat-mean 0, 1   : (4 5 6.33333333333333) (2 5 8.33333333333333)
+mat-std  0, 1   : (2.449 2.449 2.867) (0.816 0.816 1.247)
+zscore          : ((-1.225 -1.225 -1.162) (0 0 -0.116) (1.225 1.225 1.279))
+cov             : ((9 9 10.5) (9 9 10.5) (10.5 10.5 12.333))
+corr            : ((1 1 0.997) (1 1 0.997) (0.997 0.997 1))
+
+--- regression ---
+design matrix   : ((1 0) (1 1) (1 2) (1 3))
+linreg-fit      : (1 2) (intercept slope)
+linreg-predict  : (1 3 5 7)
+residuals       : (0 0 0 0)
+
+--- pca ---
+pca             : ((0.9998 -0.0201 2.501) (0.0201 0.9998 0.009)) (each row: direction then its eigenvalue, largest first)
+pca-directions  : ((0.9998 -0.0201) (0.0201 0.9998))
+pca-eigenvalues : (2.501 0.009)
+pca-explained   : (0.9964 0.0036)
+pca-scores 1    : (0.9978 2.0016 2.9974 4.0012 4.999)
+
+--- kmeans ---
+kmeans-labels   : (0 0 0 1 1 1)
+kmeans-centroids: ((0.033 0.033) (10.033 10.033))
+cluster-sizes   : (3 3)
+
+--- knn ---
+knn             : (a b)
+knn-predict-one : b
+knn-test        : (a a b b)
+accuracy        : 1
+train-test-split: (2 2) (after shuffle)
+
+--- bpf ---
+one segment     : (0 0.25 0.5 0.75) (4 samples from 0 towards 1, end excluded)
+attack, decay   : (0 0.25 0.5 0.75 1 0.75 0.5 0.25)
+an envelope     : (0 0.33 0.67 1 0.9 0.8 0.7 0.6 0.5 0.38 0.25 0.13)
+
+--- display ---
+mat-str M 2:
+ 1.00   2.00   3.00
+ 4.00   5.00   6.00
+ 7.00   8.00  10.00
+mat-print (inv A):
+-2.000   1.000
+ 1.500  -0.500
+mat-print-with (cov M) 1:
+ 9.0   9.0  10.5
+ 9.0   9.0  10.5
+10.5  10.5  12.3
+
+================================================================
+  end of scientific reference
+================================================================
