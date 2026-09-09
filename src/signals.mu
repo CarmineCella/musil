@@ -111,6 +111,27 @@ function conv (x h) {
     return (take (ifft (complex-mul (fft padded-x) (fft padded-h))) n)
 }
 
+# (cepstrum mags)          real cepstrum of a full (symmetric) magnitude spectrum
+function cepstrum (mags) (ifft (list (log (max mags 1e-12)) (zeros (length mags))))
+# (spectral-envelope mags order)   smooth envelope of a full magnitude spectrum: the "true envelope",
+#                          a cepstral smoothing (first `order` coefficients) iterated so that it rides
+#                          on the harmonic peaks instead of averaging peaks and valleys. The order sets
+#                          the resolution: about sr / (2 f0) of the sound (e.g. 150 for a voice at
+#                          44.1 kHz) follows the formants without rippling at the harmonics
+function spectral-envelope (mags order) {
+    var n (length mags)
+    var lifter (vec (ones (+ order 1)) (zeros (- n (* 2 order) 1)) (ones order))
+    function smooth (log-spec) (head (fft (* (ifft (list log-spec (zeros n))) lifter)))
+    var target (log (max mags (* 1e-4 (max mags))))
+    var env (smooth target)
+    times 12 (function (k) (set env (smooth (max target env))))
+    return (exp env)
+}
+# (flatten-spectrum mags order)    the magnitudes divided by their envelope: the fine structure alone
+function flatten-spectrum (mags order) (/ mags (spectral-envelope mags order))
+# (impose-envelope mags source order)   mags reshaped to carry the spectral envelope of source
+function impose-envelope (mags source order) (* (flatten-spectrum mags order) (spectral-envelope source order))
+
 # --- STFT: a list of complex spectra, one per hop, Hann-windowed ---------------------
 # (stft x n hop) => list of (list re im); (istft frames n hop) => signal by overlap-add
 function stft (x n hop) {

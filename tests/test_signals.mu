@@ -73,6 +73,22 @@ check (== (length (conv (ones 100) (ones 50))) 149) "conv: length"
 var cm (complex-mul (list (vec 0) (vec 1)) (list (vec 0) (vec 1)))
 check (equal? (list (head cm) (last cm)) (list (vec -1) (vec 0))) "complex-mul: i * i = -1"
 
+# --- cepstral envelope ---
+var tone (osc sr (+ (zeros 1024) 200) (gen 512 (ones 12)))
+var shaped (magnitudes (fft (* (bandpass tone sr 900 3) (hann 1024))))
+var picks (function (m) (vec (map (list 26 51 77 102 128 154) (function (k) (getidx m k)))))
+var env (spectral-envelope shaped 20)
+check (== (length env) 1024) "spectral-envelope: full length"
+check (< (spectral-irregularity (take env 512)) (* 0.3 (spectral-irregularity (take shaped 512)))) "spectral-envelope: smoother than the spectrum"
+check (< (abs (- (argmax (take env 512)) 115)) 40) "spectral-envelope: peaks near the formant"
+check (> (min (picks (/ env shaped))) 0.1) "spectral-envelope: stays within an order of magnitude of the harmonic peaks"
+check (< (/ (max (picks (/ env shaped))) (min (picks (/ env shaped)))) 3) "spectral-envelope: peak-to-envelope ratio is consistent across harmonics"
+var flat (flatten-spectrum shaped 20)
+check (< (stdev (log (picks flat))) (* 0.5 (stdev (log (picks shaped))))) "flatten-spectrum: harmonics level out"
+check (near? (impose-envelope shaped shaped 20) shaped 1e-9) "impose-envelope: a spectrum given its own envelope is unchanged"
+check (== (length (cepstrum (ones 8))) 8) "cepstrum: length"
+check (near? (cepstrum (ones 8)) (zeros 8) 1e-9) "cepstrum: flat spectrum has zero cepstrum"
+
 # --- stft ---
 var sig (sine sr 200 0.1)
 var frames (stft sig 256 64)

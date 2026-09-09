@@ -53,7 +53,16 @@ print "magnitude-spectrum: peak at" (getidx (spectrum-freqs 256 sr) (argmax ms))
 print "conv             :" (fixed (conv (vec 1 2 3) (vec 1 1)) 6)
 print "complex-mul      :" (complex-mul (list (vec 0) (vec 1)) (list (vec 0) (vec 1))) "(i times i)"
 
-# --- 3. STFT --------------------------------------------------------------------
+# --- 3. Spectral envelope (cepstral) ------------------------------------------------
+print ""
+print "--- spectral envelope ---"
+var tone (osc sr (+ (zeros 1024) 200) (gen 512 (ones 12)))
+var shaped (magnitudes (fft (* (bandpass tone sr 900 3) (hann 1024))))
+print "spectral-envelope: peak bin of the spectrum" (argmax (take shaped 512)) ", of its envelope (order 20)" (argmax (take (spectral-envelope shaped 20) 512))
+print "flatten-spectrum : harmonics 1-4 raw" (fixed (vec (map (list 26 51 77 102) (function (k) (getidx shaped k)))) 1) "flattened" (fixed (vec (map (list 26 51 77 102) (function (k) (getidx (flatten-spectrum shaped 20) k)))) 2)
+print "impose-envelope  : carrier reshaped by a source's envelope; cepstrum: the cepstrum itself"
+
+# --- 4. STFT --------------------------------------------------------------------
 print ""
 print "--- stft ---"
 var sig (sine sr 200 0.1)
