@@ -2,7 +2,6 @@
 //
 // Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
 //
-// Surface (f8-style hybrid):
 //   - Top level: each line is a command (auto-listified). No enclosing parens.
 //   - (form ...) is a Lisp list. Newlines inside parens are whitespace.
 //   - {form ...} is a (do form ...) block of newline-separated sub-lists.
@@ -14,8 +13,6 @@
 // User functions curry when called with too few args; with too many, the
 // result is applied to the remaining args.
 //
-// The core has no dependencies beyond the C++17 standard library (plus getrlimit
-// on POSIX, to size the stack guard; see interp::stack_budget).
 
 #pragma once
 #include <algorithm>
@@ -45,21 +42,21 @@
 #include <sys/resource.h>
 #endif
 
-#define MUSIL_VERSION "3.0.0"
+#define MUSIL_VERSION "0.6"
 
 namespace musil {
 namespace fs = std::filesystem;
 
-struct value; struct env; struct interp;
-using vptr = std::shared_ptr<value>;
-using eptr = std::shared_ptr<env>;
+struct Value; struct Env; struct Interp;
+using vptr = std::shared_ptr<Value>;
+using eptr = std::shared_ptr<Env>;
 using vlist = std::vector<vptr>;
 using varr = std::valarray<double>;
 using sptr = std::shared_ptr<std::string>;
-using op_t = vptr (*)(vlist&, interp&);
+using op_t = vptr (*)(vlist&, Interp&);
 
-// === Values =====
-struct value {
+// AST
+struct Value {
     enum tag { NIL, NUM, STR, SYM, LIST, FN, OPAQUE } t = NIL;
     varr num; std::string s; vlist l;
     int line = 0; sptr file;
@@ -72,30 +69,34 @@ inline const char* type_name(const vptr& v) {
     static const char* names[] = { "nil", "number", "string", "symbol", "list", "function", "opaque" };
     return v ? names[v->t] : "nil";
 }
-inline vptr v_nil()              { return std::make_shared<value>(); }
-inline vptr v_num(double d)      { auto v = v_nil(); v->t = value::NUM; v->num = varr(d, 1); return v; }
-inline vptr v_arr(varr a)        { auto v = v_nil(); v->t = value::NUM; v->num = std::move(a); return v; }
+inline vptr v_nil()              { return std::make_shared<Value>(); }
+inline vptr v_num(double d)      { auto v = v_nil(); v->t = Value::NUM; v->num = varr(d, 1); return v; }
+inline vptr v_arr(varr a)        { auto v = v_nil(); v->t = Value::NUM; v->num = std::move(a); return v; }
 inline vptr v_bool(bool b)       { return v_num(b ? 1.0 : 0.0); }
-inline vptr v_str(std::string s) { auto v = v_nil(); v->t = value::STR; v->s = std::move(s); return v; }
-inline vptr v_sym(std::string s) { auto v = v_nil(); v->t = value::SYM; v->s = std::move(s); return v; }
-inline vptr v_list(vlist x, int ln=0, sptr f={}) { auto v=v_nil(); v->t=value::LIST; v->l=std::move(x); v->line=ln; v->file=std::move(f); return v; }
-inline vptr v_op(op_t f, std::string name, int amin, int amax) { auto v = v_nil(); v->t = value::FN; v->op = f; v->s = std::move(name); v->amin = amin; v->amax = amax; return v; }
-inline vptr v_opaque(std::string tag, std::shared_ptr<void> p) { auto v = v_nil(); v->t = value::OPAQUE; v->opaque_tag = std::move(tag); v->opaque = std::move(p); return v; }
-
-// === Environments =====
-struct env {
+inline vptr v_str(std::string s) { auto v = v_nil(); v->t = Value::STR; v->s = std::move(s); return v; }
+inline vptr v_sym(std::string s) { auto v = v_nil(); v->t = Value::SYM; v->s = std::move(s); return v; }
+inline vptr v_list(vlist x, int ln=0, sptr f={}) { 
+    auto v=v_nil(); v->t=Value::LIST; v->l=std::move(x); v->line=ln; v->file=std::move(f); return v; 
+}
+inline vptr v_op(op_t f, std::string name, int amin, int amax) { 
+    auto v = v_nil(); v->t = Value::FN; v->op = f; v->s = std::move(name); v->amin = amin; v->amax = amax; return v; 
+}
+inline vptr v_opaque(std::string tag, std::shared_ptr<void> p) { 
+    auto v = v_nil(); v->t = Value::OPAQUE; v->opaque_tag = std::move(tag); v->opaque = std::move(p); return v; 
+}
+struct Env {
     std::unordered_map<std::string, vptr> vars;
     eptr parent;
-    env(eptr p = nullptr) : parent(std::move(p)) {}
+    Env(eptr p = nullptr) : parent(std::move(p)) {}
     vptr find(const std::string& k) {
-        for (env* w = this; w; w = w->parent.get()) {
+        for (Env* w = this; w; w = w->parent.get()) {
             auto it = w->vars.find(k);
             if (it != w->vars.end()) return it->second;
         }
         return nullptr;
     }
     bool assign(const std::string& k, vptr v) {
-        for (env* w = this; w; w = w->parent.get()) {
+        for (Env* w = this; w; w = w->parent.get()) {
             auto it = w->vars.find(k);
             if (it != w->vars.end()) { it->second = std::move(v); return true; }
         }
@@ -103,12 +104,12 @@ struct env {
     }
 };
 
-// === Errors and control signals =====
-struct musil_error : std::exception {
+// helpers
+struct Error : std::exception {
     std::string file; int line = 0; std::string msg;
     std::vector<std::string> trace;
     mutable std::string cached;
-    musil_error(std::string f, int ln, std::string m) : file(std::move(f)), line(ln), msg(std::move(m)) {}
+    Error(std::string f, int ln, std::string m) : file(std::move(f)), line(ln), msg(std::move(m)) {}
     const char* what() const noexcept override {
         if (cached.empty()) {
             cached = file + ":" + std::to_string(line) + ": " + msg;
@@ -117,15 +118,13 @@ struct musil_error : std::exception {
         return cached.c_str();
     }
 };
-struct return_signal { vptr val; }; struct break_signal {}; struct continue_signal {};
-struct exit_signal { int code; };
-
-// === Predicates and printing =====
+struct Return_signal { vptr val; }; struct break_signal {}; struct continue_signal {};
+struct Exit_signal { int code; };
 inline bool truthy(const vptr& v) {
-    if (!v || v->t == value::NIL) return false;
-    if (v->t == value::NUM) { for (size_t i=0; i<v->num.size(); i++) if (v->num[i]==0.0) return false; return v->num.size() > 0; }
-    if (v->t == value::STR) return !v->s.empty();
-    if (v->t == value::LIST) return !v->l.empty();
+    if (!v || v->t == Value::NIL) return false;
+    if (v->t == Value::NUM) { for (size_t i=0; i<v->num.size(); i++) if (v->num[i]==0.0) return false; return v->num.size() > 0; }
+    if (v->t == Value::STR) return !v->s.empty();
+    if (v->t == Value::LIST) return !v->l.empty();
     return true;
 }
 inline void put_double(std::ostream& os, double d) {
@@ -136,48 +135,47 @@ inline std::string str_of(const vptr& v) {
     if (!v) return "nil";
     std::ostringstream os;
     switch (v->t) {
-    case value::NIL: return "nil";
-    case value::NUM:
+    case Value::NIL: return "nil";
+    case Value::NUM:
         if (v->num.size() == 1) { put_double(os, v->num[0]); return os.str(); }
         os << "(";
         for (size_t i=0; i<v->num.size(); i++) { if (i) os << " "; put_double(os, v->num[i]); }
         os << ")";
         return os.str();
-    case value::STR: case value::SYM: return v->s;
-    case value::FN: return v->op ? "<builtin>" : "<fn>";
-    case value::LIST:
+    case Value::STR: case Value::SYM: return v->s;
+    case Value::FN: return v->op ? "<builtin>" : "<fn>";
+    case Value::LIST:
         os << "("; for (size_t i=0; i<v->l.size(); i++) { if (i) os << " "; os << str_of(v->l[i]); } os << ")";
         return os.str();
-    case value::OPAQUE: return "<opaque:" + v->opaque_tag + ">";
+    case Value::OPAQUE: return "<opaque:" + v->opaque_tag + ">";
     }
     return "";
 }
-// Structural equality (numbers elementwise, strings/symbols by text, lists recursively).
 inline bool equal(const vptr& a, const vptr& b) {
-    if (!a || !b) return (!a || a->t == value::NIL) && (!b || b->t == value::NIL);
+    if (!a || !b) return (!a || a->t == Value::NIL) && (!b || b->t == Value::NIL);
     if (a->t != b->t) return false;
     switch (a->t) {
-    case value::NIL: return true;
-    case value::NUM: if (a->num.size() != b->num.size()) return false;
+    case Value::NIL: return true;
+    case Value::NUM: if (a->num.size() != b->num.size()) return false;
         for (size_t i=0; i<a->num.size(); i++) { if (a->num[i] != b->num[i]) return false; }
         return true;
-    case value::STR: case value::SYM: return a->s == b->s;
-    case value::LIST: if (a->l.size() != b->l.size()) return false;
+    case Value::STR: case Value::SYM: return a->s == b->s;
+    case Value::LIST: if (a->l.size() != b->l.size()) return false;
         for (size_t i=0; i<a->l.size(); i++) { if (!equal(a->l[i], b->l[i])) return false; }
         return true;
-    case value::FN: return a.get() == b.get() || (a->op && a->op == b->op);
-    case value::OPAQUE: return a->opaque.get() == b->opaque.get();
+    case Value::FN: return a.get() == b.get() || (a->op && a->op == b->op);
+    case Value::OPAQUE: return a->opaque.get() == b->opaque.get();
     }
     return false;
 }
 
-// === Reader =====
-struct parser {
+// parsing and lexing
+struct Parser {
     std::string src; size_t pos = 0; int line = 1; sptr file;
-    parser(std::string s, sptr f) : src(std::move(s)), file(std::move(f)) {}
+    Parser(std::string s, sptr f) : src(std::move(s)), file(std::move(f)) {}
     bool eof() const { return pos >= src.size(); }
     char peek() const { return src[pos]; }
-    [[noreturn]] void err(int ln, const std::string& m) { throw musil_error(file?*file:"<input>", ln, m); }
+    [[noreturn]] void err(int ln, const std::string& m) { throw Error(file?*file:"<input>", ln, m); }
     void skip_h() {
         while (!eof()) {
             char c = peek();
@@ -207,7 +205,7 @@ struct parser {
                 if (peek() == '}') { pos++; break; }
                 if (peek() == '\n') { pos++; line++; continue; }
                 vptr lf = read_line('}');
-                if (lf->t != value::LIST || !lf->l.empty()) out.push_back(lf);
+                if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
             }
             return v_list(std::move(out), ln, file);
         }
@@ -247,7 +245,7 @@ struct parser {
         }
         // A line holding a single list is that list; a single literal is that value.
         // A single symbol is still a command: `ctr` calls ctr.
-        if (out.size() == 1 && out[0]->t != value::SYM) return out[0];
+        if (out.size() == 1 && out[0]->t != Value::SYM) return out[0];
         return v_list(std::move(out), ln, file);
     }
     vptr program() {
@@ -257,25 +255,22 @@ struct parser {
             if (eof()) break;
             if (peek() == '\n') { pos++; line++; continue; }
             vptr lf = read_line(0);
-            if (lf->t != value::LIST || !lf->l.empty()) out.push_back(lf);
+            if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
         }
         return v_list(std::move(out), 1, file);
     }
 };
-
-// === Interpreter =====
-struct frame { vptr name; sptr file; int line; };   // call-stack entry; formatted lazily on error
-
-struct interp {
+struct Frame { vptr name; sptr file; int line; };   // call-stack entry; formatted lazily on error
+struct Interp {
     eptr global;
-    std::vector<frame> call_stack;
+    std::vector<Frame> call_stack;
     int stack_depth = 0, max_stack = 100000;   // depth cap (secondary; the byte budget below is the real guard)
     std::uintptr_t stack_base = 0;             // address of a local in the outermost run()
     size_t stack_budget = 0;                   // bytes of C++ stack eval may use; set in the constructor, hosts may lower it
     int function_depth = 0, loop_depth = 0;
     unsigned long eval_count = 0;
     std::function<void()> yield_fn;         // called every 1024 evals, for hosts that need to breathe
-    std::vector<std::weak_ptr<env>> tracked_envs;
+    std::vector<std::weak_ptr<Env>> tracked_envs;
     std::unordered_set<std::string> loaded_files;   // ran to completion; a second load is a no-op
     std::unordered_set<std::string> loading_files;  // currently running; a load from inside is a cycle and is skipped
     std::vector<std::string> load_path;     // extra directories searched by load (after the local ones)
@@ -285,35 +280,29 @@ struct interp {
     std::ostream* out = &std::cout;
     const char* who = "";                   // name of the builtin being executed (for error messages)
 
-    interp();
-    ~interp();
+    Interp();
+    ~Interp();
     eptr make_env(eptr parent = nullptr) {
-        auto e = std::make_shared<env>(std::move(parent));
+        auto e = std::make_shared<Env>(std::move(parent));
         tracked_envs.push_back(e);
         if (tracked_envs.size() >= 1024 && (tracked_envs.size() & 1023) == 0)
             tracked_envs.erase(std::remove_if(tracked_envs.begin(), tracked_envs.end(),
-                [](const std::weak_ptr<env>& w) { return w.expired(); }), tracked_envs.end());
+                [](const std::weak_ptr<Env>& w) { return w.expired(); }), tracked_envs.end());
         return e;
     }
-    [[noreturn]] void err(const std::string& m) { throw musil_error(current_file?*current_file:"<input>", current_line, m); }
+    [[noreturn]] void err(const std::string& m) { throw Error(current_file?*current_file:"<input>", current_line, m); }
     void yield_check() { if (yield_fn && (++eval_count & 1023) == 0) yield_fn(); }
-
-    // Registration API for libraries.
-    // Register a builtin with its arity; eval checks the count before calling it.
     void def(const std::string& name, op_t f, int amin, int amax) { global->vars[name] = v_op(f, name, amin, amax); }
     void def(const std::string& name, op_t f, int arity = 0) { def(name, f, arity, arity); }
     void def(const std::string& name, vptr v) { global->vars[name] = std::move(v); }
-
     vptr eval(vptr expr, eptr e);
     vptr call_fn(vptr fn, vlist args);
     vptr run(const std::string& src, const std::string& filename = "<input>");
     void load(const std::string& path);
     void repl();
-
-    // --- Argument checking helpers for builtins (messages use `who`) ---
     [[noreturn]] void bad(const std::string& m) { err(std::string(who) + ": " + m); }
     const varr& num(const vptr& v) {
-        if (!v || v->t != value::NUM) bad(std::string("expected number, got ") + type_name(v));
+        if (!v || v->t != Value::NUM) bad(std::string("expected number, got ") + type_name(v));
         return v->num;
     }
     double scalar(const vptr& v) {
@@ -327,18 +316,17 @@ struct interp {
         return (long)d;
     }
     const std::string& str(const vptr& v) {
-        if (!v || v->t != value::STR) bad(std::string("expected string, got ") + type_name(v));
+        if (!v || v->t != Value::STR) bad(std::string("expected string, got ") + type_name(v));
         return v->s;
     }
     vlist& list(const vptr& v) {
-        if (!v || v->t != value::LIST) bad(std::string("expected list, got ") + type_name(v));
+        if (!v || v->t != Value::LIST) bad(std::string("expected list, got ") + type_name(v));
         return v->l;
     }
     const vptr& fn(const vptr& v) {
-        if (!v || v->t != value::FN) bad(std::string("expected function, got ") + type_name(v));
+        if (!v || v->t != Value::FN) bad(std::string("expected function, got ") + type_name(v));
         return v;
     }
-    // Arity check + call of a builtin, with `who` set for the duration of the call.
     vptr call_op(const vptr& f, vlist& args) {
         if ((int)args.size() < f->amin || (f->amax >= 0 && (int)args.size() > f->amax)) {
             std::string want = f->amax < 0 ? "at least " + std::to_string(f->amin)
@@ -351,17 +339,13 @@ struct interp {
         return f->op(args, *this);
     }
 };
-
-// Elementwise binary op with size-1 broadcasting.
 template <class F>
-inline varr bcast(const varr& a, const varr& b, F f, interp& i) {
+inline varr bcast(const varr& a, const varr& b, F f, Interp& i) {
     if (a.size() == b.size()) { varr r(a.size()); for (size_t k=0; k<a.size(); k++) r[k] = f(a[k], b[k]); return r; }
     if (a.size() == 1) { varr r(b.size()); for (size_t k=0; k<b.size(); k++) r[k] = f(a[0], b[k]); return r; }
     if (b.size() == 1) { varr r(a.size()); for (size_t k=0; k<a.size(); k++) r[k] = f(a[k], b[0]); return r; }
     i.bad("size mismatch (" + std::to_string(a.size()) + " vs " + std::to_string(b.size()) + ")");
 }
-
-// === expr: Pratt parser for infix arithmetic =====
 inline int op_prec(const std::string& o) {
     if (o == "||") return 1;
     if (o == "&&") return 2;
@@ -371,35 +355,35 @@ inline int op_prec(const std::string& o) {
     if (o == "*" || o == "/" || o == "%")  return 6;
     return 0;
 }
-inline vptr expr_parse(vlist& w, size_t& p, int min_p, interp& i, eptr e);
-inline vptr expr_atom(vlist& w, size_t& p, interp& i, eptr e) {
+inline vptr expr_parse(vlist& w, size_t& p, int min_p, Interp& i, eptr e);
+inline vptr expr_atom(vlist& w, size_t& p, Interp& i, eptr e) {
     if (p >= w.size()) i.err("expr: unexpected end of expression");
     vptr a = w[p];
-    if (a->t == value::NUM) { p++; return a; }
-    if (a->t == value::SYM) {
+    if (a->t == Value::NUM) { p++; return a; }
+    if (a->t == Value::SYM) {
         if (a->s == "-") { p++; vptr v = expr_atom(w, p, i, e); return v_arr(-i.num(v)); }
         if (op_prec(a->s)) i.err("expr: unexpected operator " + a->s);
         p++; auto v = e->find(a->s);
         if (!v) i.err("expr: undefined: " + a->s);
         return v;
     }
-    if (a->t == value::LIST) {
+    if (a->t == Value::LIST) {
         p++;
         // (a op b ...) nested in an expr is a sub-expression; anything else is a call.
         vlist& sub = a->l;
-        bool infix = sub.size() == 1 || (sub.size() >= 2 && sub[1]->t == value::SYM && op_prec(sub[1]->s) > 0);
+        bool infix = sub.size() == 1 || (sub.size() >= 2 && sub[1]->t == Value::SYM && op_prec(sub[1]->s) > 0);
         if (!infix) return i.eval(a, e);
         size_t q = 0; vptr r = expr_parse(sub, q, 0, i, e);
         if (q < sub.size()) i.err("expr: unexpected " + str_of(sub[q]));
         return r;
     }
-    if (a->t == value::STR) { p++; return a; }
+    if (a->t == Value::STR) { p++; return a; }
     i.err("expr: bad token " + str_of(a));
 }
-inline vptr expr_parse(vlist& w, size_t& p, int min_p, interp& i, eptr e) {
+inline vptr expr_parse(vlist& w, size_t& p, int min_p, Interp& i, eptr e) {
     vptr lhs = expr_atom(w, p, i, e);
     while (p < w.size()) {
-        if (w[p]->t != value::SYM) i.err("expr: expected operator, got " + str_of(w[p]));
+        if (w[p]->t != Value::SYM) i.err("expr: expected operator, got " + str_of(w[p]));
         int prec = op_prec(w[p]->s);
         if (prec == 0) i.err("expr: unknown operator " + w[p]->s);
         if (prec < min_p) break;
@@ -407,8 +391,8 @@ inline vptr expr_parse(vlist& w, size_t& p, int min_p, interp& i, eptr e) {
         vptr rhs = expr_parse(w, p, prec + 1, i, e);
         if (op == "&&") { lhs = v_bool(truthy(lhs) && truthy(rhs)); continue; }
         if (op == "||") { lhs = v_bool(truthy(lhs) || truthy(rhs)); continue; }
-        if (op == "==") { if (lhs->t != value::NUM || rhs->t != value::NUM) { lhs = v_bool(equal(lhs, rhs)); continue; } }
-        if (op == "!=") { if (lhs->t != value::NUM || rhs->t != value::NUM) { lhs = v_bool(!equal(lhs, rhs)); continue; } }
+        if (op == "==") { if (lhs->t != Value::NUM || rhs->t != Value::NUM) { lhs = v_bool(equal(lhs, rhs)); continue; } }
+        if (op == "!=") { if (lhs->t != Value::NUM || rhs->t != Value::NUM) { lhs = v_bool(!equal(lhs, rhs)); continue; } }
         const varr& L = i.num(lhs); const varr& R = i.num(rhs);
         auto bo = [&](auto f) { return v_arr(bcast(L, R, f, i)); };
         if      (op == "+")  lhs = bo([](double a, double b){ return a + b; });
@@ -426,37 +410,29 @@ inline vptr expr_parse(vlist& w, size_t& p, int min_p, interp& i, eptr e) {
     return lhs;
 }
 
-// === Special form markers (compared by address) =====
-inline vptr fn_quote   (vlist&, interp&) { return v_nil(); }
-inline vptr fn_do      (vlist&, interp&) { return v_nil(); }
-inline vptr fn_if      (vlist&, interp&) { return v_nil(); }
-inline vptr fn_while   (vlist&, interp&) { return v_nil(); }
-inline vptr fn_for     (vlist&, interp&) { return v_nil(); }
-inline vptr fn_var     (vlist&, interp&) { return v_nil(); }
-inline vptr fn_function(vlist&, interp&) { return v_nil(); }
-inline vptr fn_return  (vlist&, interp&) { return v_nil(); }
-inline vptr fn_break   (vlist&, interp&) { return v_nil(); }
-inline vptr fn_continue(vlist&, interp&) { return v_nil(); }
-inline vptr fn_try     (vlist&, interp&) { return v_nil(); }
-inline vptr fn_expr    (vlist&, interp&) { return v_nil(); }
-inline vptr fn_eval    (vlist&, interp&) { return v_nil(); }
-inline vptr fn_apply   (vlist&, interp&) { return v_nil(); }
-
-inline vptr make_partial(interp& i, const vptr& fn, const vlist& args) {
+// evaluation
+inline vptr fn_quote   (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_do      (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_if      (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_while   (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_for     (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_var     (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_function(vlist&, Interp&) { return v_nil(); }
+inline vptr fn_return  (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_break   (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_continue(vlist&, Interp&) { return v_nil(); }
+inline vptr fn_try     (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_expr    (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_eval    (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_apply   (vlist&, Interp&) { return v_nil(); }
+inline vptr make_partial(Interp& i, const vptr& fn, const vlist& args) {
     auto bound = i.make_env(fn->closure);
     for (size_t k=0; k<args.size(); k++) bound->vars[fn->params[k]] = args[k];
-    auto curr = v_nil(); curr->t = value::FN; curr->closure = bound; curr->body = fn->body;
+    auto curr = v_nil(); curr->t = Value::FN; curr->closure = bound; curr->body = fn->body;
     curr->params = std::vector<std::string>(fn->params.begin() + args.size(), fn->params.end());
     return curr;
 }
-// Early returns without exceptions. A (return X) reached in tail position is
-// free; one reached inside a nested form has to unwind with a C++ exception,
-// which costs microseconds. Bodies are rewritten at definition time so that
-//     (do A (if c (return X)) B C)   becomes   (do A (if c (return X) (do B C)))
-// which puts the return, and everything after the if, in tail position.
-// The rewrite is applied only where at least one branch ends in a return, so
-// no code is duplicated and evaluation order is unchanged.
-inline bool is_form(const vptr& v, const char* name) { return v && v->t == value::LIST && !v->l.empty() && v->l[0]->t == value::SYM && v->l[0]->s == name; }
+inline bool is_form(const vptr& v, const char* name) { return v && v->t == Value::LIST && !v->l.empty() && v->l[0]->t == Value::SYM && v->l[0]->s == name; }
 inline bool ends_in_return(const vptr& v) {
     if (is_form(v, "return")) return true;
     if (is_form(v, "do")) return v->l.size() > 1 && ends_in_return(v->l.back());
@@ -464,7 +440,7 @@ inline bool ends_in_return(const vptr& v) {
     return false;
 }
 inline vptr hoist_returns(const vptr& v) {
-    if (!v || v->t != value::LIST || v->l.empty()) return v;
+    if (!v || v->t != Value::LIST || v->l.empty()) return v;
     if (is_form(v, "if")) {
         vlist n = v->l; for (size_t k=2; k<n.size(); k++) n[k] = hoist_returns(n[k]);
         return v_list(std::move(n), v->line, v->file);
@@ -489,17 +465,11 @@ inline vptr hoist_returns(const vptr& v) {
     }
     return v_list(std::move(out), v->line, v->file);
 }
-inline std::string frame_label(const frame& f) {
-    return (f.name && f.name->t == value::SYM ? f.name->s : std::string("<anon>")) + "() at " +
+inline std::string frame_label(const Frame& f) {
+    return (f.name && f.name->t == Value::SYM ? f.name->s : std::string("<anon>")) + "() at " +
         (f.file ? *f.file : "?") + ":" + std::to_string(f.line);
 }
-
-// === eval =====
-// One try/catch wraps the whole eval loop. User-function tail calls REPLACE
-// expr and env in place (no C++ recursion), so the try/catch catches the
-// tail-merged function's return correctly.
-inline vptr interp::eval(vptr expr, eptr e) {
-    // Guard the C++ stack by bytes actually used, not by a depth guess:
+inline vptr Interp::eval(vptr expr, eptr e) {
     // frame sizes differ between compilers and thread stacks differ between hosts.
     { char probe; auto here = reinterpret_cast<std::uintptr_t>(&probe);
       if (stack_base && (here > stack_base ? here - stack_base : stack_base - here) > stack_budget) err("stack overflow (recursion too deep)"); }
@@ -514,8 +484,8 @@ inline vptr interp::eval(vptr expr, eptr e) {
 try {
     while (true) {
         if (!expr) { cleanup(); return v_nil(); }
-        if (expr->t != value::SYM && expr->t != value::LIST) { cleanup(); return expr; }
-        if (expr->t == value::SYM) {
+        if (expr->t != Value::SYM && expr->t != Value::LIST) { cleanup(); return expr; }
+        if (expr->t == Value::SYM) {
             auto v = e->find(expr->s);
             if (!v) err("undefined: " + expr->s);
             cleanup(); return v;
@@ -524,12 +494,12 @@ try {
         if (expr->file) current_file = expr->file;
         auto& l = expr->l;
         if (l.empty()) { cleanup(); return v_nil(); }
-        if (l.size() == 1 && l[0]->t == value::LIST) { expr = l[0]; continue; }
+        if (l.size() == 1 && l[0]->t == Value::LIST) { expr = l[0]; continue; }
         vptr head;
-        if (l[0]->t == value::SYM) {
+        if (l[0]->t == Value::SYM) {
             head = e->find(l[0]->s);
             if (!head) err("undefined: " + l[0]->s);
-        } else if (l[0]->t == value::FN) head = l[0];
+        } else if (l[0]->t == Value::FN) head = l[0];
         else head = eval(l[0], e);
         op_t op = head->op;
 
@@ -565,19 +535,19 @@ try {
         }
         if (op == fn_var) {
             if (l.size() != 3) err("var: expected (var name value)");
-            if (l[1]->t != value::SYM) err("var: name must be a symbol, got " + str_of(l[1]));
+            if (l[1]->t != Value::SYM) err("var: name must be a symbol, got " + str_of(l[1]));
             vptr v = eval(l[2], e);
             if (!e->assign(l[1]->s, v)) e->vars[l[1]->s] = v;
             cleanup(); return v;
         }
         if (op == fn_function) {
             bool named; size_t pi, bi;
-            if (l.size() == 4 && l[1]->t == value::SYM && l[2]->t == value::LIST) { named = true;  pi = 2; bi = 3; }
-            else if (l.size() == 3 && l[1]->t == value::LIST)                     { named = false; pi = 1; bi = 2; }
+            if (l.size() == 4 && l[1]->t == Value::SYM && l[2]->t == Value::LIST) { named = true;  pi = 2; bi = 3; }
+            else if (l.size() == 3 && l[1]->t == Value::LIST)                     { named = false; pi = 1; bi = 2; }
             else err("function: expected (function [name] (params) body)");
-            auto fn = v_nil(); fn->t = value::FN; fn->closure = e; fn->body = hoist_returns(l[bi]);
+            auto fn = v_nil(); fn->t = Value::FN; fn->closure = e; fn->body = hoist_returns(l[bi]);
             for (auto& p : l[pi]->l) {
-                if (p->t != value::SYM) err("function: parameter must be a symbol, got " + str_of(p));
+                if (p->t != Value::SYM) err("function: parameter must be a symbol, got " + str_of(p));
                 fn->params.push_back(p->s);
             }
             if (named) e->vars[l[1]->s] = fn;
@@ -590,23 +560,23 @@ try {
                 if (l.size() <= 1) { cleanup(); return v_nil(); }
                 expr = l[1]; continue;
             }
-            throw return_signal{ l.size() > 1 ? eval(l[1], e) : v_nil() };
+            throw Return_signal{ l.size() > 1 ? eval(l[1], e) : v_nil() };
         }
         if (op == fn_break)    { if (loop_depth == 0) err("break outside loop"); throw break_signal{}; }
         if (op == fn_continue) { if (loop_depth == 0) err("continue outside loop"); throw continue_signal{}; }
         if (op == fn_try) {
-            if (l.size() != 5 || l[2]->t != value::SYM || l[2]->s != "catch" || l[3]->t != value::SYM)
+            if (l.size() != 5 || l[2]->t != Value::SYM || l[2]->s != "catch" || l[3]->t != Value::SYM)
                 err("try: expected (try body catch name handler)");
             size_t depth = call_stack.size(); int fd = function_depth, ld = loop_depth;
             try { vptr r = eval(l[1], e); cleanup(); return r; }
-            catch (musil_error& ex) {
+            catch (Error& ex) {
                 call_stack.resize(depth); function_depth = fd; loop_depth = ld;
                 auto ne = make_env(e); ne->vars[l[3]->s] = v_str(ex.what());
                 vptr r = eval(l[4], ne); cleanup(); return r;
             }
         }
         if (op == fn_expr) {
-            if (l.size() != 2 || l[1]->t != value::LIST) err("expr: expected (expr (a op b ...))");
+            if (l.size() != 2 || l[1]->t != Value::LIST) err("expr: expected (expr (a op b ...))");
             const char* saved_who = who; who = "expr";
             size_t p = 0; vptr r = expr_parse(l[1]->l, p, 0, *this, e); who = saved_who; cleanup(); return r;
         }
@@ -617,50 +587,50 @@ try {
         if (op == fn_apply) {
             if (l.size() != 3) err("apply: expected (apply fn list)");
             vptr fv = eval(l[1], e), lv = eval(l[2], e);
-            if (fv->t != value::FN) err("apply: expected function, got " + std::string(type_name(fv)));
-            if (lv->t != value::LIST) err("apply: expected list, got " + std::string(type_name(lv)));
+            if (fv->t != Value::FN) err("apply: expected function, got " + std::string(type_name(fv)));
+            if (lv->t != Value::LIST) err("apply: expected list, got " + std::string(type_name(lv)));
             vlist nl = { fv };
             for (auto& x : lv->l) nl.push_back(v_list({ v_sym("quote"), x }));
             expr = v_list(std::move(nl), expr->line, expr->file);
             continue;
         }
 
-        // Function call
-        if (head->t != value::FN) err("not callable: " + str_of(l[0]) + " (" + type_name(head) + ")");
+        // function call
+        if (head->t != Value::FN) err("not callable: " + str_of(l[0]) + " (" + type_name(head) + ")");
         vlist args; args.reserve(l.size() - 1);
         for (size_t i=1; i<l.size(); i++) args.push_back(eval(l[i], e));
         if (head->op) { vptr r = call_op(head, args); cleanup(); return r; }   // op may throw: cleanup after
-        // Currying: too few args => return partial application
+        // currying: too few args => return partial application
         if (args.size() < head->params.size()) { vptr r = make_partial(*this, head, args); cleanup(); return r; }
-        // Over-application: call with the params it takes, apply the result to the rest
+        // over-application: call with the params it takes, apply the result to the rest
         if (args.size() > head->params.size()) {
             vlist first(args.begin(), args.begin() + head->params.size());
             vptr r = call_fn(head, std::move(first));
-            if (r->t != value::FN)
-                err((l[0]->t == value::SYM ? l[0]->s : std::string("<anon>")) + ": too many arguments (expected " +
+            if (r->t != Value::FN)
+                err((l[0]->t == Value::SYM ? l[0]->s : std::string("<anon>")) + ": too many arguments (expected " +
                     std::to_string(head->params.size()) + ", got " + std::to_string(args.size()) + ")");
             vlist nl = { r };
             for (size_t i=head->params.size(); i<args.size(); i++) nl.push_back(v_list({ v_sym("quote"), args[i] }));
             expr = v_list(std::move(nl), expr->line, expr->file);
             continue;
         }
-        // User function call — in-place TCO. Replace top of call_stack on each
+        // user function call — in-place TCO; replace top of call_stack on each
         // tail-merged call so the trace reflects current location, not history.
-        frame fr{ l[0], current_file, current_line };
+        Frame fr{ l[0], current_file, current_line };
         if (entered_fn) call_stack.back() = fr;
         else { call_stack.push_back(fr); ++function_depth; loop_depth = 0; entered_fn = true; }
         auto ne = make_env(head->closure);
         for (size_t i=0; i<head->params.size(); i++) ne->vars[head->params[i]] = args[i];
         expr = head->body; e = ne;
-        // Continue eval loop with new expr/env — no new C++ frame.
+        // continue eval loop with new expr/env — no new C++ frame.
     }
-} catch (return_signal& rs) {
+} catch (Return_signal& rs) {
     if (entered_fn) { cleanup(); return rs.val; }
     throw;  // propagate up to the eval frame that entered the function
   }
-  catch (musil_error& fe) {
+  catch (Error& fe) {
     if (fe.trace.empty() && !call_stack.empty()) {
-        // Innermost first. Deep recursions are abbreviated: 12 innermost, a count, 4 outermost.
+        // innermost first. Deep recursions are abbreviated: 12 innermost, a count, 4 outermost.
         size_t n = call_stack.size(), head = 12, tail = 4;
         for (size_t k = 0; k < n; k++) {
             if (n > head + tail + 1 && k == head) { fe.trace.push_back("... " + std::to_string(n - head - tail) + " more frames ..."); k = n - tail - 1; continue; }
@@ -671,13 +641,11 @@ try {
   }
   catch (...) { cleanup(); throw; }
 }
-
-// Call a function value from C++ (used by map/filter/reduce and by libraries).
-inline vptr interp::call_fn(vptr f, vlist args) {
-    if (f->t != value::FN) err("call: expected function, got " + std::string(type_name(f)));
+inline vptr Interp::call_fn(vptr f, vlist args) {
+    if (f->t != Value::FN) err("call: expected function, got " + std::string(type_name(f)));
     if (f->op == fn_eval) { if (args.size() != 1) err("eval: expected 1 argument"); return eval(args[0], global); }
     if (f->op == fn_apply) {
-        if (args.size() != 2 || args[0]->t != value::FN || args[1]->t != value::LIST) err("apply: expected (apply fn list)");
+        if (args.size() != 2 || args[0]->t != Value::FN || args[1]->t != Value::LIST) err("apply: expected (apply fn list)");
         return call_fn(args[0], args[1]->l);
     }
     if (f->op) return call_op(f, args);
@@ -685,24 +653,23 @@ inline vptr interp::call_fn(vptr f, vlist args) {
     if (args.size() > f->params.size()) {
         vlist first(args.begin(), args.begin() + f->params.size());
         vptr r = call_fn(f, std::move(first));
-        if (r->t != value::FN) err("too many arguments (expected " + std::to_string(f->params.size()) + ", got " + std::to_string(args.size()) + ")");
+        if (r->t != Value::FN) err("too many arguments (expected " + std::to_string(f->params.size()) + ", got " + std::to_string(args.size()) + ")");
         return call_fn(r, vlist(args.begin() + f->params.size(), args.end()));
     }
     auto ne = make_env(f->closure);
     for (size_t i=0; i<f->params.size(); i++) ne->vars[f->params[i]] = args[i];
-    call_stack.push_back(frame{ nullptr, current_file, current_line });
+    call_stack.push_back(Frame{ nullptr, current_file, current_line });
     ++function_depth; int sl = loop_depth; loop_depth = 0;
     vptr r;
-    try { r = eval(f->body, ne); } catch (return_signal& rs) { r = rs.val; }
+    try { r = eval(f->body, ne); } catch (Return_signal& rs) { r = rs.val; }
     catch (...) { call_stack.pop_back(); --function_depth; loop_depth = sl; throw; }
     call_stack.pop_back(); --function_depth; loop_depth = sl;
     return r;
 }
 
-// === Builtins =====
-// Arithmetic: variadic, elementwise, broadcasting. (- x) and (/ x) are unary.
+// builtins
 #define BINOP(name, sym, init, unary) \
-    inline vptr name(vlist& a, interp& i) { \
+    inline vptr name(vlist& a, Interp& i) { \
         if (a.empty()) return v_num(init); \
         varr r = i.num(a[0]); \
         auto f = [](double x, double y){ return x sym y; }; \
@@ -711,85 +678,76 @@ inline vptr interp::call_fn(vptr f, vlist args) {
         return v_arr(std::move(r)); }
 BINOP(fn_add, +, 0.0, false) BINOP(fn_sub, -, 0.0, true)
 BINOP(fn_mul, *, 1.0, false) BINOP(fn_div, /, 1.0, true)
-#define CMP(name, sym) inline vptr name(vlist& a, interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){return x sym y ? 1.0 : 0.0;}, i)); }
+#define CMP(name, sym) inline vptr name(vlist& a, Interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){return x sym y ? 1.0 : 0.0;}, i)); }
 CMP(fn_lt, <) CMP(fn_gt, >) CMP(fn_le, <=) CMP(fn_ge, >=)
-// == and != are numeric (elementwise) on numbers, structural otherwise.
-inline vptr fn_eq(vlist& a, interp& i) {
-    if (a[0]->t == value::NUM && a[1]->t == value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x == y ? 1.0 : 0.0;}, i));
+inline vptr fn_eq(vlist& a, Interp& i) {
+    if (a[0]->t == Value::NUM && a[1]->t == Value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x == y ? 1.0 : 0.0;}, i));
     return v_bool(equal(a[0], a[1])); }
-inline vptr fn_ne(vlist& a, interp& i) {
-    if (a[0]->t == value::NUM && a[1]->t == value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x != y ? 1.0 : 0.0;}, i));
+inline vptr fn_ne(vlist& a, Interp& i) {
+    if (a[0]->t == Value::NUM && a[1]->t == Value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x != y ? 1.0 : 0.0;}, i));
     return v_bool(!equal(a[0], a[1])); }
-inline vptr fn_equalp(vlist& a, interp&) { return v_bool(equal(a[0], a[1])); }
-// Unary elementwise: UN(fn_sin, std::sin). Binary elementwise with broadcast: BIN(fn_pow, std::pow).
-#define UN(name, f)  inline vptr name(vlist& a, interp& i) { varr r=i.num(a[0]); for (size_t k=0; k<r.size(); k++) r[k]=f(r[k]); return v_arr(std::move(r)); }
-#define BIN(name, f) inline vptr name(vlist& a, interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){ return f(x, y); }, i)); }
+inline vptr fn_equalp(vlist& a, Interp&) { return v_bool(equal(a[0], a[1])); }
+#define UN(name, f)  inline vptr name(vlist& a, Interp& i) { varr r=i.num(a[0]); for (size_t k=0; k<r.size(); k++) r[k]=f(r[k]); return v_arr(std::move(r)); }
+#define BIN(name, f) inline vptr name(vlist& a, Interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){ return f(x, y); }, i)); }
 UN(fn_sin, std::sin) UN(fn_cos, std::cos) UN(fn_tan, std::tan) UN(fn_asin, std::asin) UN(fn_acos, std::acos) UN(fn_atan, std::atan)
 UN(fn_sqrt, std::sqrt) UN(fn_exp, std::exp) UN(fn_log, std::log) UN(fn_log2, std::log2) UN(fn_log10, std::log10)
 UN(fn_abs, std::fabs) UN(fn_flr, std::floor) UN(fn_cei, std::ceil) UN(fn_rnd, std::round)
 BIN(fn_mod, std::fmod) BIN(fn_pow, std::pow) BIN(fn_atan2, std::atan2)
-
-inline vptr fn_not(vlist& a, interp& i) { return v_bool(!truthy(a[0])); }
-inline vptr fn_and(vlist& a, interp&) { for (auto& x : a) if (!truthy(x)) return v_bool(false); return v_bool(true); }
-inline vptr fn_or (vlist& a, interp&) { for (auto& x : a) if (truthy(x))  return v_bool(true); return v_bool(false); }
+inline vptr fn_not(vlist& a, Interp& i) { return v_bool(!truthy(a[0])); }
+inline vptr fn_and(vlist& a, Interp&) { for (auto& x : a) if (!truthy(x)) return v_bool(false); return v_bool(true); }
+inline vptr fn_or (vlist& a, Interp&) { for (auto& x : a) if (truthy(x))  return v_bool(true); return v_bool(false); }
 // min/max: one vector argument => reduction; several arguments => elementwise.
-inline vptr fn_min(vlist& a, interp& i) {
+inline vptr fn_min(vlist& a, Interp& i) {
     if (a.size() == 1) { const varr& v = i.num(a[0]); if (v.size() == 0) i.err("min: empty vector"); return v_num(v.min()); }
     varr r = i.num(a[0]);
     for (size_t k=1; k<a.size(); k++) r = bcast(r, i.num(a[k]), [](double x, double y){return x < y ? x : y;}, i);
     return v_arr(std::move(r));
 }
-inline vptr fn_max(vlist& a, interp& i) {
+inline vptr fn_max(vlist& a, Interp& i) {
     if (a.size() == 1) { const varr& v = i.num(a[0]); if (v.size() == 0) i.err("max: empty vector"); return v_num(v.max()); }
     varr r = i.num(a[0]);
     for (size_t k=1; k<a.size(); k++) r = bcast(r, i.num(a[k]), [](double x, double y){return x > y ? x : y;}, i);
     return v_arr(std::move(r));
 }
-
-// --- Lists ---
-inline vptr fn_list(vlist& a, interp&) { return v_list(a); }
-inline vptr fn_cons(vlist& a, interp& i) { vlist& t = i.list(a[1]); vlist r; r.reserve(t.size()+1); r.push_back(a[0]); for (auto& x : t) r.push_back(x); return v_list(std::move(r)); }
-inline vptr fn_append(vlist& a, interp& i) { vlist r = i.list(a[0]); for (size_t k=1; k<a.size(); k++) r.push_back(a[k]); return v_list(std::move(r)); }
-inline vptr fn_push(vlist& a, interp& i) { i.list(a[0]).push_back(a[1]); return a[0]; }
-inline vptr fn_pop(vlist& a, interp& i) { vlist& l = i.list(a[0]); if (l.empty()) i.err("pop: empty list"); vptr r = l.back(); l.pop_back(); return r; }
-
-// Polymorphic on LIST and NUM (and STR for length, getidx, slice, empty?)
-inline vptr fn_length(vlist& a, interp& i) { auto& v=a[0];
-    if (v->t==value::LIST) return v_num((double)v->l.size());
-    if (v->t==value::NUM)  return v_num((double)v->num.size());
-    if (v->t==value::STR)  return v_num((double)v->s.size());
+inline vptr fn_list(vlist& a, Interp&) { return v_list(a); }
+inline vptr fn_cons(vlist& a, Interp& i) { vlist& t = i.list(a[1]); vlist r; r.reserve(t.size()+1); r.push_back(a[0]); for (auto& x : t) r.push_back(x); return v_list(std::move(r)); }
+inline vptr fn_append(vlist& a, Interp& i) { vlist r = i.list(a[0]); for (size_t k=1; k<a.size(); k++) r.push_back(a[k]); return v_list(std::move(r)); }
+inline vptr fn_push(vlist& a, Interp& i) { i.list(a[0]).push_back(a[1]); return a[0]; }
+inline vptr fn_pop(vlist& a, Interp& i) { vlist& l = i.list(a[0]); if (l.empty()) i.err("pop: empty list"); vptr r = l.back(); l.pop_back(); return r; }
+inline vptr fn_length(vlist& a, Interp& i) { auto& v=a[0];
+    if (v->t==Value::LIST) return v_num((double)v->l.size());
+    if (v->t==Value::NUM)  return v_num((double)v->num.size());
+    if (v->t==Value::STR)  return v_num((double)v->s.size());
     i.err(std::string("length: expected list, number or string, got ") + type_name(v)); }
-inline vptr fn_head(vlist& a, interp& i) { auto& v=a[0];
-    if (v->t==value::LIST) { if (v->l.empty()) i.err("head: empty list"); return v->l[0]; }
-    if (v->t==value::NUM)  { if (v->num.size()==0) i.err("head: empty vector"); return v_num(v->num[0]); }
+inline vptr fn_head(vlist& a, Interp& i) { auto& v=a[0];
+    if (v->t==Value::LIST) { if (v->l.empty()) i.err("head: empty list"); return v->l[0]; }
+    if (v->t==Value::NUM)  { if (v->num.size()==0) i.err("head: empty vector"); return v_num(v->num[0]); }
     i.err(std::string("head: expected list or number, got ") + type_name(v)); }
-inline vptr fn_tail(vlist& a, interp& i) { auto& v=a[0];
-    if (v->t==value::LIST) { if (v->l.empty()) i.err("tail: empty list"); return v_list(vlist(v->l.begin()+1, v->l.end())); }
-    if (v->t==value::NUM)  { if (v->num.size()==0) i.err("tail: empty vector"); varr r=v->num[std::slice(1, v->num.size()-1, 1)]; return v_arr(std::move(r)); }
+inline vptr fn_tail(vlist& a, Interp& i) { auto& v=a[0];
+    if (v->t==Value::LIST) { if (v->l.empty()) i.err("tail: empty list"); return v_list(vlist(v->l.begin()+1, v->l.end())); }
+    if (v->t==Value::NUM)  { if (v->num.size()==0) i.err("tail: empty vector"); varr r=v->num[std::slice(1, v->num.size()-1, 1)]; return v_arr(std::move(r)); }
     i.err(std::string("tail: expected list or number, got ") + type_name(v)); }
-inline vptr fn_emptyp(vlist& a, interp& i) { auto& v=a[0];
-    return v_bool(v->t==value::LIST?v->l.empty():v->t==value::NUM?v->num.size()==0:v->t==value::STR?v->s.empty():v->t==value::NIL); }
-inline size_t checked_index(interp& i, const vptr& idx, size_t size) {
+inline vptr fn_emptyp(vlist& a, Interp& i) { auto& v=a[0];
+    return v_bool(v->t==Value::LIST?v->l.empty():v->t==Value::NUM?v->num.size()==0:v->t==Value::STR?v->s.empty():v->t==Value::NIL); }
+inline size_t checked_index(Interp& i, const vptr& idx, size_t size) {
     long k = i.index(idx);
     if (k < 0) k += (long)size;                       // negative indices count from the end
     if (k < 0 || (size_t)k >= size) i.bad("index " + str_of(idx) + " out of range (size " + std::to_string(size) + ")");
     return (size_t)k;
 }
-inline vptr fn_getidx(vlist& a, interp& i) {
+inline vptr fn_getidx(vlist& a, Interp& i) {
     auto& v=a[0];
-    if (v->t==value::NUM)  return v_num(v->num[checked_index(i, a[1], v->num.size())]);
-    if (v->t==value::LIST) return v->l[checked_index(i, a[1], v->l.size())];
-    if (v->t==value::STR)  return v_str(std::string(1, v->s[checked_index(i, a[1], v->s.size())]));
+    if (v->t==Value::NUM)  return v_num(v->num[checked_index(i, a[1], v->num.size())]);
+    if (v->t==Value::LIST) return v->l[checked_index(i, a[1], v->l.size())];
+    if (v->t==Value::STR)  return v_str(std::string(1, v->s[checked_index(i, a[1], v->s.size())]));
     i.err(std::string("getidx: expected list, number or string, got ") + type_name(v)); }
-inline vptr fn_setidx(vlist& a, interp& i) {
+inline vptr fn_setidx(vlist& a, Interp& i) {
     auto& v=a[0];
-    if (v->t==value::NUM)  { v->num[checked_index(i, a[1], v->num.size())] = i.scalar(a[2]); return v; }
-    if (v->t==value::LIST) { v->l[checked_index(i, a[1], v->l.size())] = a[2]; return v; }
+    if (v->t==Value::NUM)  { v->num[checked_index(i, a[1], v->num.size())] = i.scalar(a[2]); return v; }
+    if (v->t==Value::LIST) { v->l[checked_index(i, a[1], v->l.size())] = a[2]; return v; }
     i.err(std::string("setidx: expected list or number, got ") + type_name(v)); }
-
-// Vectors
-inline vptr fn_vec(vlist& a, interp& i) {
-    if (a.size()==1 && a[0]->t==value::LIST) {
+inline vptr fn_vec(vlist& a, Interp& i) {
+    if (a.size()==1 && a[0]->t==Value::LIST) {
         varr r(a[0]->l.size());
         for (size_t k=0; k<a[0]->l.size(); k++) r[k]=i.scalar(a[0]->l[k]);
         return v_arr(std::move(r));
@@ -799,52 +757,44 @@ inline vptr fn_vec(vlist& a, interp& i) {
     for (auto& x : a) for (size_t k=0; k<x->num.size(); k++) r[p++] = x->num[k];
     return v_arr(std::move(r));
 }
-inline vptr fn_sum(vlist& a, interp& i) {
-    if (a[0]->t==value::NUM)  { double s=0; for (size_t k=0; k<a[0]->num.size(); k++) s+=a[0]->num[k]; return v_num(s); }
-    if (a[0]->t==value::LIST) { double s=0; for (auto& x : a[0]->l) s+=i.scalar(x); return v_num(s); }
+inline vptr fn_sum(vlist& a, Interp& i) {
+    if (a[0]->t==Value::NUM)  { double s=0; for (size_t k=0; k<a[0]->num.size(); k++) s+=a[0]->num[k]; return v_num(s); }
+    if (a[0]->t==Value::LIST) { double s=0; for (auto& x : a[0]->l) s+=i.scalar(x); return v_num(s); }
     i.err(std::string("sum: expected number or list, got ") + type_name(a[0]));
 }
-
-// I/O
-inline vptr fn_print(vlist& a, interp& i) { for (size_t k=0; k<a.size(); k++) { if (k) *i.out<<" "; *i.out<<str_of(a[k]); } *i.out<<"\n"; return v_nil(); }
-inline vptr fn_exit(vlist& a, interp& i) { throw exit_signal{ a.empty() ? 0 : (int)i.scalar(a[0]) }; }
-
-// Meta
-inline vptr fn_type(vlist& a, interp& i) {
-    if (a[0]->t==value::NUM) return v_str(a[0]->num.size()==1 ? "scalar" : "vec");
-    if (a[0]->t==value::OPAQUE) return v_str("opaque:" + a[0]->opaque_tag);
+inline vptr fn_print(vlist& a, Interp& i) { for (size_t k=0; k<a.size(); k++) { if (k) *i.out<<" "; *i.out<<str_of(a[k]); } *i.out<<"\n"; return v_nil(); }
+inline vptr fn_exit(vlist& a, Interp& i) { throw Exit_signal{ a.empty() ? 0 : (int)i.scalar(a[0]) }; }
+inline vptr fn_type(vlist& a, Interp& i) {
+    if (a[0]->t==Value::NUM) return v_str(a[0]->num.size()==1 ? "scalar" : "vec");
+    if (a[0]->t==Value::OPAQUE) return v_str("opaque:" + a[0]->opaque_tag);
     return v_str(type_name(a[0]));
 }
-inline vptr fn_str(vlist& a, interp& i) { return v_str(str_of(a[0])); }
-inline vptr fn_sym(vlist& a, interp& i) { return v_sym(i.str(a[0])); }
-inline vptr fn_num(vlist& a, interp& i) {
-    if (a[0]->t==value::NUM) return a[0];
+inline vptr fn_str(vlist& a, Interp& i) { return v_str(str_of(a[0])); }
+inline vptr fn_sym(vlist& a, Interp& i) { return v_sym(i.str(a[0])); }
+inline vptr fn_num(vlist& a, Interp& i) {
+    if (a[0]->t==Value::NUM) return a[0];
     const std::string& s=i.str(a[0]);
     char* e=nullptr; double d=std::strtod(s.c_str(), &e);
     if (!e || *e!='\0' || e==s.c_str()) i.err("num: not a number: " + s);
     return v_num(d);
 }
-// copy is shallow: a new list or vector whose elements are the same objects.
-// (copy (list (vec 1 2))) gives a new list whose vector is still shared.
-// A recursive clone belongs in a library; functions and opaques cannot be cloned.
-inline vptr fn_copy(vlist& a, interp& i) {
+// copy is shallow
+inline vptr fn_copy(vlist& a, Interp& i) {
     auto& s=a[0]; auto v=v_nil();
     v->t=s->t; v->num=s->num; v->s=s->s; v->l=s->l;
     v->op=s->op; v->params=s->params; v->body=s->body; v->closure=s->closure;
     v->opaque=s->opaque; v->opaque_tag=s->opaque_tag;
     return v;
 }
-inline vptr fn_error(vlist& a, interp& i) { std::string m; for (auto& x : a) m+=str_of(x); i.err(m.empty() ? "error" : m); }
-inline vptr fn_clock(vlist&, interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
-inline vptr fn_load(vlist& a, interp& i) { i.load(i.str(a[0])); return v_nil(); }
-inline vptr fn_definedp(vlist& a, interp& i) { const std::string& n = a[0]->t==value::SYM ? a[0]->s : i.str(a[0]); return v_bool(i.global->find(n) != nullptr); }
-inline vptr fn_vars(vlist&, interp& i) { std::vector<std::string> names; for (auto& kv : i.global->vars) names.push_back(kv.first); std::sort(names.begin(), names.end()); vlist out; for (auto& n : names) out.push_back(v_sym(n)); return v_list(std::move(out)); }
+inline vptr fn_error(vlist& a, Interp& i) { std::string m; for (auto& x : a) m+=str_of(x); i.err(m.empty() ? "error" : m); }
+inline vptr fn_clock(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
+inline vptr fn_load(vlist& a, Interp& i) { i.load(i.str(a[0])); return v_nil(); }
+inline vptr fn_definedp(vlist& a, Interp& i) { const std::string& n = a[0]->t==Value::SYM ? a[0]->s : i.str(a[0]); return v_bool(i.global->find(n) != nullptr); }
+inline vptr fn_vars(vlist&, Interp& i) { std::vector<std::string> names; for (auto& kv : i.global->vars) names.push_back(kv.first); std::sort(names.begin(), names.end()); vlist out; for (auto& n : names) out.push_back(v_sym(n)); return v_list(std::move(out)); }
 
-// === Constructor / destructor =====
-inline interp::interp() {
+// constructor/destructor, methods
+inline Interp::Interp() {
     rng.seed((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    // Stack budget: 3/4 of the thread's stack limit when it is known, else a conservative default.
-    // Hosts running the interpreter on a thread with a smaller stack should lower stack_budget.
     size_t limit = 1u << 20;   // 1 MB: the Windows default
 #ifndef _WIN32
     struct rlimit rl;
@@ -894,23 +844,16 @@ inline interp::interp() {
     a("copy", fn_copy, 1, 1); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
     a("defined?", fn_definedp, 1, 1); a("vars", fn_vars, 0, 0); a("exit", fn_exit, 0, 1);
 }
-// Break env <-> closure reference cycles so everything is released.
-inline interp::~interp() {
+inline Interp::~Interp() {
     for (auto& w : tracked_envs) if (auto e = w.lock()) e->vars.clear();
     if (global) global->vars.clear();
 }
-
-// === load / run / repl =====
-// Search order for a relative path:
+// load: search order for a relative path:
 //   1. the directory of the file doing the loading
 //   2. the current directory
 //   3. each entry of load_path (MUSIL_PATH, plus whatever the host adds)
 //   4. ~/.musil
-// A file that ran to completion is loaded once per interpreter, keyed by its
-// canonical path; a file that is still running is not re-entered, so mutual
-// loads are safe; a file that failed is not cached, so loading it again
-// re-runs it and reports the error again.
-inline void interp::load(const std::string& path) {
+inline void Interp::load(const std::string& path) {
     fs::path p(path), resolved;
     auto try_path = [&](const fs::path& q) { std::error_code ec; if (resolved.empty() && !q.empty() && fs::is_regular_file(q, ec)) resolved = q; };
     if (p.is_absolute()) try_path(p);
@@ -929,24 +872,21 @@ inline void interp::load(const std::string& path) {
     std::stringstream ss; ss << f.rdbuf();
     auto sf = current_file; int sl = current_line;
     loading_files.insert(canon);
-    struct guard { interp& i; std::string c; sptr f; int l; bool ok = false;
+    struct guard { Interp& i; std::string c; sptr f; int l; bool ok = false;
         ~guard() { i.loading_files.erase(c); if (ok) i.loaded_files.insert(c); i.current_file = f; i.current_line = l; } } g{*this, canon, sf, sl};
     run(ss.str(), canon);
     g.ok = true;   // a module that fails is not cached: the next load runs it again and reports the error again
 }
-
-inline vptr interp::run(const std::string& src, const std::string& filename) {
+inline vptr Interp::run(const std::string& src, const std::string& filename) {
     auto file = std::make_shared<std::string>(filename);
-    parser p(src, file);
+    Parser p(src, file);
     auto prog = p.program();
     current_file = file;
     char here;
     if (stack_depth == 0) stack_base = reinterpret_cast<std::uintptr_t>(&here);   // outermost run on this thread
     return eval(prog, global);
 }
-
-inline void interp::repl() {
-    *out << "musil " << MUSIL_VERSION << " — :q to quit\n";
+inline void Interp::repl() {
     std::string buffer; int depth = 0;
     while (true) {
         const char* prompt = buffer.empty() ? "> " : "  ";
@@ -970,8 +910,8 @@ inline void interp::repl() {
         }
         buffer += line; buffer += '\n';
         if (depth <= 0) {
-            try { auto r = run(buffer, "<repl>"); if (r && r->t != value::NIL) *out << str_of(r) << "\n"; }
-            catch (exit_signal&) { break; }
+            try { auto r = run(buffer, "<repl>"); if (r && r->t != Value::NIL) *out << str_of(r) << "\n"; }
+            catch (Exit_signal&) { break; }
             catch (const std::exception& ex) { *out << "error: " << ex.what() << "\n"; }
             call_stack.clear(); function_depth = 0; loop_depth = 0; stack_depth = 0;
             buffer.clear(); depth = 0;
@@ -980,3 +920,6 @@ inline void interp::repl() {
 }
 
 } // namespace musil
+
+// eof
+

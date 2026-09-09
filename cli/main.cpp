@@ -24,7 +24,7 @@ static void usage(std::ostream& o) {
          "passed to the program as the list `args`.\n";
 }
 
-static bool run_file(musil::interp& I, const std::string& file) {
+static bool run_file(musil::Interp& I, const std::string& file) {
     std::ifstream f(file);
     if (!f) { std::cerr << "cannot open " << file << "\n"; return false; }
     std::stringstream ss; ss << f.rdbuf();
@@ -33,12 +33,8 @@ static bool run_file(musil::interp& I, const std::string& file) {
 }
 
 int main(int argc, char** argv) {
-    musil::interp I;
-    musil::add_all(I);
-    // Installed layout: <prefix>/bin/musil and <prefix>/share/musil/lang
-    std::error_code ec;
-    auto exe = std::filesystem::weakly_canonical(std::filesystem::absolute(argv[0], ec), ec);
-    if (!ec) I.load_path.push_back((exe.parent_path().parent_path() / "share" / "musil" / "lang").string());
+    musil::Interp I;
+    musil::make_env(I);
 
     bool interactive = false;
     std::vector<std::string> files, code, rest;
@@ -50,7 +46,9 @@ int main(int argc, char** argv) {
         else if (a == "--stack" && k + 1 < argc) I.max_stack = std::atoi(argv[++k]);
         else if (a == "--version") { std::cout << "musil " << MUSIL_VERSION << "\n"; return 0; }
         else if (a == "--help" || a == "-h") { usage(std::cout); return 0; }
-        else if (a.size() > 1 && a[0] == '-') { std::cerr << "unknown option " << a << "\n"; usage(std::cerr); return 2; }
+        else if (a.size() > 1 && a[0] == '-') { 
+            std::cerr << "unknown option " << a << "\n"; usage(std::cerr); return 2; 
+        }
         else files.push_back(a);
     }
     musil::vlist args; for (auto& s : rest) args.push_back(musil::v_str(s));
@@ -60,7 +58,7 @@ int main(int argc, char** argv) {
         for (auto& c : code) I.run(c, "<cmdline>");
         for (auto& f : files) if (!run_file(I, f)) return 1;
     }
-    catch (musil::exit_signal& e) { return e.code; }
+    catch (musil::Exit_signal& e) { return e.code; }
     catch (const std::exception& e) { std::cerr << "error: " << e.what() << "\n"; return 1; }
 
     if (files.empty() && code.empty()) {
@@ -70,7 +68,10 @@ int main(int argc, char** argv) {
         interactive = true;
     }
     if (interactive) {
-        try { I.repl(); } catch (musil::exit_signal& e) { return e.code; }
+        try { I.repl(); } catch (musil::Exit_signal& e) { return e.code; }
     }
     return 0;
 }
+
+// eof
+
