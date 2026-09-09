@@ -1,0 +1,182 @@
+================================================================
+  musil: language reference
+================================================================
+
+--- variables and arithmetic ---
+x = 10 y = 3
+x + y = 13
+x - y = 7
+x * y = 30
+x / y = 3.33333333333333
+(- 7) (unary) = -7
+abs (- 7) = 7
+mod 17 5 = 2
+
+--- comparisons and booleans ---
+x < y : 0
+x > y : 1
+x == 10: 1
+x != y : 1
+and 1 1: 1
+or  0 1: 1
+not 0  : 1
+min: 1
+max: 9
+
+--- expr Pratt: infix math ---
+x + y * 2     = 16
+(x + y) * 2   = 26
+(+ x y) * 2   = 26
+x % y         = 1
+(inc x) + y * 2 = 17
+
+--- math functions ---
+sqrt 2     : 1.4142135623731
+sin pi/2   : 1
+cos 0      : 1
+tan pi/4   : 1
+exp 1      : 2.71828182845905
+log e      : 1
+floor 3.7  : 3
+ceil  3.2  : 4
+round 3.5  : 4
+
+--- vectors and broadcast ---
+v          : (1 2 3 4 5)
+v + 10     : (11 12 13 14 15)
+v * 2      : (2 4 6 8 10)
+v + v      : (2 4 6 8 10)
+sin v      : (0.841470984807897 0.909297426825682 0.141120008059867 -0.756802495307928 -0.958924274663138)
+range 5      : (0 1 2 3 4)
+linspace 0 1 5: (0 0.25 0.5 0.75 1)
+zeros 4      : (0 0 0 0)
+ones 3       : (1 1 1)
+sum v        : 15
+mean v       : 3
+sort         : (1 1 2 3 4 5 6 9)
+
+--- lists ---
+L            : (1 two 3 (4 5))
+list 1 2 3   : (1 2 3)
+cons 0 ...   : (0 1 2 3)
+append       : (1 2 3 4)
+after push 99: (10 20 30 99)
+popped       : 99
+after pop    : (10 20 30)
+
+--- polymorphic ops (LIST, NUM, STR) ---
+length list: 3   vec: 3   str: 5
+head   list: 10   vec: 10
+tail   list: (20 30)   vec: (20 30)
+empty? ()  : 1   empty? L: 0
+getidx vec : 30
+getidx str : e
+vc after setidx: (999 20 30)
+
+--- higher-order (polymorphic on list and vec) ---
+map sqr list: (1 4 9 16)
+map sqr vec : (1 4 9 16)
+filter list : (2 4 6)
+filter vec  : (4 5 6)
+reduce sum  : 15
+reduce prod : 120
+
+--- strings ---
+concat   : hello, world! 42
+split    : (a b c d)
+join     : x-y-z
+upper    : MUSIL
+lower    : musil
+trim     : [hi]
+
+--- control flow ---
+x > 5: yes
+x is normal
+while: sum 0..9 = 45
+for:   sum 0..9 = 45
+break at j = 7
+odds 1..10 : (1 3 5 7 9)
+
+--- functions ---
+square 7: 49
+2x^2 + 3x + 1 at x=4: 45
+lambda dbl 21: 42
+closure add5 100: 105
+counter: 1 2 3 4
+
+--- currying: too few args returns a partial ---
+((add3 1) 2) 100: 103
+doubled vec: (2 4 6 8 10)
+(twice inc1 5) : 7
+
+--- recursion ---
+fact 10: 3628800
+fib 15 : 610
+sum 1..50000 (TCO): 1250025000
+even? 100 : 1
+odd?  101 : 1
+
+--- quote: code as data ---
+(+ 1 2) evaluated : 3
+'(+ 1 2) is data  : (+ 1 2)
+'foo (a symbol)   : foo
+type of '(+ 1 2)  : list
+type of 'foo      : symbol
+
+--- eval and apply ---
+eval program: 10
+built then eval: 60
+apply add4: 10
+
+--- meta ---
+type 42        : scalar
+type "hi"      : string
+type 'sym      : symbol
+type (list)    : list
+type (vec 1 2) : vec
+type square    : function
+str 42         : 42
+str (list 1 2) : (1 2)
+num "3.14"     : 3.14
+
+--- shared references vs explicit copy ---
+orig (shared with alias): (99 2 3)
+src (untouched by dup)  : (1 2 3)
+dup                      : (99 2 3)
+
+--- errors ---
+num parse -> caught: reference.mu:395: num: not a number: not a number
+head empty: caught: reference.mu:400: head: empty list
+check 5  : 5
+check -3 : reference.mu:407: negative not allowed: -3
+  1> check-positive() at reference.mu:412
+type error : reference.mu:415: +: expected number, got string
+arity error: reference.mu:416: sqrt: expected 1 argument, got 0
+size error : reference.mu:417: +: size mismatch (2 vs 3)
+assert     : reference.mu:421: assertion failed: one is not two
+call stack : reference.mu:424: from inner
+  1> inner() at reference.mu:426
+  2> outer() at reference.mu:429
+
+--- file I/O ---
+contents of /tmp/musil_demo.txt:
+first line
+second line
+third line
+
+exec stat:
+3 /tmp/musil_demo.txt
+
+--- load ---
+(see comment in source — load "file.mu" pulls in another .mu;
+ loaded files are cached so cycles and double-loads are safe)
+
+--- closing: Newton's method for sqrt ---
+newton sqrt 2   : 1.41421356237309
+newton sqrt 612 : 24.738633753706
+math   sqrt 612 : 24.738633753706
+newton on vector: (1 2 3 4 5)
+
+================================================================
+  end of reference
+================================================================
