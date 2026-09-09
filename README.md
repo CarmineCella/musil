@@ -14,7 +14,7 @@ It is strongly inspired by TCL, Lisp and Scheme. From these traditions, **Musil*
 
 - first-class procedures
 - dynamic evaluation mechanisms such as `eval` and `apply`  
-- a minimal, compositional core  
+- homoiconicity 
 
 These influences shape **Musil** as a language where programs can be constructed, transformed, and executed as data — enabling flexible and expressive workflows.
 
