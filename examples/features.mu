@@ -20,7 +20,7 @@ var rolloff  (vec (map frames (function (a) (spectral-rolloff a freqs 0.85))))
 var flux (vec (map (zip (drop frames 1) frames) (function (p) (spectral-flux (head p) (last p)))))
 # temporal descriptors per frame
 var segments (map (vec->list (range (length frames))) (function (k) (slice x (* k hop) n)))
-var f0 (median-filter (vec (map segments (function (s) (acf-f0 s sr)))) 5)
+var f0 (median-filter (vec (map segments (function (s) (acf-f0 s sr)))) 3)
 var energy-track (vec (map segments energy))
 var zc (vec (map segments zcr))
 
@@ -41,9 +41,9 @@ print "largest spectral flux at frame" (argmax flux)
 # f0-max) and the frame is not quiet; everywhere else the synth is silent. The f0
 # of unvoiced frames is replaced by the last voiced one, so the envelope never
 # glides through nonsense on its way into or out of a silence.
-var f0-min 50
-var f0-max 1000
-var quiet (* 0.05 (max energy-track))
+var f0-min 20
+var f0-max 2000
+var quiet (* 0.01 (max energy-track))
 var voiced (* (>= f0 f0-min) (<= f0 f0-max) (> energy-track quiet))
 var held (copy f0)
 var last-good 0

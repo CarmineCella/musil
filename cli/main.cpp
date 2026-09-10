@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     catch (const std::exception& e) { std::cerr << "error: " << e.what() << "\n"; return 1; }
 
     if (files.empty() && code.empty()) {
-        std::cout << "[musil " << MUSIL_VERSION << "]\n"
+        std::cout << "[musil " << MUSIL_VERSION << "]\n\n"
                   << "scripting language for sound and music computing\n"
                   << "(c) 2026 Carmine-Emanuele Cella\n\n";
         interactive = true;

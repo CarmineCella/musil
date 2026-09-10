@@ -6,7 +6,7 @@ load "signals.mu"
 var w (read-wav (if (> (length args) 0) (getidx args 0) "data/gong_c_sharp.wav"))
 var sr (head w)
 var x (head (getidx w 1))
-var seconds (min 1.2 (/ (length x) sr))
+var seconds (min 6 (/ (length x) sr))
 var samples (floor (* seconds sr))
 
 # one long FFT of the whole sound gives its average spectrum

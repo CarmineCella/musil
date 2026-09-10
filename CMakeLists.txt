@@ -20,10 +20,24 @@ if(MUSIL_RAYLIB)
   if(POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
   endif()
-  FetchContent_Declare(raylib
-    URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
-    URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e)
-  FetchContent_MakeAvailable(raylib)
+  # EXCLUDE_FROM_ALL keeps raylib out of `cmake --install`: it is linked statically and nothing
+  # of it belongs in the user's prefix.
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    FetchContent_Declare(raylib
+      URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
+      URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e
+      EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(raylib)
+  else()
+    FetchContent_Declare(raylib
+      URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
+      URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e)
+    FetchContent_GetProperties(raylib)
+    if(NOT raylib_POPULATED)
+      FetchContent_Populate(raylib)
+      add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+  endif()
   message(STATUS "raylib 5.5 fetched: plot library and Listener enabled")
 endif()
 
@@ -70,6 +84,39 @@ if(MUSIL_READLINE)
   endif()
 endif()
 
+# --- Documentation ---------------------------------------------------------------
+# help.txt (read by `help`) and docs/generated/*.tex (included by the manual) come from the doc
+# comments in src/. They are regenerated at every configure, so a fresh clone has them; the PDF
+# is built on request:   cmake --build build --target musil-docs   (needs pdflatex)
+find_program(PYTHON3 NAMES python3 python)
+find_program(PDFLATEX pdflatex)
+if(PYTHON3)
+  execute_process(COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
+                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE gendoc_out RESULT_VARIABLE gendoc_rc)
+  if(gendoc_rc EQUAL 0)
+    string(STRIP "${gendoc_out}" gendoc_out)
+    message(STATUS "${gendoc_out}")
+  else()
+    message(WARNING "tools/gendoc.py failed: help.txt and the manual's function references were not regenerated")
+  endif()
+  if(PDFLATEX)
+    add_custom_target(musil-docs
+      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
+      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
+      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
+      COMMAND ${CMAKE_COMMAND} -E rm -f musil_manual.aux musil_manual.log musil_manual.out musil_manual.toc
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs
+      COMMENT "Regenerating help.txt, the function references and docs/musil_manual.pdf")
+  else()
+    add_custom_target(musil-docs
+      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMENT "Regenerating help.txt and the function references (no pdflatex: the PDF is not rebuilt)")
+  endif()
+else()
+  message(WARNING "python3 not found: help.txt is not regenerated; `help` needs an existing src/help.txt")
+endif()
+
 # --- Install ------------------------------------------------------------------
 #   cmake --install build              binary  -> ${CMAKE_INSTALL_PREFIX}/bin   (/usr/local/bin by default)
 #                                      headers -> ${CMAKE_INSTALL_PREFIX}/include/musil
@@ -87,29 +134,13 @@ install(FILES ${MUSIL_HEADERS} DESTINATION include/musil)
 install(DIRECTORY src/system src/scientific DESTINATION include/musil FILES_MATCHING PATTERN "*.h")
 install(FILES ${MUSIL_LANG_FILES} DESTINATION ${MUSIL_HOME})
 
-#   cmake --build build --target musil-uninstall    removes everything the last install put in place
+#   cmake --build build --target musil-uninstall    removes everything install put in place: what the
+#   manifest of the last install lists, and in any case bin/musil, include/musil/ and ~/.musil
 add_custom_target(musil-uninstall
-  COMMAND ${CMAKE_COMMAND} -DMANIFEST=${CMAKE_BINARY_DIR}/install_manifest.txt -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/uninstall.cmake
-  COMMENT "Removing installed files listed in install_manifest.txt")
-
-# --- Documentation: help.txt and the manual's function references come from the source comments ---
-#   cmake --build build --target musil-docs    regenerates src/help.txt and docs/generated/*.tex, then the PDF if pdflatex is present
-find_program(PYTHON3 NAMES python3 python)
-find_program(PDFLATEX pdflatex)
-if(PYTHON3)
-  if(PDFLATEX)
-    add_custom_target(musil-docs
-      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
-      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
-      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
-      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs
-      COMMENT "Regenerating help.txt, the function references and docs/musil_manual.pdf")
-  else()
-    add_custom_target(musil-docs
-      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
-      COMMENT "Regenerating help.txt and the function references (no pdflatex found for the PDF)")
-  endif()
-endif()
+  COMMAND ${CMAKE_COMMAND} -DMANIFEST=${CMAKE_BINARY_DIR}/install_manifest.txt
+                           -DPREFIX=${CMAKE_INSTALL_PREFIX} -DMUSIL_HOME=${MUSIL_HOME}
+                           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/uninstall.cmake
+  COMMENT "Removing the installed files (${CMAKE_INSTALL_PREFIX}, ${MUSIL_HOME})")
 
 # --- Tests: one per library, plus stress/smoke/load/golden/examples -----------
 if(MUSIL_TESTS)

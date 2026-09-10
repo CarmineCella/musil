@@ -11,8 +11,8 @@ load "signals.mu"
 var w (read-wav (if (> (length args) 0) (getidx args 0) "data/Vox.wav"))
 var sr (head w)
 var x (head (getidx w 1))
-var n (next-pow2 (/ sr 16))
-var hop (/ n 4)
+var n (next-pow2 2048) #(/ sr 16))
+var hop (/ n 8)
 print (length x) "samples at" sr "Hz; frames of" n ", hop" hop
 
 each (list 0.5 2 4) (function (factor) {
@@ -33,7 +33,7 @@ each (list 0.5 1.5 2) (function (ratio) {
 
 # the same shifts with the formants preserved: the spectral envelope of the original is
 # imposed on each frame of the shifted sound, so a voice keeps its vowel and its size
-var order (floor (/ sr 300))
+var order 80 #(floor (/ sr 300))
 each (list 0.5 1.5) (function (ratio) {
     var y (pvoc-pitch-formant x n hop ratio order)
     var path (concat "/tmp/musil_pvoc_pitch_formant_" (str ratio) ".wav")

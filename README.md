@@ -55,30 +55,44 @@ mathematics, sound, and imagination are not separate disciplines but different f
 ```sh
 git clone https://github.com/CarmineCella/musil.git
 cd musil
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+./build.sh --test                       # configure, build everything into build/, run the tests
 ./build/musil examples/reference.mu     # tour of the core language
-MUSIL_PATH=src ./build/musil examples/reference_std.mu    # ... and of the standard library
-./build/musil                           # REPL
-ctest --test-dir build                  # run the tests
-cmake --install build                   # musil -> /usr/local/bin, *.mu -> ~/.musil
-cmake --build build --target musil-uninstall  # removes exactly what install put in place
-./build/musil-listener                  # the Listener (needs a display)
-./deploy_macos.sh                       # macOS: dist/Musil.app (universal), dist/musil, dist/lib, a zip
+./build/musil-listener                  # the Listener
+sudo cmake --install build              # musil -> /usr/local/bin, headers -> /usr/local/include/musil,
+                                        # the .mu libraries and help.txt -> ~/.musil
+cmake --build build --target musil-uninstall   # removes exactly that
 ```
 
-The build fetches raylib 5.5 (the only dependency) for the plot library and the
-Listener; `-DMUSIL_RAYLIB=OFF` builds the language and the four other libraries
-with no dependency at all. On macOS the raylib build needs Xcode's command-line
-tools; on Linux the X11 and OpenGL development headers.
+`build.sh` is a thin wrapper around CMake; the equivalent commands are
 
-`cmake --install build --prefix ~/.local` installs the binary under your home
-instead. Nothing is loaded automatically: a program that wants the Musil halves
-of the libraries says `load "std.mu"` (or `load "system.mu"`, which loads
-std.mu itself), and `load` finds them in `~/.musil`, in `MUSIL_PATH`, or next
-to the file doing the loading. During development, `MUSIL_PATH=src` points at
-the source tree; the test suite sets it for you. GNU readline is used in the REPL when found (`-DMUSIL_READLINE=OFF`
-to disable).
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release        # configure (regenerates src/help.txt from the source comments)
+cmake --build build -j                           # build musil and musil-listener
+ctest --test-dir build                           # tests: one per library, goldens, examples
+cmake --build build --target musil-docs          # help.txt, docs/generated/*.tex and docs/musil_manual.pdf (pdflatex)
+cmake --install build --prefix ~/.local          # install without sudo
+```
+
+Configure options:
+
+| option | default | effect |
+|---|---|---|
+| `-DCMAKE_BUILD_TYPE=Release\|Debug` | Release | optimisation vs symbols |
+| `-DMUSIL_RAYLIB=ON\|OFF` | ON | fetch raylib 5.5 and build the plot library and the Listener; OFF builds the language and the other libraries with no dependency |
+| `-DMUSIL_READLINE=ON\|OFF` | ON | use GNU readline in the REPL when found |
+| `-DMUSIL_TESTS=ON\|OFF` | ON | register the tests with ctest |
+| `-DCMAKE_INSTALL_PREFIX=dir` | /usr/local | where `cmake --install` puts `bin/musil` and `include/musil`; the `.mu` files always go to `~/.musil` |
+
+Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--listener`, `--docs`,
+`--no-raylib`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
+`dist/Musil.app`, `dist/musil`, `dist/lib`, a zip), `./deploy_linux.sh` (a folder with
+`run.sh` and a tar.gz).
+
+Nothing is loaded automatically: a program that wants the Musil halves of the
+libraries says `load "std.mu"` (or `load "system.mu"`, which loads std.mu itself),
+and `load` finds them in `~/.musil`, in `MUSIL_PATH`, or next to the file doing the
+loading. During development, `MUSIL_PATH=src` points at the source tree; the test
+suite sets it for you.
 
 ## Layout
 
@@ -121,9 +135,10 @@ path (`~/.musil` after `cmake --install`, `MUSIL_PATH`, or next to the file).
 `(help name)` prints the signature and description of any builtin or library function.
 `docs/musil_manual.pdf` is the user manual. Both come from the same place: the comment
 above each function in `src/` (`// (name args) description` in a `.h`, `# (name args)
-description` in a `.mu`). `python3 tools/gendoc.py` (or `cmake --build build --target
-musil-docs`) regenerates `src/help.txt` and `docs/generated/*.tex`, and the manual
-includes those, so documenting a function is writing its comment.
+description` in a `.mu`). Every configure regenerates `src/help.txt` and
+`docs/generated/*.tex` from those comments, so `help` is never stale; the PDF is built
+on request with `cmake --build build --target musil-docs` (or `./build.sh --docs`),
+which needs `pdflatex`. Documenting a function is writing its comment.
 
 ## The language in one page
 
