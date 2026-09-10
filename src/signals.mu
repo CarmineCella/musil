@@ -51,6 +51,7 @@ function normalize-peak (x) {
     if (== p 0) { return x }
     return (/ x p)
 }
+# (normalize-rms x target) scale so the rms is target
 function normalize-rms (x target) {
     var r (rms x)
     if (== r 0) { return x }
@@ -70,8 +71,11 @@ function window (n a0 a1 a2) {
     var t (/ (* tau (range n)) n)
     return (+ (- a0 (* a1 (cos t))) (* a2 (cos (* 2 t))))
 }
+# (hann n) (hamming n) (blackman n) the usual windows, periodic
 function hann (n) (window n 0.5 0.5 0)
+# (hamming n) the Hamming window
 function hamming (n) (window n 0.54 0.46 0)
+# (blackman n) the Blackman window
 function blackman (n) (window n 0.42 0.5 0.08)
 # (car->pol spec)          (list re im) -> (list mag phase); (pol->car) the other way
 function car->pol (spec) {
@@ -79,6 +83,7 @@ function car->pol (spec) {
     var im (last spec)
     return (list (sqrt (+ (* re re) (* im im))) (atan2 im re))
 }
+# (pol->car spec) (list mag phase) -> (list re im)
 function pol->car (spec) {
     var mag (head spec)
     var phase (last spec)
@@ -142,6 +147,7 @@ function stft (x n hop) {
     }
     return frames
 }
+# (istft frames n hop) the signal back from stft frames by windowed overlap-add
 function istft (frames n hop) {
     if (== (length frames) 0) { return (vec) }
     var w (hann n)
@@ -155,20 +161,104 @@ function istft (frames n hop) {
 # (stft-magnitudes frames)   list of positive-frequency magnitude vectors, one per frame
 function stft-magnitudes (frames) (map frames (function (s) (take (magnitudes s) (/ (length (head s)) 2))))
 
+# --- phase vocoder --------------------------------------------------------------
+# (princarg x)             wrap a phase to (-pi, pi]
+function princarg (x) (- x (* tau (round (/ x tau))))
+# (pvoc-stretch x n hop factor)   time-stretch by factor (2 = twice as long) with the pitch kept:
+#                          analysis at hop, synthesis at hop*factor, phases advanced by each bin's
+#                          measured frequency and locked to the nearest spectral peak (Laroche-Dolson),
+#                          which keeps partials coherent instead of smearing them
+function pvoc-stretch (x n hop factor) {
+    var frames (stft x n hop)
+    if (== (length frames) 0) { return (vec) }
+    var hs (max 1 (round (* hop factor)))
+    var w (hann n)
+    var gain (/ (sum (* w w)) hs)
+    var omega (* tau (range n) (/ hop n))            # expected phase advance per analysis hop, per bin
+    var ratio (/ hs hop)
+    var out (zeros (+ (* hs (- (length frames) 1)) n))
+    var prev (zeros n)
+    var psi (zeros n)
+    for (var k 0) (< k (length frames)) (var k (+ k 1)) {
+        var polar (car->pol (getidx frames k))
+        var mags (head polar)
+        var phase (last polar)
+        if (== k 0) {
+            set psi phase
+        } {
+            var inc (+ omega (princarg (- phase prev omega)))       # true phase advance per hop, per bin
+            var peaks (local-maxima mags)
+            if (== (length peaks) 0) { set peaks (vec 0) }
+            # each bin belongs to the region of its nearest peak: regions start halfway between peaks
+            var starts (floor (/ (+ (take peaks (- (length peaks) 1)) (drop peaks 1)) 2))
+            var marks (zeros n)
+            each starts (function (b) (setidx marks (+ b 1) 1))
+            var owner (gather peaks (cumsum marks))               # the peak bin that owns each bin
+            var peak-psi (+ (gather psi owner) (* ratio (gather inc owner)))
+            set psi (+ peak-psi (- phase (gather phase owner)))    # bins follow their peak's rotation
+        }
+        set prev phase
+        set out (add-at out (* k hs) (* (take (ifft (pol->car (list mags psi))) n) w))
+    }
+    return (/ out gain)
+}
+# (pvoc-pitch x n hop ratio)   pitch-shift by ratio (2 = an octave up) at the same length:
+#                          a time-stretch by ratio followed by resampling back
+function pvoc-pitch (x n hop ratio) {
+    var y (resample (pvoc-stretch x n hop ratio) (/ 1 ratio))
+    if (>= (length y) (length x)) { return (take y (length x)) }
+    return (vec y (zeros (- (length x) (length y))))
+}
+# (pvoc-pitch-formant x n hop ratio order)   pitch-shift keeping the formants: the shifted sound
+#                          gets, frame by frame, the spectral envelope of the original (cepstral,
+#                          `order` coefficients, about sr / (2 f0)), so a voice stays the same voice
+function pvoc-pitch-formant (x n hop ratio order) {
+    var shifted (stft (pvoc-pitch x n hop ratio) n hop)
+    var original (stft x n hop)
+    var frames (map (zip shifted original) (function (p) {
+        var ps (car->pol (head p))
+        return (pol->car (list (impose-envelope (head ps) (magnitudes (last p)) order) (last ps)))
+    }))
+    return (istft frames n hop)
+}
+# (gate-spectrum mags threshold)   magnitudes below threshold times the frame's peak set to zero
+function gate-spectrum (mags threshold) (* mags (> mags (* threshold (max mags))))
+# (spectral-morph a b t n hop)   between two sounds of the same length: magnitudes interpolated
+#                          linearly, phases taken from a below t = 0.5 and from b above
+function spectral-morph (a b t n hop) {
+    var fa (stft a n hop)
+    var fb (stft b n hop)
+    var frames (map (zip fa fb) (function (p) {
+        var pa (car->pol (head p))
+        var pb (car->pol (last p))
+        return (pol->car (list (lerp (head pa) (head pb) t) (if (< t 0.5) (last pa) (last pb))))
+    }))
+    return (istft frames n hop)
+}
+# (robotize x n hop)       every frame with zero phase: a buzz at the frame rate
+function robotize (x n hop) (istft (map (stft x n hop) (function (s) (pol->car (list (magnitudes s) (zeros n))))) n hop)
+# (whisperize x n hop)     every frame with random phases: the spectral envelope on noise
+function whisperize (x n hop) (istft (map (stft x n hop) (function (s) (pol->car (list (magnitudes s) (* tau (rand n)))))) n hop)
+
 # --- spectral and temporal features (amps: positive-frequency magnitudes; freqs: their frequencies) ---
+# (spectral-moment amps freqs order centroid) weighted moment of the frequencies about a centroid
 function spectral-moment (amps freqs order centroid) {
     var total (sum amps)
     if (== total 0) { return 0 }
     return (/ (sum (* amps (pow (- freqs centroid) order))) total)
 }
+# (spectral-centroid amps freqs) amplitude-weighted mean frequency
 function spectral-centroid (amps freqs) (spectral-moment amps freqs 1 0)
+# (spectral-spread amps freqs) standard deviation around the centroid
 function spectral-spread (amps freqs) (sqrt (spectral-moment amps freqs 2 (spectral-centroid amps freqs)))
+# (spectral-skewness amps freqs) asymmetry of the spectrum about its centroid
 function spectral-skewness (amps freqs) {
     var c (spectral-centroid amps freqs)
     var s (spectral-spread amps freqs)
     if (== s 0) { return 0 }
     return (/ (spectral-moment amps freqs 3 c) (pow s 3))
 }
+# (spectral-kurtosis amps freqs) peakedness of the spectrum about its centroid
 function spectral-kurtosis (amps freqs) {
     var c (spectral-centroid amps freqs)
     var s (spectral-spread amps freqs)
@@ -201,6 +291,7 @@ function spectral-rolloff (amps freqs fraction) {
 function hfc (amps) (/ (sum (* amps amps (range (length amps)))) (max 1 (sum (range (length amps)))))
 # (energy x)                     rms of a frame; (zcr x) zero-crossing rate per sample
 function energy (x) (rms x)
+# (zcr x) zero-crossing rate per sample
 function zcr (x) (/ (sum (!= (sign (drop x 1)) (sign (take x (- (length x) 1))))) (length x))
 # (acf-f0 x sr)                  fundamental by autocorrelation; 0 when no clear peak
 function acf-f0 (x sr) {
@@ -242,14 +333,22 @@ function biquad (type sr f0 q gain-db) {
 }
 # (apply-filter x coeffs)  run x through (list b a) as returned by biquad
 function apply-filter (x coeffs) (iir x (head coeffs) (last coeffs))
+# (lowpass x sr f0 q) (highpass x sr f0 q) (bandpass x sr f0 q) (notch x sr f0 q) one biquad, applied
 function lowpass (x sr f0 q) (apply-filter x (biquad "lowpass" sr f0 q 0))
+# (highpass x sr f0 q) a highpass biquad, applied
 function highpass (x sr f0 q) (apply-filter x (biquad "highpass" sr f0 q 0))
+# (bandpass x sr f0 q) a bandpass biquad, applied
 function bandpass (x sr f0 q) (apply-filter x (biquad "bandpass" sr f0 q 0))
+# (notch x sr f0 q) a notch biquad, applied
 function notch (x sr f0 q) (apply-filter x (biquad "notch" sr f0 q 0))
+# (peak-eq x sr f0 q gain-db) (lowshelf x sr f0 q gain-db) (highshelf x sr f0 q gain-db) the equaliser biquads, applied
 function peak-eq (x sr f0 q gain-db) (apply-filter x (biquad "peak" sr f0 q gain-db))
+# (lowshelf x sr f0 q gain-db) a low shelf, applied
 function lowshelf (x sr f0 q gain-db) (apply-filter x (biquad "lowshelf" sr f0 q gain-db))
+# (highshelf x sr f0 q gain-db) a high shelf, applied
 function highshelf (x sr f0 q gain-db) (apply-filter x (biquad "highshelf" sr f0 q gain-db))
 # (dc-block x)             remove the DC offset; (dc-block-r x r) with pole radius r (default 0.995)
+# (dc-block-r x r) a DC blocker with pole radius r
 function dc-block-r (x r) (iir x (vec 1 -1) (vec 1 (- 0 r)))
 function dc-block (x) (dc-block-r x 0.995)
 # (reson x sr freq tau)    two-pole resonator at freq Hz with decay time tau seconds; the output

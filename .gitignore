@@ -1,4 +1,6 @@
 build/
+build-*
+dist
 *.o
 *.a
 .DS_Store

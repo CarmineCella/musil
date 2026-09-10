@@ -10,6 +10,22 @@ endif()
 
 option(MUSIL_READLINE "Use GNU readline in the REPL when available" ON)
 option(MUSIL_TESTS    "Build the test targets" ON)
+option(MUSIL_RAYLIB   "Fetch raylib and build the plot library and the Listener" ON)
+
+# --- raylib: the one external dependency (plotting, the Listener, later live audio) ---
+if(MUSIL_RAYLIB)
+  include(FetchContent)
+  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+  endif()
+  FetchContent_Declare(raylib
+    URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
+    URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e)
+  FetchContent_MakeAvailable(raylib)
+  message(STATUS "raylib 5.5 fetched: plot library and Listener enabled")
+endif()
 
 # --- The language: header-only ------------------------------------------------
 add_library(musil_base INTERFACE)
@@ -24,6 +40,22 @@ endif()
 # --- The command-line interpreter ---------------------------------------------
 add_executable(musil cli/main.cpp)
 target_link_libraries(musil PRIVATE musil_base)
+if(MUSIL_RAYLIB)
+  target_compile_definitions(musil PRIVATE MUSIL_HAS_RAYLIB)
+  target_link_libraries(musil PRIVATE raylib)
+endif()
+
+# --- The Listener: a window to run, watch, plot and play ---------------------
+if(MUSIL_RAYLIB)
+  add_executable(musil-listener listener/main.cpp)
+  target_link_libraries(musil-listener PRIVATE musil_base raylib)
+  target_compile_definitions(musil-listener PRIVATE MUSIL_HAS_RAYLIB
+    MUSIL_LISTENER_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/listener/assets"
+    MUSIL_SOURCE_LIB="${CMAKE_CURRENT_SOURCE_DIR}/src")
+  if(APPLE)
+    target_link_libraries(musil-listener PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
+  endif()
+endif()
 
 if(MUSIL_READLINE)
   find_path(READLINE_INCLUDE_DIR readline/readline.h)
@@ -43,7 +75,7 @@ endif()
 #                                      headers -> ${CMAKE_INSTALL_PREFIX}/include/musil
 #                                      *.mu    -> ~/.musil   (searched last by load)
 #   cmake --install build --prefix ~/.local     to avoid sudo
-file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu)
+file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt)
 file(GLOB MUSIL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 if(WIN32)
   set(MUSIL_HOME "$ENV{USERPROFILE}/.musil")
@@ -55,10 +87,29 @@ install(FILES ${MUSIL_HEADERS} DESTINATION include/musil)
 install(DIRECTORY src/system src/scientific DESTINATION include/musil FILES_MATCHING PATTERN "*.h")
 install(FILES ${MUSIL_LANG_FILES} DESTINATION ${MUSIL_HOME})
 
-#   cmake --build build --target uninstall    removes everything the last install put in place
-add_custom_target(uninstall
+#   cmake --build build --target musil-uninstall    removes everything the last install put in place
+add_custom_target(musil-uninstall
   COMMAND ${CMAKE_COMMAND} -DMANIFEST=${CMAKE_BINARY_DIR}/install_manifest.txt -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/uninstall.cmake
   COMMENT "Removing installed files listed in install_manifest.txt")
+
+# --- Documentation: help.txt and the manual's function references come from the source comments ---
+#   cmake --build build --target musil-docs    regenerates src/help.txt and docs/generated/*.tex, then the PDF if pdflatex is present
+find_program(PYTHON3 NAMES python3 python)
+find_program(PDFLATEX pdflatex)
+if(PYTHON3)
+  if(PDFLATEX)
+    add_custom_target(musil-docs
+      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
+      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
+      COMMAND ${PDFLATEX} -interaction=nonstopmode musil_manual.tex > /dev/null
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/docs
+      COMMENT "Regenerating help.txt, the function references and docs/musil_manual.pdf")
+  else()
+    add_custom_target(musil-docs
+      COMMAND ${PYTHON3} ${CMAKE_CURRENT_SOURCE_DIR}/tools/gendoc.py
+      COMMENT "Regenerating help.txt and the function references (no pdflatex found for the PDF)")
+  endif()
+endif()
 
 # --- Tests: one per library, plus stress/smoke/load/golden/examples -----------
 if(MUSIL_TESTS)
@@ -69,11 +120,18 @@ if(MUSIL_TESTS)
   add_test(NAME system  COMMAND musil ${T}/test_system.mu WORKING_DIRECTORY ${T})
   add_test(NAME scientific COMMAND musil ${T}/test_scientific.mu)
   add_test(NAME signals COMMAND musil ${T}/test_signals.mu)
+  if(MUSIL_RAYLIB)
+    add_test(NAME plot COMMAND musil ${T}/test_plot.mu)
+  endif()
   add_test(NAME stress  COMMAND musil ${T}/test_stress.mu)
   add_test(NAME smoke   COMMAND musil ${T}/test_smoke.mu)
   add_test(NAME load    COMMAND musil ${T}/test_load.mu WORKING_DIRECTORY ${T})
   # reference outputs frozen in tests/golden/ (timing and rand lines filtered)
-  foreach(ref reference reference_std reference_scientific reference_signals)
+  set(REFS reference reference_std reference_scientific reference_signals)
+  if(MUSIL_RAYLIB)
+    list(APPEND REFS reference_plot)
+  endif()
+  foreach(ref ${REFS})
     add_test(NAME golden-${ref}
              COMMAND ${CMAKE_COMMAND}
                      -DMUSIL=$<TARGET_FILE:musil>
@@ -95,8 +153,15 @@ if(MUSIL_TESTS)
   set(NEEDS_cross_synth "${D}/Vox.wav;${D}/Beethoven_Symph7.wav")
   set(NEEDS_additive "${D}/gong_c_sharp.wav")
   set(NEEDS_reverb "${D}/anechoic1.wav;${D}/Concertgebouw-s.wav")
-  set(NEEDS_transients "${D}/drums.wav")
-  set(NEEDS_filters "${D}/drums.wav")
+  set(NEEDS_transients "${D}/Gambale_cut.wav")
+  set(NEEDS_filters "${D}/cage.wav")
+  set(NEEDS_plots "${D}/cage.wav")
+  set(NEEDS_phase_vocoder "${D}/Vox.wav")
+  if(NOT MUSIL_RAYLIB)
+    set(NEEDS_plots "${D}/no-raylib")
+    set(NEEDS_iris_plot "${D}/no-raylib")
+    set(NEEDS_reference_plot "${D}/no-raylib")
+  endif()
   file(GLOB MUSIL_EXAMPLES ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.mu)
   foreach(ex ${MUSIL_EXAMPLES})
     get_filename_component(name ${ex} NAME_WE)
@@ -114,5 +179,5 @@ if(MUSIL_TESTS)
   endforeach()
   # tests and examples say (load "std.mu") etc.: point them at the source tree
   get_property(ALL_TESTS DIRECTORY PROPERTY TESTS)
-  set_tests_properties(${ALL_TESTS} PROPERTIES ENVIRONMENT "MUSIL_PATH=${CMAKE_CURRENT_SOURCE_DIR}/src")
+  set_tests_properties(${ALL_TESTS} PROPERTIES ENVIRONMENT "MUSIL_PATH=${CMAKE_CURRENT_SOURCE_DIR}/src;MUSIL_NOSHOW=1")
 endif()

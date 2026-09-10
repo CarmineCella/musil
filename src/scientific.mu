@@ -19,7 +19,9 @@ function mat-fill (r c v) {
     times r (function (k) (push out (+ (zeros c) v)))
     return out
 }
+# (mat-zeros r c) (mat-ones r c) matrices of zeros or ones
 function mat-zeros (r c) (mat-fill r c 0)
+# (mat-ones r c) a matrix of ones
 function mat-ones (r c) (mat-fill r c 1)
 # (mat-rand r c)           r x c matrix of values in [-1, 1]
 function mat-rand (r c) {
@@ -29,6 +31,7 @@ function mat-rand (r c) {
 }
 # (eye n)                  identity; (diag v) diagonal matrix from a vector
 function eye (n) (diag (ones n))
+# (diag v) a square matrix with v on the diagonal
 function diag (v) {
     var n (length v)
     var out (list)
@@ -48,15 +51,19 @@ function mat-diag (M) {
 }
 
 # --- shape and access ----------------------------------------------------------
+# (nrows M) (ncols M) the number of rows or columns
 function nrows (M) (length M)
+# (ncols M) the number of columns
 function ncols (M) (length (head M))
 # (mat-shape M)            (list rows cols)
 function mat-shape (M) (list (nrows M) (ncols M))
 # (mat-get M i j)          element; (mat-set M i j v) in place
 function mat-get (M i j) (getidx (getidx M i) j)
+# (mat-set M i j v) set an element in place
 function mat-set (M i j v) (setidx (getidx M i) j v)
 # (mat-row M i)            row i as a vector; (mat-col M j) column j as a vector
 function mat-row (M i) (getidx M i)
+# (mat-col M j) column j as a vector
 function mat-col (M j) (vec (map M (function (row) (getidx row j))))
 # (get-rows M from n)      n rows starting at from, as a matrix
 function get-rows (M from n) (slice M from n)
@@ -66,6 +73,7 @@ function get-cols (M from n) (map M (function (row) (slice row from n)))
 # --- products with vectors -------------------------------------------------------
 # (mat-vec A x)            A x as a vector; (vec-mat x A) x A as a vector
 function mat-vec (A x) (vec (map A (function (row) (dot row x))))
+# (vec-mat x A) x A as a vector
 function vec-mat (x A) (mat-vec (transpose A) x)
 # (outer u v)              the matrix u v', rows u[i] * v
 function outer (u v) (map (vec->list u) (function (ui) (* ui v)))
@@ -73,10 +81,15 @@ function outer (u v) (map (vec->list u) (function (ui) (* ui v)))
 function trace (M) (sum (mat-diag M))
 
 # --- elementwise arithmetic (rows are vectors, so each row broadcasts) ------------
+# (mat-add A B) (mat-sub A B) (hadamard A B) elementwise sum, difference and product of two matrices
 function mat-add (A B) (map (zip A B) (function (p) (+ (head p) (last p))))
+# (mat-sub A B) elementwise difference
 function mat-sub (A B) (map (zip A B) (function (p) (- (head p) (last p))))
+# (hadamard A B) elementwise product
 function hadamard (A B) (map (zip A B) (function (p) (* (head p) (last p))))
+# (mat-scale M s) (mat-shift M s) every element times s, or plus s
 function mat-scale (M s) (map M (function (row) (* row s)))
+# (mat-shift M s) every element plus s
 function mat-shift (M s) (map M (function (row) (+ row s)))
 # (mat-map M f)            f applied to every element
 function mat-map (M f) (map M (function (row) (map row f)))
@@ -98,6 +111,7 @@ function lp-norm (v p) {
     return (pow (sum (pow (abs v) p)) (/ 1 p))
 }
 # (dist x y)               euclidean distance; (dist-p x y p) with another p
+# (dist-p x y p) distance with another p: 1 for the city-block distance
 function dist-p (x y p) {
     if (!= (length x) (length y)) { error "dist: size mismatch (" (length x) " vs " (length y) ")" }
     return (lp-norm (- x y) p)
@@ -131,6 +145,7 @@ function zscore (M) {
     var safe (+ sd (== sd 0))            # avoid dividing by zero; those columns are 0 anyway
     return (map M (function (row) (* (/ (- row mu) safe) (!= sd 0))))
 }
+# (standardize M) the same as zscore
 function standardize (M) (zscore M)
 # (center M)               each column minus its mean
 function center (M) {
@@ -174,6 +189,7 @@ function mat-str (M d) {
 }
 # (mat-print M)            print with 3 decimals; (mat-print-with M d) chooses the decimals
 function mat-print (M) (print (mat-str M 3))
+# (mat-print-with M d) print with d decimals
 function mat-print-with (M d) (print (mat-str M d))
 
 # --- linear regression -----------------------------------------------------
@@ -190,13 +206,16 @@ function linreg-residuals (X y b) (- y (linreg-predict X b))
 function add-intercept (X) (map X (function (row) (vec 1 row)))
 
 # --- PCA: (pca X) => d x (d+1) matrix, row k = k-th principal direction then its eigenvalue, largest first ---
+# (pca X) => d x (d+1) matrix: row k is the k-th principal direction followed by its eigenvalue, largest first
 function pca (X) {
     var e (eig-sym (cov X))
     var values (head e)
     var directions (last e)
     return (map (zip directions (vec->list values)) (function (p) (vec (head p) (last p))))
 }
+# (pca-directions P) the directions of a pca result as a d x d matrix
 function pca-directions (P) (get-cols P 0 (- (ncols P) 1))
+# (pca-eigenvalues P) its eigenvalues as a vector
 function pca-eigenvalues (P) (mat-col P (- (ncols P) 1))
 # (pca-scores X k)         X projected on the first k principal directions, n x k
 function pca-scores (X k) {
@@ -227,13 +246,16 @@ function bpf (start segments) {
 }
 
 # --- k-means helpers (kmeans returns (list labels centroids)) -----------------
+# (kmeans-labels result) (kmeans-centroids result) the two parts of a kmeans result
 function kmeans-labels (result) (head result)
+# (kmeans-centroids result) the centroids of a kmeans result, k x d
 function kmeans-centroids (result) (last result)
 # (cluster-sizes labels k)   how many points fell in each of the k clusters
 function cluster-sizes (labels k) (vec (map (range k) (function (c) (sum (== labels c)))))
 
 # --- KNN helpers -------------------------------------------------------------
 # A training set is a list of (list features label). A model is (list training k).
+# (knn-model training k) a model: (list training k); training is a list of (list features label)
 function knn-model (training k) (list training k)
 # (knn-predict model queries)   labels for a list of feature vectors
 function knn-predict (model queries) (knn (head model) (last model) queries)

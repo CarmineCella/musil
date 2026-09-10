@@ -41,9 +41,9 @@ print "largest spectral flux at frame" (argmax flux)
 # f0-max) and the frame is not quiet; everywhere else the synth is silent. The f0
 # of unvoiced frames is replaced by the last voiced one, so the envelope never
 # glides through nonsense on its way into or out of a silence.
-var f0-min 20
+var f0-min 50
 var f0-max 1000
-var quiet (* 0.001 (max energy-track))
+var quiet (* 0.05 (max energy-track))
 var voiced (* (>= f0 f0-min) (<= f0 f0-max) (> energy-track quiet))
 var held (copy f0)
 var last-good 0

@@ -69,6 +69,13 @@ reson            : 400 samples ringing at 444 Hz
 schroeder-reverb : 8100 samples (input + rt60 seconds); level at 0.1 s and 0.9 s: -38 -86.1 dB
 delay 1.5        : (0 0 1.5 2.5)
 
+--- phase vocoder ---
+local-maxima     : (1 4)   gather: (30 10 30)
+princarg 7       : 0.7168
+pvoc-stretch x2  : 7424 samples from 4000 ; f0 222.2 Hz, same as the original 222.2
+pvoc-pitch x1.5  : 4000 samples; f0 333.3 Hz
+robotize, whisperize: phases set to zero / to noise; lengths 3968 3968
+
 --- resampling and channels ---
 resample x2      : 320 samples
 resample-to 4000 : 80 samples

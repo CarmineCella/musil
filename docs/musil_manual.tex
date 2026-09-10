@@ -1,0 +1,604 @@
+% musil_manual.tex — Musil user manual, v0.6
+%
+% Build:  cd docs && pdflatex musil_manual.tex && pdflatex musil_manual.tex
+% The function references in generated/*.tex come from the doc comments in src/:
+% run  python3 tools/gendoc.py  after changing a library, then rebuild.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{mdframed}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+% ── Colours ──────────────────────────────────────────────────────────────────
+\definecolor{musilblue}{RGB}{25,80,140}
+\definecolor{musilgray}{RGB}{245,245,245}
+\definecolor{musilred}{RGB}{160,30,30}
+\definecolor{musilcomment}{RGB}{100,100,100}
+
+% ── Listings ─────────────────────────────────────────────────────────────────
+\lstdefinelanguage{Musil}{
+  morekeywords={var,set,function,return,if,while,for,break,continue,try,catch,expr,eval,apply,quote,do,load,print,help,and,or,not},
+  morestring=[b]",
+  morecomment=[l]{\#},
+  sensitive=true,
+  alsoletter={-?>!},
+}
+\lstdefinestyle{musil}{
+  language=Musil, backgroundcolor=\color{musilgray}, basicstyle=\ttfamily\small,
+  keywordstyle=\color{musilblue}\bfseries, stringstyle=\color{musilred},
+  commentstyle=\color{musilcomment}\itshape, frame=single, framerule=0.4pt,
+  rulecolor=\color{gray!40}, xleftmargin=1em, breaklines=true, showstringspaces=false, tabsize=4,
+}
+\lstdefinestyle{musilinline}{language=Musil, basicstyle=\ttfamily, keywordstyle=\color{musilblue}\bfseries,
+  stringstyle=\color{musilred}, commentstyle=\color{musilcomment}, showstringspaces=false}
+\lstset{style=musil}
+\newcommand{\musil}[1]{\lstinline[style=musilinline]{#1}}
+
+% ── Section formatting ────────────────────────────────────────────────────────
+\titleformat{\section}{\large\bfseries\color{musilblue}}{{\thesection}}{1em}{}[\vspace{-0.3em}\rule{\linewidth}{0.5pt}]
+\titleformat{\subsection}{\normalsize\bfseries\color{musilblue!80}}{{\thesubsection}}{1em}{}
+
+\newenvironment{note}{\begin{mdframed}[backgroundcolor=blue!6,linecolor=musilblue,linewidth=0.8pt]\textbf{Note:}\ }{\end{mdframed}}
+\newenvironment{warn}{\begin{mdframed}[backgroundcolor=red!6,linecolor=musilred,linewidth=0.8pt]\textbf{Warning:}\ }{\end{mdframed}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\textit{Musil 0.6 User Manual}}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+% ── Function reference entry (used by docs/generated/*.tex) ───────────────────
+% \fn{signature}{description}
+\newcommand{\fn}[2]{{\sloppy\noindent\texttt{\textbf{#1}}\par}\hspace*{1.5em}\begin{minipage}[t]{0.92\linewidth}\small#2\end{minipage}\par\vspace{0.45em}}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+\vspace*{2.5cm}
+\includegraphics[width=0.9\textwidth]{musil_logo.png}\par
+\vspace{0.5cm}
+{\large\color{gray} User Manual \quad version 0.6}\par
+\vspace{2.5cm}
+\rule{0.5\linewidth}{0.5pt}\par
+\vspace{1.5cm}
+{\normalsize
+Musil is a small scripting language for sound and music computing: Scheme underneath,
+Tcl on the surface. Numbers are vectors, functions are values, code is data. The
+language is one C++ header with no dependencies; the libraries add the operating
+system, linear algebra and machine learning, signal processing and plotting, and the
+Listener puts all of it in a window.
+}\par
+\vfill
+{\small\color{gray} (c) 2026 by Carmine-Emanuele Cella}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Overview}
+
+Musil is a language for people who make music with computation: composers,
+researchers, students. It is deliberately small. The core language fits in one C++
+file of under a thousand lines, and every feature in this manual can be reached from
+that core by loading a library. The design has three commitments:
+
+\begin{itemize}[nosep]
+  \item \textbf{Numbers are vectors.} A scalar is a vector of size one; \musil{(+ v 10)}
+        adds ten to every element; \musil{(sin v)} is elementwise. Signal processing and
+        numerical work are written as arithmetic, and run at C++ speed.
+  \item \textbf{Functions are values.} They are created anywhere, stored in lists, passed
+        to \musil{map}, applied to too few arguments to make partial applications, and
+        called in tail position without growing the stack.
+  \item \textbf{Code is data.} A program is a list; \musil{'(+ 1 2)} is a list you can
+        build, inspect and \musil{eval}.
+\end{itemize}
+
+The surface is what makes it comfortable: each line is a command, so
+\musil{print "x =" x} needs no parentheses around it; \musil{( )} is a list;
+\musil{\{ \}} is a block of lines; \musil{(expr (a + b * 2))} gives you infix
+arithmetic when a formula reads better that way.
+
+\subsection{Two ways to run Musil}
+
+\textbf{The command line.} \texttt{musil file.mu} runs a file; \texttt{musil} alone is a
+REPL; \texttt{musil a.mu b.mu -- x y} runs several files in one interpreter with
+\musil{args} bound to \musil{(x y)}; \texttt{musil -e "print 42"} evaluates a string.
+
+\textbf{The Listener.} \textit{Musil} the application is a window with a console you
+type into, a file panel you drop \texttt{.mu} files on (they run, and run again every
+time you save them), a list of your variables, a panel where plots appear, and sound
+output. It runs the same interpreter. See section~\ref{sec:listener}.
+
+\subsection{Building and installing}
+
+\begin{lstlisting}[numbers=none]
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build          # every library has a test and a reference
+cmake --install build           # musil -> /usr/local/bin,  *.mu and help.txt -> ~/.musil
+./deploy_macos.sh               # macOS: dist/Musil.app
+\end{lstlisting}
+
+The build fetches raylib~5.5, the one external dependency, used by the plot library
+and the Listener; \texttt{-DMUSIL\_RAYLIB=OFF} builds everything else with no
+dependency at all. Libraries are found by \musil{load} in \texttt{\textasciitilde/.musil}
+after installing, in any directory listed in the \texttt{MUSIL\_PATH} environment
+variable, or next to the file that loads them; during development
+\texttt{MUSIL\_PATH=src} points at the source tree.
+
+\subsection{Getting help}
+
+\musil{(help name)} prints the signature and description of any builtin or library
+function, taken from the same comments this manual is generated from:
+
+\begin{lstlisting}[numbers=none]
+> help range
+  (range n)  (range a b)  (range a b step)
+  a vector of evenly spaced numbers, end excluded
+\end{lstlisting}
+
+The files \texttt{examples/reference\_*.mu} are runnable tours of the core and of each
+library; \texttt{examples/reference.mu} is the best place to start.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{The language}
+
+\subsection{Reading a program}
+
+A program is a sequence of lines. Each line is a command: its first word is a function
+and the rest are its arguments.
+
+\begin{lstlisting}
+print "hello"                  # (print "hello")
+var x 10                       # (var x 10)
+print "x + 1 =" (+ x 1)        # a parenthesised form is a sub-expression
+\end{lstlisting}
+
+Inside parentheses, newlines are ordinary whitespace, so a long call can span lines.
+Braces group lines into a block, which is what \musil{if}, \musil{while} and
+function bodies take:
+
+\begin{lstlisting}
+if (> x 5) {
+    print "big"
+    var y (* x 2)
+}
+\end{lstlisting}
+
+A line holding a single parenthesised form is that form; a line holding a single
+literal is that value; a line holding a single \emph{symbol} calls it
+(\musil{ctr} calls the function \musil{ctr}, as in Tcl). A comment runs from
+\musil{\#} to the end of the line; a backslash at the end of a line continues it.
+\musil{'x} is short for \musil{(quote x)}.
+
+\subsection{Values}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Type} & \textbf{Literal or constructor} & \textbf{\musil{(type x)}} \\
+\midrule
+number, vector & \musil{42}, \musil{3.14}, \musil{(vec 1 2 3)}, \musil{(range 8)} & \texttt{scalar}, \texttt{vec} \\
+string & \musil{"text\\n"} & \texttt{string} \\
+symbol & \musil{'name}, \musil{(sym "name")} & \texttt{symbol} \\
+list & \musil{(list 1 "two" (vec 3 4))} & \texttt{list} \\
+function & \musil{(function (x) (* x x))} & \texttt{function} \\
+nil & \musil{nil} & \texttt{nil} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All numbers are IEEE double vectors; there is no integer type, and \musil{floor},
+\musil{round} and \musil{mod} do integer work. A scalar is a vector of size one, so
+every arithmetic and math builtin is elementwise, with size-one broadcasting:
+
+\begin{lstlisting}
+var v (vec 1 2 3)
+(+ v 10)                # (11 12 13)
+(* v v)                 # (1 4 9)
+(sin (/ (range 8) 8))   # elementwise
+(+ (vec 1 2) (vec 1 2 3))   # error: +: size mismatch (2 vs 3)
+\end{lstlisting}
+
+Lists hold anything, including other lists and vectors; that is also how matrices
+(a list of row vectors) and spectra (\musil{(list re im)}) are represented.
+Strings are immutable; \musil{getidx} on a string gives a one-character string.
+
+Truth: everything is true except \musil{0}, \musil{nil}, an empty string, an empty
+list, and a vector with a zero in it. Comparisons return 1 or 0, elementwise on
+vectors; \musil{==} and \musil{equal?} compare structure on non-numbers, and
+\musil{<} orders two strings lexicographically. Constants: \musil{nil}, \musil{true},
+\musil{false}, \musil{pi}, \musil{inf}, \musil{version}.
+
+\subsection{Variables: \texttt{var} and \texttt{set}}
+
+\musil{var} defines a variable in the \emph{current} environment: at top level a
+global, inside a function a local of that call. It never touches a variable of the
+same name further out, so a library's locals cannot clobber yours. \musil{set}
+assigns to the nearest existing variable, however far out, and is an error if there is
+none.
+
+\begin{lstlisting}
+var counter 0
+function bump () (set counter (+ counter 1))
+function shadow () {
+    var counter 99          # a different, local counter
+    return counter
+}
+bump
+print counter (shadow) counter    # 1 99 1
+\end{lstlisting}
+
+Blocks (\musil{\{ \}}, loop bodies, \musil{if} branches) do not open a scope: a
+\musil{var} in a \musil{while} body inside a function is the function's local.
+
+\subsection{Control flow}
+
+\begin{lstlisting}
+if (< x 0) { print "negative" } { print "not negative" }    # then-block, optional else-block
+while (< i 10) { var i (+ i 1) }
+for (var k 0) (< k 10) (var k (+ k 1)) { print k }           # init, condition, step, body
+if (== k 7) { break }        # break and continue are calls, so inside a block or in parens
+\end{lstlisting}
+
+There is no \texttt{else if}; a chain of \musil{if}s with early \musil{return}s reads
+the same way inside a function. \musil{do} evaluates forms in order and returns the
+last; it is what a block is.
+
+\subsection{Functions}
+
+\begin{lstlisting}
+function square (n) (* n n)          # named, one-expression body
+function fact (n) {                  # block body; return leaves early
+    if (< n 2) { return 1 }
+    return (* n (fact (- n 1)))
+}
+var inc (function (n) (+ n 1))       # anonymous function in a variable
+(map (vec 1 2 3) square)             # functions are values
+\end{lstlisting}
+
+\textbf{Closures} capture the environment they were created in; a stateful closure
+updates a captured variable with \musil{set}:
+
+\begin{lstlisting}
+function make-counter () {
+    var c 0
+    return (function () { set c (+ c 1) })
+}
+var ctr (make-counter)
+ctr                                  # 1
+print (ctr)                          # 2
+\end{lstlisting}
+
+\textbf{Currying.} A function called with fewer arguments than it takes returns a
+partial application; with more, the result is applied to the rest:
+
+\begin{lstlisting}
+function add3 (a b c) (+ a b c)
+var add1 (add3 1)
+(add1 2 3)                           # 6
+(map (vec 1 2 3) (add3 10 100))      # (111 112 113)
+function twice (f) (function (x) (f (f x)))
+(twice inc 5)                        # 7: (twice inc) applied to 5
+\end{lstlisting}
+
+\begin{warn}
+Because of currying, calling a library function with one argument too few returns a
+function instead of failing: \musil{(mat-str M)} is a partial application, not a
+string. Functions have no optional arguments for this reason; where a default makes
+sense there are two functions (\musil{dist} and \musil{dist-p}, \musil{mat-print}
+and \musil{mat-print-with}). Builtins do check their arity.
+\end{warn}
+
+\textbf{Tail calls} run in constant space: a recursive function whose recursive call is
+the last thing it does can loop a million times. An early \musil{return} inside a
+block is rewritten to a tail call at definition time, so the natural style costs
+nothing; only a \musil{return} from inside a loop unwinds.
+
+\subsection{Infix arithmetic: \texttt{expr}}
+
+\begin{lstlisting}
+(expr (x + y * 2))                   # precedence as usual: 16 for x=10, y=3
+(expr ((x + y) * 2))                 # parentheses group
+(expr ((sqrt x) + 1))                # a form without an operator in second position is a call
+(expr (a > 1 && b < 2))              # comparisons and logic: < > <= >= == != && ||
+\end{lstlisting}
+
+\subsection{Errors}
+
+\begin{lstlisting}
+var r (try (num "abc") catch e (concat "caught: " e))
+error "negative not allowed: " n     # raise; the arguments become the message
+assert (== (+ 2 2) 4) "arithmetic"   # std: stop unless true
+\end{lstlisting}
+
+Every error carries the file, the line and the call stack, innermost first:
+
+\begin{lstlisting}[numbers=none]
+reference.mu:426: from inner
+  1> inner() at reference.mu:428
+  2> outer() at reference.mu:431
+\end{lstlisting}
+
+Builtins check the number and types of their arguments
+(\texttt{sqrt: expected 1 argument, got 0}; \texttt{+: expected number, got string}).
+Deep recursion stops with \texttt{stack overflow} rather than crashing.
+
+\subsection{Code as data}
+
+\begin{lstlisting}
+var code '(+ 1 2)                    # a list, not a call
+(eval code)                          # 3
+(eval (list '* 2 (+ 1 2)))           # code built at run time: 6
+(apply add3 (list 1 2 3))            # a list spread as arguments
+\end{lstlisting}
+
+\subsection{Loading files}
+
+\musil{(load "file.mu")} runs a file once in the global environment. A relative name
+is searched next to the loading file, in the current directory, in each entry of
+\texttt{MUSIL\_PATH}, then in \texttt{\textasciitilde/.musil}. Reading functions
+(\musil{read}, \musil{read-wav}, \musil{read-csv}, \musil{exists?}, \musil{stat})
+apply a similar rule to their data: a relative path that does not exist in the current
+directory is looked for next to the file being run, so a script finds its data from
+wherever it was started, on the command line or dropped on the Listener. A file that ran is not
+run again (so mutual loads are safe); a file that failed is not cached. Nothing is
+loaded automatically: a program that wants the standard library says
+\musil{load "std.mu"}; each library loads what it needs (\musil{signals.mu} loads
+\musil{scientific.mu}, which loads \musil{std.mu}).
+
+\subsection{Sharing and copying}
+
+Lists and vectors are shared by reference: \musil{(var alias orig)} makes two names
+for one object, and \musil{push} or \musil{setidx} through either is visible through
+both. \musil{(copy x)} makes a new list or vector with the same elements (a shallow
+copy). Strings and numbers behave as values.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{The Listener}
+\label{sec:listener}
+
+\textit{Musil} the application is the interpreter with a window around it, for people
+who don't use a terminal and for everyone when there is something to see or hear.
+
+\begin{itemize}[nosep]
+  \item \textbf{Console} (left): everything printed, and a line to type Musil into.
+        Enter runs it; Up and Down recall history; Esc or Ctrl-C stops a running
+        program.
+  \item \textbf{Files} (top right): drop \texttt{.mu} files on the window to run them.
+        They stay in the list, are watched, and run again each time you save them, so
+        the loop is: edit in any editor, save, look. Click a file to run it again.
+  \item \textbf{Variables} (bottom right): your globals with a preview of their values,
+        and your functions below. Click one to print it.
+  \item \textbf{Plot} (top left): \musil{(show fig)} from the plot library opens the
+        figure here. The wheel zooms around the cursor, dragging pans, \texttt{r} resets,
+        the coordinates under the cursor and the nearest data point are shown, \texttt{s}
+        or the button saves a PNG; drag to orbit a surface; \texttt{x} or Esc closes it.
+  \item \textbf{Sound}: \musil{(play signal sr)} plays a vector, or
+        \musil{(list left right)}; \musil{(stop-audio)} stops it.
+  \item \textbf{Reference} (top right corner): opens this manual.
+\end{itemize}
+
+The interpreter runs on its own thread; one program at a time, and the window stays
+alive while it runs. Libraries are found inside the app bundle, so nothing needs to be
+installed. On macOS, \texttt{./deploy\_macos.sh} builds \texttt{dist/Musil.app}.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Libraries}
+
+A library is a pair of files: \texttt{name.h} holds the functions that need C++, an
+element-by-element loop or the operating system; \texttt{name.mu} holds everything
+that is a composition of vector operations, which runs at the same speed in Musil.
+The C++ halves are registered when the interpreter starts; the Musil half is loaded
+with \musil{load "name.mu"}. Each library has a test (\texttt{tests/test\_name.mu})
+and a runnable reference (\texttt{examples/reference\_name.mu}).
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Library} & \textbf{Load} & \textbf{Contents} \\
+\midrule
+core & built in & the language, arithmetic, lists, vectors, strings, errors, load \\
+std & \musil{load "std.mu"} & vector constructors and statistics, sequences, strings, files, map/filter/reduce \\
+system & \musil{load "system.mu"} & processes, directories, CSV, WAV, UDP/OSC \\
+scientific & \musil{load "scientific.mu"} & matrices, decompositions, regression, PCA, k-means, KNN \\
+signals & \musil{load "signals.mu"} & generators, FFT, STFT, phase vocoder, features, filters, reverb \\
+plot & \musil{load "plot.mu"} & figures of lines, points, bars, images and surfaces; windows and PNGs \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The function references that follow are generated from the doc comment above each
+function in the source, the same text that \musil{help} prints.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{core}
+
+Always available, no \musil{load} needed. Special forms are listed first.
+
+\input{generated/core.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{std}
+
+The general-purpose standard library. Vectors: \musil{range} is the constructor
+everything else is built on (\musil{zeros}, \musil{ones}, \musil{linspace}),
+then statistics (\musil{mean}, \musil{stdev}, \musil{median}, \musil{quantile},
+\musil{histogram}), and \musil{interp1} for table lookup. Sequences: \musil{slice},
+\musil{take}, \musil{drop}, \musil{find}, \musil{zip}, \musil{unique}. Strings:
+\musil{split}, \musil{join}, \musil{format}, \musil{fmt-fixed}. Files: \musil{read},
+\musil{write}. Higher-order: \musil{map}, \musil{filter}, \musil{reduce},
+\musil{each}, all of them on lists and vectors alike.
+
+\begin{lstlisting}
+load "std.mu"
+var v (range 0 10 0.5)
+print (mean v) (stdev v) (quantile v 0.9)
+print (map (list "a" "b") upper) (filter v (function (x) (> x 7)))
+print (format "{} of {}" (count v even?) (length v))
+\end{lstlisting}
+
+\input{generated/std.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{system}
+
+Access to the operating system. \musil{read-wav} returns
+\musil{(list sample-rate (list channel ...))}, each channel a vector, which is the
+representation every signal function uses; \musil{write-wav} takes a vector (mono) or
+a list of vectors. CSV tables are lists of rows, numeric cells become numbers.
+
+\begin{lstlisting}
+load "system.mu"
+var w (read-wav "sound.wav")
+var sr (head w)
+var left (head (getidx w 1))
+write-wav "/tmp/out.wav" sr (* 0.5 left)
+print (file-lines "notes.txt") (ls ".") (getenv "HOME")
+\end{lstlisting}
+
+\input{generated/system.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{scientific}
+
+Linear algebra, statistics and machine learning. A matrix is a list of row vectors:
+\musil{(list (vec 1 2) (vec 3 4))} is $2\times2$; \musil{(getidx M i)} is a row.
+Products, transposition, elimination (\musil{det}, \musil{inv}, \musil{solve}), the
+symmetric eigensolver, k-means and KNN are C++; construction, elementwise arithmetic,
+statistics along an axis, covariance, PCA, regression and the model helpers are Musil.
+
+\begin{lstlisting}
+load "scientific.mu"
+var A (list (vec 2 1) (vec 1 3))
+print (mat-mul A (inv A)) (solve A (vec 3 5)) (eig-sym A)
+var P (pca X)                          # rows: direction then eigenvalue, largest first
+var km (kmeans X 3)                    # (list labels centroids)
+var model (knn-model training 3)
+print (accuracy (knn-test model test) test)
+\end{lstlisting}
+
+\input{generated/scientific.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{signals}
+
+Offline signal processing on vectors. A signal is a vector of samples; a complex
+spectrum is \musil{(list re im)}; a polar spectrum is \musil{(list mag phase)}. The FFT,
+the table oscillator, the IIR filter, delay, resampling, autocorrelation, peak
+picking and gather are C++; generators, windows, convolution, the STFT and its
+inverse, cepstral envelopes, the phase vocoder, the spectral and temporal descriptors,
+the RBJ biquads, comb and allpass sections and the Schroeder reverb are Musil, as
+compositions of vector operations.
+
+\begin{lstlisting}
+load "signals.mu"
+var x (sine 44100 440 1)
+var frames (stft x 2048 512)
+var y (istft frames 2048 512)               # exact reconstruction
+var slow (pvoc-stretch x 2048 512 2)         # twice as long, same pitch
+var up (pvoc-pitch-formant x 2048 512 1.5 147)   # a fifth up, formants kept
+var lp (lowpass x 44100 500 0.707)
+print (spectral-centroid (magnitude-spectrum x) (spectrum-freqs 65536 44100))
+\end{lstlisting}
+
+Everything the phase vocoder of earlier Musil versions did is available as a
+composition: time stretching and pitch shifting with peak-locked phases
+(\musil{pvoc-stretch}, \musil{pvoc-pitch}), formant preservation through the cepstral
+envelope (\musil{pvoc-pitch-formant}, \musil{impose-envelope}), cross synthesis
+(\texttt{examples/cross\_synth.mu}), morphing (\musil{spectral-morph}), denoising
+(\musil{gate-spectrum}), robotisation and whisperisation.
+
+\input{generated/signals.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsection{plot}
+
+A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and the host
+renders it: \musil{show} opens a window (the command line) or a panel (the Listener);
+\musil{save-png} writes a file. Layers are lines, points, bars, an image (a matrix as
+a heat map) or a surface (a matrix in 3D). The one-call helpers build and show in one
+go; the ready-made figures know about signals and data.
+
+\begin{lstlisting}
+load "plot.mu"
+var fig (figure "two sines")
+add-line fig nil (sin (/ (range 100) 8)) "sin"
+add-line fig nil (cos (/ (range 100) 8)) "cos"
+set-labels fig "sample" "value"
+show fig
+save-png (spectrogram x sr 1024 256) "/tmp/spec.png"
+show (scatter-clusters petals (kmeans-labels km) 3)
+\end{lstlisting}
+
+\input{generated/plot.tex}
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Extending Musil from C++}
+
+The interpreter is one header. A host includes it, registers functions, and runs
+code:
+
+\begin{lstlisting}[language=C++]
+#include "musil.h"
+musil::Interp I;
+musil::make_env(I);                       // the C++ halves of the libraries
+I.def("hello", [](musil::vlist& a, musil::Interp& i) -> musil::vptr {
+    return musil::v_str("hello, " + i.str(a[0]));
+}, 1, 1);                                 // name, function, min and max arguments
+I.run("print (hello \"world\")");
+\end{lstlisting}
+
+A builtin receives its evaluated arguments as a \texttt{vlist} and the interpreter.
+\texttt{eval} has already checked the argument count. Inside, \texttt{i.num(v)},
+\texttt{i.scalar(v)}, \texttt{i.index(v)}, \texttt{i.str(v)}, \texttt{i.list(v)}
+and \texttt{i.fn(v)} return the payload or raise a Musil error naming the builtin;
+\texttt{i.bad("message")} raises one with your text. Values are made with
+\texttt{v\_num}, \texttt{v\_arr}, \texttt{v\_str}, \texttt{v\_list};
+\texttt{i.call\_fn(f, args)} calls a Musil function; \texttt{i.yield\_fn} is called
+every 1024 evaluations for hosts that service an event loop.
+
+Document a builtin with a comment above it in the form
+\texttt{// (name args) description}; \texttt{tools/gendoc.py} turns those comments
+into \texttt{help.txt} and into this manual. A library is complete when it has
+\texttt{name.h}, \texttt{name.mu}, \texttt{tests/test\_name.mu} and
+\texttt{examples/reference\_name.mu}.
+
+% ═════════════════════════════════════════════════════════════════════════════
+\section{Examples}
+
+All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directory.
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\texttt{reference*.mu} & one runnable tour per library \\
+\texttt{hello, if, while, procs, math, strings, arrays, files} & the language, one topic each \\
+\texttt{music\_demo.mu} & temperament, scales, pitch-class sets, a sound written to a WAV \\
+\texttt{chords.mu} & pitch-class sets as vectors: distances, clustering, a PCA chord map \\
+\texttt{matrices.mu}, \texttt{iris.mu} & linear algebra; PCA, k-means and KNN on the Iris data \\
+\texttt{stft, filters, reverb, cross\_synth, transients, additive, features} & signal processing on recordings \\
+\texttt{phase\_vocoder.mu} & time stretching, pitch shifting with and without formants, robot, whisper \\
+\texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

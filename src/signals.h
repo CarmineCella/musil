@@ -8,8 +8,8 @@
 // buffer is (list left right), as read-wav returns it.
 //
 // Only what needs an element loop is here: the FFT, the table oscillator,
-// the recursive (IIR) filter, fractional delay, spectral-domain resampling,
-// autocorrelation, and channel (de)interleaving. Windows, wavetables,
+// the recursive (IIR) filter, fractional delay, windowed-sinc resampling,
+// autocorrelation, channel (de)interleaving, peak picking and gather. Windows, wavetables,
 // polar conversion, convolution, spectral features, filter design, comb and
 // allpass sections, STFT and overlap-add are compositions of vector
 // operations and live in signals.mu.
@@ -111,26 +111,27 @@ inline vptr sig_delay(vlist& a, Interp& i) {
     return v_arr(std::move(y));
 }
 
-// (resample x factor) => x with its length multiplied by factor, by spectral zero-padding/truncation
+// (resample x factor) => x with its length multiplied by factor, by windowed-sinc interpolation
+// (any ratio; when downsampling the sinc is also the anti-aliasing lowpass)
 inline vptr sig_resample(vlist& a, Interp& i) {
     const varr& x = i.num(a[0]); double factor = i.scalar(a[1]);
     if (factor <= 0) i.bad("factor must be > 0");
     size_t in = x.size(); if (in == 0) return v_arr(varr());
     size_t out_len = std::max<size_t>(1, (size_t)std::floor(in * factor + 0.5));
-    size_t n1 = next_pow2(std::max<size_t>(2, in)), n2 = next_pow2(std::max<size_t>(2, out_len));
-    std::vector<double> X(2 * n1, 0.0), Y(2 * n2, 0.0);
-    for (size_t k = 0; k < in; k++) X[2 * k] = x[k];
-    fft_inplace(X.data(), n1, -1);
-    size_t nc = std::min(n1, n2) / 2;
-    Y[0] = X[0]; Y[1] = X[1];
-    for (size_t k = 1; k < nc; k++) {
-        Y[2 * k] = X[2 * k]; Y[2 * k + 1] = X[2 * k + 1];
-        Y[2 * (n2 - k)] = X[2 * (n1 - k)]; Y[2 * (n2 - k) + 1] = X[2 * (n1 - k) + 1];
+    const int half = 24; const double pi = 3.14159265358979323846;
+    double fc = factor < 1 ? factor : 1.0;                 // cutoff relative to the input Nyquist
+    varr out(0.0, out_len);
+    for (size_t k = 0; k < out_len; k++) {
+        double t = (double)k / factor; long c = (long)std::floor(t);
+        double acc = 0, wsum = 0;
+        for (long j = c - half + 1; j <= c + half; j++) {
+            double d = t - (double)j, win = 0.5 + 0.5 * std::cos(pi * d / half);   // Hann-windowed sinc
+            double s = d == 0 ? fc : std::sin(pi * fc * d) / (pi * d);
+            double wgt = s * win; wsum += wgt;
+            if (j >= 0 && (size_t)j < in) acc += x[j] * wgt;
+        }
+        out[k] = wsum != 0 ? acc / wsum : 0;         // weights normalised to one: a constant stays a constant
     }
-    Y[2 * (n2 / 2)] = X[2 * (n1 / 2)]; Y[2 * (n2 / 2) + 1] = X[2 * (n1 / 2) + 1];
-    fft_inplace(Y.data(), n2, 1);
-    varr out(out_len); double g = (double)n2 / (double)n1;
-    for (size_t k = 0; k < out_len; k++) out[k] = Y[2 * k] / (double)n2 * g;
     return v_arr(std::move(out));
 }
 
@@ -144,7 +145,7 @@ inline vptr sig_autocorr(vlist& a, Interp& i) {
     return v_arr(std::move(r));
 }
 
-// (interleave (list a b ...)) => one vector a0 b0 a1 b1 ...; (deinterleave v channels) => (list a b ...)
+// (interleave (list a b ...)) => one vector a0 b0 a1 b1 ...
 inline vptr sig_interleave(vlist& a, Interp& i) {
     vlist& ch = i.list(a[0]); if (ch.empty()) i.bad("no channels");
     size_t n = i.num(ch[0]).size(), c = ch.size();
@@ -153,6 +154,7 @@ inline vptr sig_interleave(vlist& a, Interp& i) {
     for (size_t k = 0; k < n; k++) for (size_t j = 0; j < c; j++) out[k * c + j] = ch[j]->num[k];
     return v_arr(std::move(out));
 }
+// (deinterleave v channels) => (list a b ...): the channels of an interleaved vector
 inline vptr sig_deinterleave(vlist& a, Interp& i) {
     const varr& v = i.num(a[0]); long c = i.index(a[1]);
     if (c < 1) i.bad("channels must be >= 1");
@@ -162,11 +164,29 @@ inline vptr sig_deinterleave(vlist& a, Interp& i) {
     return v_list(std::move(out));
 }
 
+// (local-maxima v) => indices k with v[k] > v[k-1] and v[k] > v[k+1] (interior points only)
+inline vptr sig_local_maxima(vlist& a, Interp& i) {
+    const varr& v = i.num(a[0]); std::vector<double> out;
+    for (size_t k = 1; k + 1 < v.size(); k++) if (v[k] > v[k - 1] && v[k] > v[k + 1]) out.push_back((double)k);
+    return from_vec(out);
+}
+// (gather v indices) => the elements of v at the given (integer) indices, as a vector
+inline vptr sig_gather(vlist& a, Interp& i) {
+    const varr& v = i.num(a[0]); const varr& idx = i.num(a[1]); varr out(idx.size());
+    for (size_t k = 0; k < idx.size(); k++) {
+        long j = (long)idx[k]; if (j < 0) j += (long)v.size();
+        if (j < 0 || (size_t)j >= v.size()) i.bad("index " + std::to_string((long)idx[k]) + " out of range (size " + std::to_string(v.size()) + ")");
+        out[k] = v[j];
+    }
+    return v_arr(std::move(out));
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
     i.def("resample", sig_resample, 2, 2); i.def("autocorr", sig_autocorr, 1, 1);
     i.def("interleave", sig_interleave, 1, 1); i.def("deinterleave", sig_deinterleave, 2, 2);
+    i.def("local-maxima", sig_local_maxima, 1, 1); i.def("gather", sig_gather, 2, 2);
 }
 
 } // namespace musil

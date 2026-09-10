@@ -302,6 +302,17 @@ struct Interp {
     vptr call_fn(vptr fn, vlist args);
     vptr run(const std::string& src, const std::string& filename = "<input>");
     void load(const std::string& path);
+    std::string find_file(const std::string& path);   // the resolved path load would use, or ""
+    // A path to read from: as given if it exists (or is absolute); otherwise relative to the
+    // directory of the file being run, so a script finds its data wherever it is started from.
+    std::string read_path(const std::string& path) {
+        fs::path p(path); std::error_code ec;
+        if (p.is_absolute() || fs::exists(p, ec) || !current_file) return path;
+        fs::path base = fs::path(*current_file).parent_path();
+        if (base.empty()) return path;
+        fs::path q = base / p;
+        return fs::exists(q, ec) ? q.string() : path;
+    }
     void repl();
     [[noreturn]] void bad(const std::string& m) { err(std::string(who) + ": " + m); }
     const varr& num(const vptr& v) {
@@ -414,6 +425,21 @@ inline vptr expr_parse(vlist& w, size_t& p, int min_p, Interp& i, eptr e) {
 }
 
 // evaluation
+// === Special forms (documented here; dispatched in eval) =====
+// (quote x) 'x: x itself, unevaluated: code as data
+// (do forms...) evaluate in order, return the last; what { } builds
+// (if cond then [else]) cond is true unless it is 0, nil, empty, or a vector with a zero
+// (while cond body) loop; (break) and (continue) inside it
+// (for init cond step body) C-style loop: (for (var i 0) (< i 10) (var i (+ i 1)) { ... })
+// (var name value) define name in the current environment; a function's var is always local
+// (set name value) assign to the nearest existing name, however far out; error if none
+// (function name (params) body) define a function; (function (params) body) an anonymous one
+// (return [value]) leave the function; free in tail position
+// (break) (continue) leave or restart the innermost loop
+// (try body catch e handler) run body; on an error bind its message to e and run handler
+// (expr (a op b ...)) infix arithmetic: + - * / % < > <= >= == != && ||; ( ) groups, (f x) calls
+// (eval form) evaluate a form (code built as data) in the global environment
+// (apply f list) call f with the elements of list as arguments
 inline vptr fn_quote   (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_do      (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_if      (vlist&, Interp&) { return v_nil(); }
@@ -429,6 +455,8 @@ inline vptr fn_try     (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_expr    (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_eval    (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_apply   (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_help    (vlist&, Interp&) { return v_nil(); }
+inline void print_help(Interp& i, const std::string& name);
 inline vptr make_partial(Interp& i, const vptr& fn, const vlist& args) {
     auto bound = i.make_env(fn->closure);
     for (size_t k=0; k<args.size(); k++) bound->vars[fn->params[k]] = args[k];
@@ -595,6 +623,10 @@ try {
             if (l.size() != 2) err("eval: expected (eval form)");
             expr = eval(l[1], e); continue;
         }
+        if (op == fn_help) {
+            if (l.size() != 2 || (l[1]->t != Value::SYM && l[1]->t != Value::STR)) err("help: expected (help name)");
+            print_help(*this, l[1]->s); cleanup(); return v_nil();
+        }
         if (op == fn_apply) {
             if (l.size() != 3) err("apply: expected (apply fn list)");
             vptr fv = eval(l[1], e), lv = eval(l[2], e);
@@ -679,6 +711,8 @@ inline vptr Interp::call_fn(vptr f, vlist args) {
 }
 
 // builtins
+// (+ a b ...) (- a [b ...]) (* a b ...) (/ a [b ...]) arithmetic, elementwise with size-1 broadcasting;
+//   (- x) negates, (/ x) is the reciprocal, (+) is 0 and (*) is 1
 #define BINOP(name, sym, init, unary) \
     inline vptr name(vlist& a, Interp& i) { \
         if (a.empty()) return v_num(init); \
@@ -690,27 +724,35 @@ inline vptr Interp::call_fn(vptr f, vlist args) {
 BINOP(fn_add, +, 0.0, false) BINOP(fn_sub, -, 0.0, true)
 BINOP(fn_mul, *, 1.0, false) BINOP(fn_div, /, 1.0, true)
 // Comparisons are elementwise on numbers and lexicographic on two strings.
+// (< a b) (> a b) (<= a b) (>= a b) comparisons: elementwise 1/0 on numbers, lexicographic on two strings
 #define CMP(name, sym) inline vptr name(vlist& a, Interp& i) { \
     if (a[0]->t == Value::STR && a[1]->t == Value::STR) return v_bool(a[0]->s sym a[1]->s); \
     return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){return x sym y ? 1.0 : 0.0;}, i)); }
 CMP(fn_lt, <) CMP(fn_gt, >) CMP(fn_le, <=) CMP(fn_ge, >=)
+// (== a b) (!= a b) equality: elementwise on numbers, structural on anything else
 inline vptr fn_eq(vlist& a, Interp& i) {
     if (a[0]->t == Value::NUM && a[1]->t == Value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x == y ? 1.0 : 0.0;}, i));
     return v_bool(equal(a[0], a[1])); }
 inline vptr fn_ne(vlist& a, Interp& i) {
     if (a[0]->t == Value::NUM && a[1]->t == Value::NUM) return v_arr(bcast(a[0]->num, a[1]->num, [](double x, double y){return x != y ? 1.0 : 0.0;}, i));
     return v_bool(!equal(a[0], a[1])); }
+// (equal? a b) structural equality as a single 1/0, also for vectors and nested lists
 inline vptr fn_equalp(vlist& a, Interp&) { return v_bool(equal(a[0], a[1])); }
+// (sin x) (cos x) (tan x) (asin x) (acos x) (atan x) (sqrt x) (exp x) (log x) (log2 x) (log10 x) trigonometry and logs, elementwise
+// (abs x) (floor x) (ceil x) (round x) rounding and magnitude, elementwise
+// (mod a b) (pow a b) (atan2 y x) remainder (sign follows fmod), power, two-argument arctangent; elementwise
 #define UN(name, f)  inline vptr name(vlist& a, Interp& i) { varr r=i.num(a[0]); for (size_t k=0; k<r.size(); k++) r[k]=f(r[k]); return v_arr(std::move(r)); }
 #define BIN(name, f) inline vptr name(vlist& a, Interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){ return f(x, y); }, i)); }
 UN(fn_sin, std::sin) UN(fn_cos, std::cos) UN(fn_tan, std::tan) UN(fn_asin, std::asin) UN(fn_acos, std::acos) UN(fn_atan, std::atan)
 UN(fn_sqrt, std::sqrt) UN(fn_exp, std::exp) UN(fn_log, std::log) UN(fn_log2, std::log2) UN(fn_log10, std::log10)
 UN(fn_abs, std::fabs) UN(fn_flr, std::floor) UN(fn_cei, std::ceil) UN(fn_rnd, std::round)
 BIN(fn_mod, std::fmod) BIN(fn_pow, std::pow) BIN(fn_atan2, std::atan2)
+// (not x) (and a b ...) (or a b ...) logic on truth values; and/or return 1 or 0 and evaluate every argument
 inline vptr fn_not(vlist& a, Interp& i) { return v_bool(!truthy(a[0])); }
 inline vptr fn_and(vlist& a, Interp&) { for (auto& x : a) if (!truthy(x)) return v_bool(false); return v_bool(true); }
 inline vptr fn_or (vlist& a, Interp&) { for (auto& x : a) if (truthy(x))  return v_bool(true); return v_bool(false); }
 // min/max: one vector argument => reduction; several arguments => elementwise.
+// (min v) (max v) smallest or largest element of one vector; with several arguments, elementwise over them
 inline vptr fn_min(vlist& a, Interp& i) {
     if (a.size() == 1) { const varr& v = i.num(a[0]); if (v.size() == 0) i.err("min: empty vector"); return v_num(v.min()); }
     varr r = i.num(a[0]);
@@ -723,11 +765,19 @@ inline vptr fn_max(vlist& a, Interp& i) {
     for (size_t k=1; k<a.size(); k++) r = bcast(r, i.num(a[k]), [](double x, double y){return x > y ? x : y;}, i);
     return v_arr(std::move(r));
 }
+// (list x ...) a list of anything
+// (cons x L) a new list with x in front; (append L x ...) a new list with x ... at the end
+// (push L x) append in place, returning the list; (pop L) remove and return the last element
 inline vptr fn_list(vlist& a, Interp&) { return v_list(a); }
 inline vptr fn_cons(vlist& a, Interp& i) { vlist& t = i.list(a[1]); vlist r; r.reserve(t.size()+1); r.push_back(a[0]); for (auto& x : t) r.push_back(x); return v_list(std::move(r)); }
+// (append L x ...) a new list with x ... added at the end
 inline vptr fn_append(vlist& a, Interp& i) { vlist r = i.list(a[0]); for (size_t k=1; k<a.size(); k++) r.push_back(a[k]); return v_list(std::move(r)); }
 inline vptr fn_push(vlist& a, Interp& i) { i.list(a[0]).push_back(a[1]); return a[0]; }
+// (pop L) remove and return the last element of a list, in place
 inline vptr fn_pop(vlist& a, Interp& i) { vlist& l = i.list(a[0]); if (l.empty()) i.err("pop: empty list"); vptr r = l.back(); l.pop_back(); return r; }
+// (length x) (head x) (tail x) (empty? x) on a list, a vector or a string
+// (getidx x k) element k of a list, vector or string; negative k counts from the end
+// (setidx x k v) set element k of a list or vector in place
 inline vptr fn_length(vlist& a, Interp& i) { auto& v=a[0];
     if (v->t==Value::LIST) return v_num((double)v->l.size());
     if (v->t==Value::NUM)  return v_num((double)v->num.size());
@@ -760,6 +810,8 @@ inline vptr fn_setidx(vlist& a, Interp& i) {
     if (v->t==Value::NUM)  { v->num[checked_index(i, a[1], v->num.size())] = i.scalar(a[2]); return v; }
     if (v->t==Value::LIST) { v->l[checked_index(i, a[1], v->l.size())] = a[2]; return v; }
     i.err(std::string("setidx: expected list or number, got ") + type_name(v)); }
+// (vec x ...) a vector from numbers, vectors and lists of numbers, concatenated; a scalar is a vector of size 1
+// (sum v) sum of the elements (0 for an empty vector)
 inline vptr fn_vec(vlist& a, Interp& i) {
     if (a.size()==1 && a[0]->t==Value::LIST) {
         varr r(a[0]->l.size());
@@ -776,8 +828,21 @@ inline vptr fn_sum(vlist& a, Interp& i) {
     if (a[0]->t==Value::LIST) { double s=0; for (auto& x : a[0]->l) s+=i.scalar(x); return v_num(s); }
     i.err(std::string("sum: expected number or list, got ") + type_name(a[0]));
 }
+// (print x ...) print the arguments separated by spaces, then a newline
+// (exit [code]) end the program
 inline vptr fn_print(vlist& a, Interp& i) { for (size_t k=0; k<a.size(); k++) { if (k) *i.out<<" "; *i.out<<str_of(a[k]); } *i.out<<"\n"<<std::flush; return v_nil(); }
 inline vptr fn_exit(vlist& a, Interp& i) { throw Exit_signal{ a.empty() ? 0 : (int)i.scalar(a[0]) }; }
+// (type x) "scalar" "vec" "string" "symbol" "list" "function" "nil" or "opaque:tag"
+// (str x) x printed as a string
+// (sym s) a symbol from a string; (num s) a number from a string
+// (copy x) a shallow copy: a new list or vector with the same elements
+// (error x ...) raise an error with the arguments as message
+// (clock) seconds from a monotonic clock, for timing
+// (load "file.mu") run a file once, searched next to the loading file, in the current directory,
+//   in MUSIL_PATH and in ~/.musil; (find-file "name") the path load would use, or nil
+// (defined? 'name) is name bound?
+// (vars) the global names, sorted
+// (help name) print the documentation of a builtin or library function (from help.txt)
 inline vptr fn_type(vlist& a, Interp& i) {
     if (a[0]->t==Value::NUM) return v_str(a[0]->num.size()==1 ? "scalar" : "vec");
     if (a[0]->t==Value::OPAQUE) return v_str("opaque:" + a[0]->opaque_tag);
@@ -785,6 +850,7 @@ inline vptr fn_type(vlist& a, Interp& i) {
 }
 inline vptr fn_str(vlist& a, Interp& i) { return v_str(str_of(a[0])); }
 inline vptr fn_sym(vlist& a, Interp& i) { return v_sym(i.str(a[0])); }
+// (num s) the number written in a string (or a number unchanged)
 inline vptr fn_num(vlist& a, Interp& i) {
     if (a[0]->t==Value::NUM) return a[0];
     const std::string& s=i.str(a[0]);
@@ -803,6 +869,23 @@ inline vptr fn_copy(vlist& a, Interp& i) {
 inline vptr fn_error(vlist& a, Interp& i) { std::string m; for (auto& x : a) m+=str_of(x); i.err(m.empty() ? "error" : m); }
 inline vptr fn_clock(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 inline vptr fn_load(vlist& a, Interp& i) { i.load(i.str(a[0])); return v_nil(); }
+// (find-file "name") the path load would use for name, searched the same way, or nil
+inline vptr fn_find_file(vlist& a, Interp& i) { std::string p = i.find_file(i.str(a[0])); return p.empty() ? v_nil() : v_str(p); }
+// help is a special form (its argument is not evaluated): (help range) works, and so does (help "range").
+inline void print_help(Interp& i, const std::string& name) {
+    std::string path = i.find_file("help.txt");
+    if (path.empty()) i.err("help: help.txt not found (run tools/gendoc.py, or install)");
+    std::ifstream f(path); std::string line; bool found = false, in = false;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line[0] == '#') {            // "#name name ..." starts an entry
+            in = false; std::istringstream ss(line.substr(1)); std::string n;
+            while (ss >> n) if (n == name) in = true;
+            if (in) found = true;
+        } else if (in) *i.out << line << "\n";
+    }
+    if (!found) *i.out << "no help for " << name << "\n";
+    *i.out << std::flush;
+}
 inline vptr fn_definedp(vlist& a, Interp& i) { const std::string& n = a[0]->t==Value::SYM ? a[0]->s : i.str(a[0]); return v_bool(i.global->find(n) != nullptr); }
 inline vptr fn_vars(vlist&, Interp& i) { std::vector<std::string> names; for (auto& kv : i.global->vars) names.push_back(kv.first); std::sort(names.begin(), names.end()); vlist out; for (auto& n : names) out.push_back(v_sym(n)); return v_list(std::move(out)); }
 
@@ -831,7 +914,7 @@ inline Interp::Interp() {
     if (home) home_path = (fs::path(home) / ".musil").string();
     auto a = [&](const char* n, op_t f, int lo = 0, int hi = 0) { def(n, f, lo, hi); };
     const int N = -1;   // unbounded
-    // Constants
+    // Constants: nil, true (1), false (0), pi, inf, version
     def("nil", v_nil()); def("true", v_num(1)); def("false", v_num(0));
     def("pi", v_num(3.14159265358979323846)); def("inf", v_num(INFINITY));
     def("version", v_str(MUSIL_VERSION));
@@ -857,6 +940,7 @@ inline Interp::Interp() {
     a("print", fn_print, 0, N); a("type", fn_type, 1, 1); a("str", fn_str, 1, 1); a("sym", fn_sym, 1, 1); a("num", fn_num, 1, 1);
     a("copy", fn_copy, 1, 1); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
     a("defined?", fn_definedp, 1, 1); a("vars", fn_vars, 0, 0); a("exit", fn_exit, 0, 1);
+    a("find-file", fn_find_file, 1, 1); a("help", fn_help, 1, 1);
 }
 inline Interp::~Interp() {
     for (auto& w : tracked_envs) if (auto e = w.lock()) e->vars.clear();
@@ -867,7 +951,7 @@ inline Interp::~Interp() {
 //   2. the current directory
 //   3. each entry of load_path (MUSIL_PATH, plus whatever the host adds)
 //   4. ~/.musil
-inline void Interp::load(const std::string& path) {
+inline std::string Interp::find_file(const std::string& path) {
     fs::path p(path), resolved;
     auto try_path = [&](const fs::path& q) { std::error_code ec; if (resolved.empty() && !q.empty() && fs::is_regular_file(q, ec)) resolved = q; };
     if (p.is_absolute()) try_path(p);
@@ -877,10 +961,14 @@ inline void Interp::load(const std::string& path) {
         for (auto& d : load_path) try_path(fs::path(d) / p);
         if (!home_path.empty()) try_path(fs::path(home_path) / p);
     }
-    if (resolved.empty()) err("load: not found: " + path);
+    if (resolved.empty()) return "";
     std::error_code ec;
     fs::path canon_p = fs::weakly_canonical(resolved, ec);
-    std::string canon = (ec ? fs::absolute(resolved) : canon_p).generic_string();
+    return (ec ? fs::absolute(resolved) : canon_p).generic_string();
+}
+inline void Interp::load(const std::string& path) {
+    std::string canon = find_file(path);
+    if (canon.empty()) err("load: not found: " + path);
     if (loaded_files.count(canon) || loading_files.count(canon)) return;
     std::ifstream f(canon); if (!f) err("load: cannot open " + canon);
     std::stringstream ss; ss << f.rdbuf();

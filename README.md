@@ -4,6 +4,8 @@
 
 **Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
 
+It comes as a command-line interpreter (`musil`) and as **Musil**, the Listener: a window where you type Musil, drop files to run them (they re-run when you save), see your variables, and where plots appear and sound plays.
+
 The core of the language is made of a single [C++ header](src/core.h) and a more or less comprehensive overview of the language can be found [here](examples/reference.mu).
 
 ## Lineage
@@ -60,8 +62,15 @@ MUSIL_PATH=src ./build/musil examples/reference_std.mu    # ... and of the stand
 ./build/musil                           # REPL
 ctest --test-dir build                  # run the tests
 cmake --install build                   # musil -> /usr/local/bin, *.mu -> ~/.musil
-cmake --build build --target uninstall  # removes exactly what install put in place
+cmake --build build --target musil-uninstall  # removes exactly what install put in place
+./build/musil-listener                  # the Listener (needs a display)
+./deploy_macos.sh                       # macOS: dist/Musil.app (universal), dist/musil, dist/lib, a zip
 ```
+
+The build fetches raylib 5.5 (the only dependency) for the plot library and the
+Listener; `-DMUSIL_RAYLIB=OFF` builds the language and the four other libraries
+with no dependency at all. On macOS the raylib build needs Xcode's command-line
+tools; on Linux the X11 and OpenGL development headers.
 
 `cmake --install build --prefix ~/.local` installs the binary under your home
 instead. Nothing is loaded automatically: a program that wants the Musil halves
@@ -83,11 +92,14 @@ src/system/        WAV and CSV readers used by system.h
 src/scientific.h   linear algebra and machine learning, C++ half: mat-mul, transpose, det/inv/solve, eig-sym, kmeans, knn
 src/scientific.mu  Musil half: construction, elementwise ops, statistics, cov/corr/pca, regression, bpf, model helpers
 src/scientific/    the algorithms used by scientific.h (k-means, KNN, running median)
-src/signals.h      offline signal processing, C++ half: fft, ifft, osc, iir, delay, resample, autocorr
-src/signals.mu     Musil half: generators, windows, spectra, stft, features, biquads, reverb, envelopes
+src/signals.h      offline signal processing, C++ half: fft, ifft, osc, iir, delay, resample, autocorr, gather, local-maxima
+src/signals.mu     Musil half: generators, windows, spectra, stft, cepstral envelopes, phase vocoder, features, filters
+src/plot.h         plotting, C++ half (raylib): renders a figure to a window or a PNG
+src/plot.mu        Musil half: figures, layers (line, scatter, bars, image, surface), waveform, spectrogram, ...
+listener/          the Listener: main.cpp and the font asset
 src/musil.h        umbrella header: make_env registers the C++ halves, load_prelude loads the Musil halves
 cli/main.cpp       the command-line interpreter: musil [-i] [-e code] a.mu b.mu ... [-- args]
-examples/          one reference per library (core, std, system, scientific, signals)
+examples/          one reference per library (core, std, system, scientific, signals, plot)
                    and short programs, one per topic; every example runs as a test
 tests/             one test per library (test_core, test_std, test_system) on a shared harness
                    (test.mu: check, fails?, error-of, report), plus stress, smoke, load tests
@@ -103,6 +115,15 @@ necessity.
 The `.h` exposes `add_<name>(Interp&)` and is registered by `make_env`; the
 `.mu` is loaded explicitly by the program, through the normal `load` search
 path (`~/.musil` after `cmake --install`, `MUSIL_PATH`, or next to the file).
+
+## Documentation
+
+`(help name)` prints the signature and description of any builtin or library function.
+`docs/musil_manual.pdf` is the user manual. Both come from the same place: the comment
+above each function in `src/` (`// (name args) description` in a `.h`, `# (name args)
+description` in a `.mu`). `python3 tools/gendoc.py` (or `cmake --build build --target
+musil-docs`) regenerates `src/help.txt` and `docs/generated/*.tex`, and the manual
+includes those, so documenting a function is writing its comment.
 
 ## The language in one page
 

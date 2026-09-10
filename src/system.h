@@ -53,7 +53,7 @@ inline vptr sys_mkdir(vlist& a, Interp& i) { std::error_code ec; fs::create_dire
 inline vptr sys_remove(vlist& a, Interp& i) { std::error_code ec; bool r = fs::remove(i.str(a[0]), ec); if (ec) i.bad("cannot remove " + i.str(a[0])); return v_bool(r); }
 // (stat path) => (list size is-dir modified-seconds) or nil if it does not exist
 inline vptr sys_stat(vlist& a, Interp& i) {
-    fs::path p(i.str(a[0])); std::error_code ec;
+    fs::path p(i.read_path(i.str(a[0]))); std::error_code ec;
     if (!fs::exists(p, ec)) return v_nil();
     bool dir = fs::is_directory(p, ec);
     double size = dir ? 0.0 : (double)fs::file_size(p, ec);
@@ -67,7 +67,8 @@ inline vptr sys_stat(vlist& a, Interp& i) {
 // --- CSV: a table is a list of rows, a row a list of cells; numeric cells become numbers ---
 // (read-csv path) => table. write-csv is in system.mu.
 inline vptr sys_read_csv(vlist& a, Interp& i) {
-    std::ifstream f(i.str(a[0])); if (!f) i.bad("cannot open " + i.str(a[0]));
+    std::string path = i.read_path(i.str(a[0]));
+    std::ifstream f(path); if (!f) i.bad("cannot open " + path);
     vlist rows;
     for (auto& row : readCSV(f)) {
         vlist r;
@@ -79,10 +80,11 @@ inline vptr sys_read_csv(vlist& a, Interp& i) {
     }
     return v_list(std::move(rows));
 }
-// --- WAV: (read-wav path) => (list sample-rate (list channel-vector ...)) ---
+// --- WAV ---
+// (read-wav path) => (list sample-rate (list channel-vector ...)); 16-bit PCM or 32-bit float WAV
 inline vptr sys_read_wav(vlist& a, Interp& i) {
     WAVHeader h{}; std::vector<std::vector<double>> chans;
-    try { chans = read_wav_raw(i.str(a[0]).c_str(), h); } catch (std::exception& e) { i.bad(e.what()); }
+    try { chans = read_wav_raw(i.read_path(i.str(a[0])).c_str(), h); } catch (std::exception& e) { i.bad(e.what()); }
     vlist cl;
     for (auto& c : chans) { varr v(c.size()); for (size_t k = 0; k < c.size(); k++) v[k] = c[k]; cl.push_back(v_arr(std::move(v))); }
     return v_list({ v_num((double)h.sampleRate), v_list(std::move(cl)) });

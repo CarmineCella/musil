@@ -1,0 +1,36 @@
+================================================================
+  musil: library reference (plot)
+================================================================
+
+--- building ---
+title   : two sines
+layers  : 3 ; kinds: (line line scatter)
+options : ((xlabel sample) (ylabel value) (ymin -1.5) (ymax 1.5))
+a layer : (line x y ... sin)
+save-png with a size: 1
+
+--- layer kinds ---
+line, scatter, bars : x y label (x may be nil for 0, 1, 2, ...)
+image               : a matrix as a heat map, row 0 at the bottom
+surface             : a matrix as a 3D surface, drag or arrow keys to orbit
+wrote bars, image, surface: (1 1 1)
+
+--- one-call helpers (they show; here MUSIL_NOSHOW may be set) ---
+plot plot-xy plot-lines scatter bars image surface: shown
+
+--- ready-made ---
+waveform        : waveform (line)
+spectrum        : spectrum (dB against Hz)
+spectrogram     : spectrogram ; image of 128 bins x 59 frames
+histogram-figure: histogram 5 bars
+scatter-clusters: 2 layers, one per cluster
+wrote waveform and spectrogram: 1 1
+
+--- errors ---
+empty figure    : plot.mu:16: save-png: figure: no layers
+length mismatch : plot.mu:36: save-png: figure: line: x and y must have the same length
+unknown option  : plot.mu:43: save-png: figure: unknown option nope
+
+================================================================
+  end of plot reference
+================================================================

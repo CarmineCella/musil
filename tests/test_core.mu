@@ -414,6 +414,10 @@ function uses-eval (x) (eval x)
 check (== (uses-eval '(+ 1 1)) 2) "eval: in tail position of a function"
 
 # --- meta ----------------------------------------------------------------
+check (equal? (type (find-file "std.mu")) "string") "find-file: found"
+check (equal? (type (find-file "no-such-file.mu")) "nil") "find-file: missing is nil"
+check (equal? (type (help range)) "nil") "help: prints and returns nil"
+check (equal? (type (help "nope")) "nil") "help: unknown name is not an error"
 check (== (defined? 'square) 1) "defined?: yes"
 check (== (defined? "nope") 0) "defined?: no"
 check (>= (find (vars) 'square) 0) "vars lists globals"

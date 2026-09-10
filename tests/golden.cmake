@@ -1,7 +1,7 @@
 # golden.cmake — run ${MUSIL} on ${INPUT}, compare with ${GOLDEN}.
 # Used for reference.mu (core) and reference_std.mu; reference_system.mu has
 # machine-dependent output and is only run.
-# Lines containing "took" (timings) or "rand" (platform-dependent RNG) are dropped
+# Lines containing "took" (timings), "rand" (platform-dependent RNG) or "bytes" (file sizes) are dropped
 # before comparing, and absolute paths to reference.mu are reduced to the file name.
 # To refresh the golden file after an intended change:
 #   MUSIL_PATH=src cmake -DMUSIL=build/musil -DINPUT=examples/reference.mu -DGOLDEN=tests/golden/reference.out -DUPDATE=1 -P tests/golden.cmake
@@ -17,7 +17,7 @@ function(filter_volatile text var)
   string(REGEX REPLACE "\n" ";" lines "${text}")
   set(kept "")
   foreach(line IN LISTS lines)
-    if(NOT line MATCHES "took|rand")
+    if(NOT line MATCHES "took|rand|bytes")
       # error messages embed absolute paths of .mu files: keep only the file name,
       # and drop the line number when the file is a library (it moves with every edit)
       string(REGEX REPLACE "[^ ]*/([^ /]+\\.mu)" "\\1" line "${line}")

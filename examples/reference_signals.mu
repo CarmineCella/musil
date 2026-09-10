@@ -111,7 +111,18 @@ var rev (schroeder-reverb (impulse 100) sr 1)
 print "schroeder-reverb :" (length rev) "samples (input + rt60 seconds); level at 0.1 s and 0.9 s:" (fixed (db (rms (slice rev 800 400))) 1) (fixed (db (rms (slice rev 7200 400))) 1) "dB"
 print "delay 1.5        :" (delay (vec 1 2 3 4) 1.5)
 
-# --- 6. Resampling and channels --------------------------------------------------
+# --- 6. Phase vocoder ------------------------------------------------------------
+print ""
+print "--- phase vocoder ---"
+var tone (osc sr (+ (zeros 4000) 220) (gen 512 (vec 1 0.5 0.3)))
+print "local-maxima     :" (local-maxima (vec 0 1 0 2 3 2 0)) "  gather:" (gather (vec 10 20 30) (vec 2 0 -1))
+print "princarg 7       :" (fixed (princarg 7) 4)
+var st (pvoc-stretch tone 512 128 2)
+print "pvoc-stretch x2  :" (length st) "samples from" (length tone) "; f0" (fixed (acf-f0 (slice st 3000 1024) sr) 1) "Hz, same as the original" (fixed (acf-f0 (slice tone 1000 1024) sr) 1)
+print "pvoc-pitch x1.5  :" (length (pvoc-pitch tone 512 128 1.5)) "samples; f0" (fixed (acf-f0 (slice (pvoc-pitch tone 512 128 1.5) 1000 1024) sr) 1) "Hz"
+print "robotize, whisperize: phases set to zero / to noise; lengths" (length (robotize tone 512 128)) (length (whisperize tone 512 128))
+
+# --- 7. Resampling and channels --------------------------------------------------
 print ""
 print "--- resampling and channels ---"
 var slow (sine sr 100 0.02)
@@ -120,7 +131,7 @@ print "resample-to 4000 :" (length (resample-to slow sr 4000)) "samples"
 print "interleave       :" (interleave (list (vec 1 2) (vec 3 4)))
 print "deinterleave     :" (deinterleave (vec 1 3 2 4) 2)
 
-# --- 7. Envelopes ----------------------------------------------------------------
+# --- 8. Envelopes ----------------------------------------------------------------
 print ""
 print "--- envelopes ---"
 print "envelope-follow  :" (envelope-follow (vec 1 1 -1 -1 0 0) 2)
