@@ -58,7 +58,7 @@ cd musil
 ./build/musil-listener                  # the Listener
 sudo cmake --install build              # musil -> /usr/local/bin, headers -> /usr/local/include/musil,
                                         # the .mu libraries and help.txt -> ~/.musil
-cmake --build build --target musil-uninstall   # removes exactly that
+cmake --build build --target uninstall         # removes exactly that
 ```
 
 `build.sh` is a thin wrapper around CMake; the equivalent commands are
@@ -92,6 +92,22 @@ and `load` finds them in `~/.musil`, in `MUSIL_PATH`, or next to the file doing 
 loading. During development, `MUSIL_PATH=src` points at the source tree; the test
 suite sets it for you.
 
+## Libraries
+
+The language comes with libraries, each a pair of a C++ header for what needs speed
+or the operating system and a `.mu` file for what is better written in Musil itself:
+
+- **std**: vectors and statistics, sequences, strings, files, `map`/`filter`/`reduce`;
+- **system**: processes, directories, CSV and WAV files, UDP and OSC;
+- **scientific**: matrices, decompositions, regression, PCA, k-means, KNN;
+- **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
+  descriptors, filters and reverb;
+- **plot**: figures of lines, points, bars, images and 3D surfaces, in a window or as PNG.
+
+Every library has a test and a runnable reference (`examples/reference_<name>.mu`);
+`examples/` also holds short programs on sound and data, from pitch-class sets to
+cross synthesis.
+
 ## Documentation
 
 `(help name)` prints the signature and description of any builtin or library function.
@@ -113,7 +129,6 @@ var z (expr (x * 2 + y))       # infix inside expr; ( ) groups, calls are allowe
 
 if (< x y) { print "less" } { print "not less" }
 while (< x 20) { var x (+ x 1) }
-{ var a 1; var b 2 }           # ; separates commands on one line
 for (var i 0) (< i 3) (var i (+ i 1)) { print i }      # break / continue inside blocks: { break }
 
 function sq (n) (* n n)        # named function, one-expression body
