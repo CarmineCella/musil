@@ -1,5 +1,3 @@
-# Musil
-
 ![Musil logo](docs/musil_logo.png)
 
 **Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
@@ -97,7 +95,7 @@ suite sets it for you.
 ## Documentation
 
 `(help name)` prints the signature and description of any builtin or library function.
-`docs/musil_manual.pdf` is the user manual. Both come from the same place: the comment
+There is also a [user manual][docs/musil_manual.pdf]. Both come from the same place: the comment
 above each function in `src/` (`// (name args) description` in a `.h`, `# (name args)
 description` in a `.mu`). Every configure regenerates `src/help.txt` and
 `docs/generated/*.tex` from those comments, so `help` is never stale; the PDF is built
