@@ -1,78 +1,29 @@
-# uninstall.cmake — remove everything `cmake --install` put in place.
-#
-# Sources of truth, so nothing is left behind even when the manifest is missing or stale:
-#   1. install_manifest.txt, written by the last install from this build directory: its files,
-#      and the directories they were in, once empty (include/musil/system, include/musil, ~/.musil);
-#   2. the known destinations, passed in by CMakeLists.txt: PREFIX (bin/musil, include/musil/)
-#      and MUSIL_HOME (~/.musil). Note that `cmake --install build --prefix X` installs under X
-#      without changing PREFIX; the manifest covers that case.
-set(removed 0)
-set(dirs "")
-function(zap f)
+# uninstall.cmake — remove what `cmake --install` put in place, without conditions:
+#   <prefix>/bin/musil, <prefix>/bin/musil-listener, <prefix>/include/musil/, ~/.musil/
+# and, when a manifest of the last install exists, every file it lists (covers an install
+# made with --prefix somewhere else).
+set(n 0)
+function(gone f)
   if(EXISTS "${f}" OR IS_SYMLINK "${f}")
     message(STATUS "removing ${f}")
-    file(REMOVE "${f}")
-    math(EXPR removed "${removed} + 1")
-    set(removed ${removed} PARENT_SCOPE)
-  endif()
-  get_filename_component(d "${f}" DIRECTORY)
-  list(APPEND dirs "${d}")
-  set(dirs "${dirs}" PARENT_SCOPE)
-endfunction()
-function(zap_dir_if_empty d)
-  if(IS_DIRECTORY "${d}")
-    file(GLOB left LIST_DIRECTORIES true "${d}/*")
-    if(NOT left)
-      message(STATUS "removing empty directory ${d}")
-      file(REMOVE_RECURSE "${d}")
-    endif()
+    file(REMOVE_RECURSE "${f}")
+    math(EXPR n "${n} + 1")
+    set(n ${n} PARENT_SCOPE)
   endif()
 endfunction()
 
-# 1. the manifest
+gone("${PREFIX}/bin/musil")
+gone("${PREFIX}/bin/musil-listener")
+gone("${PREFIX}/include/musil")
+gone("${MUSIL_HOME}")
 if(EXISTS "${MANIFEST}")
   file(STRINGS "${MANIFEST}" files)
   foreach(f ${files})
-    zap("${f}")
+    gone("${f}")
+    if(f MATCHES "^(.*)/include/musil/")      # an install made elsewhere: remove that include/musil too
+      gone("${CMAKE_MATCH_1}/include/musil")
+    endif()
   endforeach()
   file(REMOVE "${MANIFEST}")
-else()
-  message(STATUS "no install manifest at ${MANIFEST}; removing the known destinations only")
 endif()
-
-# 2. the known destinations
-if(PREFIX)
-  zap("${PREFIX}/bin/musil")
-  file(GLOB_RECURSE headers "${PREFIX}/include/musil/*")
-  foreach(f ${headers})
-    zap("${f}")
-  endforeach()
-  list(APPEND dirs "${PREFIX}/include/musil/system" "${PREFIX}/include/musil/scientific" "${PREFIX}/include/musil")
-endif()
-if(MUSIL_HOME)
-  file(GLOB libs "${MUSIL_HOME}/*.mu" "${MUSIL_HOME}/help.txt")
-  foreach(f ${libs})
-    zap("${f}")
-  endforeach()
-  list(APPEND dirs "${MUSIL_HOME}")
-endif()
-
-# 3. directories this project created, deepest first, only while empty. Only directories named
-#    by the project are candidates (musil, system, scientific, .musil): never bin/ or include/.
-list(REMOVE_DUPLICATES dirs)
-list(SORT dirs ORDER DESCENDING)
-foreach(d ${dirs})
-  set(cur "${d}")
-  while(TRUE)
-    get_filename_component(name "${cur}" NAME)
-    if(NOT (name STREQUAL "musil" OR name STREQUAL "system" OR name STREQUAL "scientific" OR name STREQUAL ".musil"))
-      break()
-    endif()
-    zap_dir_if_empty("${cur}")
-    if(IS_DIRECTORY "${cur}")
-      break()
-    endif()
-    get_filename_component(cur "${cur}" DIRECTORY)
-  endwhile()
-endforeach()
-message(STATUS "uninstall: ${removed} file(s) removed")
+message(STATUS "uninstall: ${n} item(s) removed from ${PREFIX} and ${MUSIL_HOME}")

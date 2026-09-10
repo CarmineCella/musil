@@ -56,8 +56,8 @@ cd musil
 ./build.sh --test                       # configure, build everything into build/, run the tests
 ./build/musil examples/reference.mu     # tour of the core language
 ./build/musil-listener                  # the Listener
-sudo cmake --install build              # musil -> /usr/local/bin, headers -> /usr/local/include/musil,
-                                        # the .mu libraries and help.txt -> ~/.musil
+sudo cmake --install build              # musil and musil-listener -> /usr/local/bin, headers -> /usr/local/include/musil,
+                                        # the .mu libraries, help.txt and the font -> ~/.musil
 cmake --build build --target uninstall         # removes exactly that
 ```
 
@@ -83,8 +83,8 @@ Configure options:
 
 Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--listener`, `--docs`,
 `--no-raylib`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
-`dist/Musil.app`, `dist/musil`, `dist/lib`, a zip), `./deploy_linux.sh` (a folder with
-`run.sh` and a tar.gz).
+`dist/Musil.app`, `dist/musil`, `dist/musil-listener`, `dist/lib`, the manual, a zip),
+`./deploy_linux.sh` (a folder with the same plus `run.sh`, and a tar.gz).
 
 Nothing is loaded automatically: a program that wants the Musil halves of the
 libraries says `load "std.mu"` (or `load "system.mu"`, which loads std.mu itself),

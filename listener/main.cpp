@@ -135,6 +135,7 @@ static std::string asset_path(const std::string& name) {
     dirs.push_back(fs::path(GetApplicationDirectory()).parent_path().string() + "/Resources");
 #endif
     dirs.push_back(std::string(GetApplicationDirectory()) + "assets");
+    if (const char* home = std::getenv("HOME")) dirs.push_back(std::string(home) + "/.musil/assets");   // cmake --install puts the font there
 #ifdef MUSIL_LISTENER_ASSETS
     dirs.push_back(MUSIL_LISTENER_ASSETS);
 #endif

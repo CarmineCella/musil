@@ -13,9 +13,9 @@ option(MUSIL_TESTS    "Build the test targets" ON)
 option(MUSIL_RAYLIB   "Fetch raylib and build the plot library and the Listener" ON)
 
 # --- Uninstall ------------------------------------------------------------------
-#   cmake --build build --target uninstall    removes everything install put in place: what the manifest
-#   of the last install lists, and in any case bin/musil, include/musil/ and ~/.musil (musil-uninstall
-#   is the same target under its old name). Defined before raylib is fetched, because raylib would
+#   cmake --build build --target uninstall    removes <prefix>/bin/musil, <prefix>/bin/musil-listener,
+#   <prefix>/include/musil/ and ~/.musil/ (plus whatever the last install's manifest lists, for an
+#   install made with --prefix elsewhere). Defined before raylib is fetched, because raylib would
 #   otherwise add an `uninstall` of its own.
 if(WIN32)
   set(MUSIL_HOME "$ENV{USERPROFILE}/.musil")
@@ -142,6 +142,10 @@ endif()
 file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt)
 file(GLOB MUSIL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 install(TARGETS musil RUNTIME DESTINATION bin)
+if(MUSIL_RAYLIB)
+  install(TARGETS musil-listener RUNTIME DESTINATION bin)
+  install(FILES listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt DESTINATION ${MUSIL_HOME}/assets)
+endif()
 install(FILES ${MUSIL_HEADERS} DESTINATION include/musil)
 install(DIRECTORY src/system src/scientific DESTINATION include/musil FILES_MATCHING PATTERN "*.h")
 install(FILES ${MUSIL_LANG_FILES} DESTINATION ${MUSIL_HOME})

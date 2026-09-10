@@ -9,10 +9,13 @@
 #   ARCHS=arm64 ./deploy_macos.sh   single-arch build (faster)
 #
 # Produces
-#   dist/Musil.app                  the Listener, with icon (docs/icon.png), font, .mu libraries,
-#                                   help.txt and the manual in Resources/
+#   dist/Musil.app                  the Listener as an application, with icon (docs/icon.png or .jpg),
+#                                   font, .mu libraries, help.txt and the manual in Resources/
 #   dist/musil                      the command-line interpreter
+#   dist/musil-listener             the Listener as a plain binary (finds lib/ and assets/ next to it)
 #   dist/lib/                       the .mu libraries and help.txt, to copy into ~/.musil for the CLI
+#   dist/assets/                    the font, for the plain binary
+#   dist/musil_manual.pdf           the manual
 #   dist/Musil-<version>-macos.zip  all of the above
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -72,13 +75,15 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/lib" "$DIST/lib"
 cp "$LISTENER" "$APP/Contents/MacOS/$APP_NAME"
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
 cp "$CLI" "$DIST/musil"
-strip "$DIST/musil" 2>/dev/null || true
+cp "$LISTENER" "$DIST/musil-listener"
+strip "$DIST/musil" "$DIST/musil-listener" 2>/dev/null || true
 
 # --- 3. resources: font, libraries, help, manual -------------------------------------------
 echo "==> Copying resources"
 cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$APP/Contents/Resources/"
 cp src/*.mu src/help.txt "$APP/Contents/Resources/lib/"
 cp src/*.mu src/help.txt "$DIST/lib/"
+mkdir -p "$DIST/assets" && cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$DIST/assets/"
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$APP/Contents/Resources/" && cp docs/musil_manual.pdf "$DIST/"
 cp README.md LICENSE.md "$DIST/"
 
@@ -130,12 +135,12 @@ PLIST
 # --- 6. ad-hoc signature (required on Apple Silicon to launch at all) --------------------------
 echo "==> Signing (ad-hoc)"
 codesign --force --deep --sign - "$APP"
-codesign --force --sign - "$DIST/musil"
+codesign --force --sign - "$DIST/musil" "$DIST/musil-listener"
 
 # --- 7. zip for sending ---------------------------------------------------------------------
 echo "==> Zipping"
 ( cd "$DIST" && rm -f "$APP_NAME-$VERSION-macos.zip" && ditto -c -k --keepParent --norsrc "$APP_NAME.app" "$APP_NAME-$VERSION-macos.zip" \
-  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil lib README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
+  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil musil-listener lib assets README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
 
 if [[ "$FLAG" == "--dmg" ]]; then
     echo "==> DMG"
@@ -144,6 +149,6 @@ if [[ "$FLAG" == "--dmg" ]]; then
 fi
 
 echo
-echo "Done: $APP, $DIST/musil, $DIST/lib  and  $DIST/$APP_NAME-$VERSION-macos.zip"
+echo "Done: $APP, $DIST/musil, $DIST/musil-listener, $DIST/lib, $DIST/musil_manual.pdf  and  $DIST/$APP_NAME-$VERSION-macos.zip"
 echo "Recipients: unzip, then right-click Musil.app -> Open (first launch only, it is not notarized)."
 echo "The CLI: copy musil somewhere in the PATH and lib/* into ~/.musil."

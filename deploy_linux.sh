@@ -4,8 +4,8 @@
 #   ./deploy_linux.sh            Release, static raylib, into build-dist-linux/
 #   ./deploy_linux.sh --clean    rebuild from scratch
 #
-# Produces dist/musil-<version>-linux/ (Musil the Listener, musil the CLI, lib/, the manual,
-# run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the system's
+# Produces dist/musil-<version>-linux/ (musil the CLI, musil-listener, lib/ with the .mu libraries
+# and help.txt, assets/ with the font, the manual, run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the system's
 # OpenGL, X11 and ALSA libraries at run time, which every desktop Linux has.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -32,9 +32,9 @@ done
 
 echo "==> Collecting into $OUT"
 rm -rf "$OUT"; mkdir -p "$OUT/lib" "$OUT/assets"
-cp "$BUILD_DIR/musil-listener" "$OUT/Musil"
+cp "$BUILD_DIR/musil-listener" "$OUT/musil-listener"
 cp "$BUILD_DIR/musil" "$OUT/musil"
-strip "$OUT/Musil" "$OUT/musil" 2>/dev/null || true
+strip "$OUT/musil-listener" "$OUT/musil" 2>/dev/null || true
 cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$OUT/assets/"
 cp src/*.mu src/help.txt "$OUT/lib/"
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$OUT/"
@@ -42,7 +42,7 @@ cp README.md LICENSE.md "$OUT/"
 cat > "$OUT/run.sh" <<RUN
 #!/usr/bin/env bash
 # the Listener finds lib/ and assets/ next to itself; the CLI needs MUSIL_PATH or ~/.musil
-cd "\$(dirname "\$0")" && MUSIL_PATH="\$PWD/lib" ./Musil "\$@"
+cd "\$(dirname "\$0")" && MUSIL_PATH="\$PWD/lib" ./musil-listener "\$@"
 RUN
 chmod +x "$OUT/run.sh"
 

@@ -1,13 +1,6 @@
 build/
 build-*
 dist
-docs/generated
-docs/*.aux
-docs/*.log
-docs/*.out
-docs/*.gz
-docs/*.toc
-src/help.txt
 *.o
 *.a
 .DS_Store
