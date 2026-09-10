@@ -94,42 +94,6 @@ and `load` finds them in `~/.musil`, in `MUSIL_PATH`, or next to the file doing 
 loading. During development, `MUSIL_PATH=src` points at the source tree; the test
 suite sets it for you.
 
-## Layout
-
-```
-src/core.h         the language: reader, evaluator, value model, primitive builtins (zero dependencies)
-src/std.h          the standard library, C++ half: range, sort, strings, files, map/filter/reduce, assert
-src/std.mu         the standard library, Musil half: zeros, linspace, mean, last, take, zip, compose, ...
-src/system.h       operating-system access, C++ half: exec, ls, stat, CSV, WAV, UDP/OSC
-src/system.mu      operating-system access, Musil half: file-lines, basename, wav-duration, ...
-src/system/        WAV and CSV readers used by system.h
-src/scientific.h   linear algebra and machine learning, C++ half: mat-mul, transpose, det/inv/solve, eig-sym, kmeans, knn
-src/scientific.mu  Musil half: construction, elementwise ops, statistics, cov/corr/pca, regression, bpf, model helpers
-src/scientific/    the algorithms used by scientific.h (k-means, KNN, running median)
-src/signals.h      offline signal processing, C++ half: fft, ifft, osc, iir, delay, resample, autocorr, gather, local-maxima
-src/signals.mu     Musil half: generators, windows, spectra, stft, cepstral envelopes, phase vocoder, features, filters
-src/plot.h         plotting, C++ half (raylib): renders a figure to a window or a PNG
-src/plot.mu        Musil half: figures, layers (line, scatter, bars, image, surface), waveform, spectrogram, ...
-listener/          the Listener: main.cpp and the font asset
-src/musil.h        umbrella header: make_env registers the C++ halves, load_prelude loads the Musil halves
-cli/main.cpp       the command-line interpreter: musil [-i] [-e code] a.mu b.mu ... [-- args]
-examples/          one reference per library (core, std, system, scientific, signals, plot)
-                   and short programs, one per topic; every example runs as a test
-tests/             one test per library (test_core, test_std, test_system) on a shared harness
-                   (test.mu: check, fails?, error-of, report), plus stress, smoke, load tests
-                   and the golden outputs of the references
-```
-
-A library is a pair: `<name>.h` for what needs C++ and `<name>.mu` for what can be
-written in Musil. The rule for choosing: an element-by-element loop runs about a
-hundred times faster in C++, so it goes in the `.h`; anything that composes vector
-operations (`(pow (sum (pow (abs v) p)) (/ 1 p))` is `lp-norm`) runs at C++ speed
-in Musil already, so it goes in the `.mu`. Operating-system access is C++ by
-necessity.
-The `.h` exposes `add_<name>(Interp&)` and is registered by `make_env`; the
-`.mu` is loaded explicitly by the program, through the normal `load` search
-path (`~/.musil` after `cmake --install`, `MUSIL_PATH`, or next to the file).
-
 ## Documentation
 
 `(help name)` prints the signature and description of any builtin or library function.
