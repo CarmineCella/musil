@@ -5,26 +5,31 @@
 //
 // A figure is a list: (list title layers options) where
 //   layers  is a list of (list kind data... label): kinds are "line" x y label,
-//           "scatter" x y label, "bars" x y label, "image" matrix, "surface" matrix
-//   options is a list of (list key value): "xlabel" "ylabel" "xmin" "xmax" "ymin" "ymax" "colormap"
-// The hosts (the CLI and the Listener) register `show` and `save-png` on top of
-// render_figure, because only the thread that owns the window may draw.
+//           "scatter" x y label, "bars" x y label, "image" matrix, "surface" matrix,
+//           or "subplot" figure (a figure made only of subplots is drawn as a grid)
+//   options is a list of (list key value): "xlabel" "ylabel" "xmin" "xmax" "ymin" "ymax" "rows" "cols"
+// The CLI's show opens the one raylib window and waits until it is closed (plot after plot);
+// the Listener shows figures in its own window. save-png renders to a texture and writes a file.
 
 #pragma once
 #include "core.h"
 #include "raylib.h"
 #include "rlgl.h"
 #include <cstdio>
+#include <set>
 
 namespace musil {
 
 // --- figure description, validated once ---
-struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; };
+struct figure;
+struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; };
 struct figure {
     std::string title, xlabel, ylabel;
     std::vector<plot_layer> layers;
     bool has_xmin = false, has_xmax = false, has_ymin = false, has_ymax = false;
     double xmin = 0, xmax = 0, ymin = 0, ymax = 0;
+    int rows = 0, cols = 0;                 // for a figure made of subplots
+    bool is_grid() const { return !layers.empty() && layers[0].kind == "subplot"; }
 };
 [[noreturn]] inline void plot_fail(const std::string& m) { throw std::runtime_error("figure: " + m); }
 inline const varr& plot_num(const vptr& v) { if (!v || v->t != Value::NUM) plot_fail("expected a numeric vector"); return v->num; }
@@ -41,6 +46,9 @@ inline figure parse_figure(const vptr& v) {
             p.x = plot_num(L->l[1]); p.y = plot_num(L->l[2]);
             if (p.x.size() != p.y.size()) plot_fail(p.kind + ": x and y must have the same length");
             if (L->l.size() > 3) p.label = str_of(L->l[3]);
+        } else if (p.kind == "subplot") {
+            if (L->l.size() < 2) plot_fail("subplot: needs a figure");
+            p.sub = std::make_shared<figure>(parse_figure(L->l[1]));
         } else if (p.kind == "image" || p.kind == "surface") {
             if (L->l.size() < 2 || L->l[1]->t != Value::LIST || L->l[1]->l.empty()) plot_fail(p.kind + ": needs a matrix (list of rows)");
             size_t c = 0;
@@ -57,9 +65,11 @@ inline figure parse_figure(const vptr& v) {
         if (k == "xlabel") f.xlabel = str_of(val); else if (k == "ylabel") f.ylabel = str_of(val);
         else if (k == "xmin") { f.xmin = num(); f.has_xmin = true; } else if (k == "xmax") { f.xmax = num(); f.has_xmax = true; }
         else if (k == "ymin") { f.ymin = num(); f.has_ymin = true; } else if (k == "ymax") { f.ymax = num(); f.has_ymax = true; }
+        else if (k == "rows") f.rows = (int)num(); else if (k == "cols") f.cols = (int)num();
         else plot_fail("unknown option " + k);
     }
     if (f.layers.empty()) plot_fail("no layers");
+    if (f.is_grid()) for (auto& L : f.layers) if (L.kind != "subplot") plot_fail("a figure of subplots holds only subplots");
     return f;
 }
 
@@ -76,10 +86,11 @@ inline Color plot_colormap(double t) {   // viridis-like, t in [0,1]
 // --- interaction state, owned by the host and passed to render/interact ---
 struct plot_view {
     bool zoomed = false; double xmin = 0, xmax = 1, ymin = 0, ymax = 1;   // current 2D view when zoomed
-    float angle = 0.9f, pitch = 0.6f;                                      // surface camera
+    float angle = 0.9f, pitch = 0.6f, dist = 2.6f, tx = 0, ty = 0, tz = 0;   // surface camera: orbit, distance, target offset
     bool has_cursor = false; double cx = 0, cy = 0;                         // data coordinates under the mouse
     bool has_pick = false; double px = 0, py = 0; std::string pick_label;   // nearest data point
     int hover_x = -1, hover_y = -1;                                          // mouse in figure pixels
+    std::set<int> chars;                                                     // characters typed this frame (the host fills it from GetCharPressed)
 };
 // 2D data range of a figure (before the view is applied)
 inline void figure_range(const figure& f, double& xmin, double& xmax, double& ymin, double& ymax) {
@@ -129,15 +140,15 @@ inline void plot_text(const std::string& s, float x, float y, int size, Color c)
 inline float plot_text_width(const std::string& s, int size) { return MeasureTextEx(plot_get_font().font, s.c_str(), (float)size, 1).x; }
 
 // 2D layers (line, scatter, bars, image) into the current drawing target of size w x h
-inline void render_2d(const figure& f, int w, int h, const plot_view& view) {
-    ClearBackground({ 250, 250, 250, 255 });
-    const int fs = 14; int left = 64, right = 20, top = f.title.empty() ? 16 : 34, bottom = 44;
-    float pw = (float)(w - left - right), ph = (float)(h - top - bottom);
+inline void render_2d(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
+    DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
+    const int fs = 14; int left = ox + 64, right = 20, top = oy + (f.title.empty() ? 16 : 34), bottom = 44;
+    float pw = (float)(ox + w - left - right), ph = (float)(oy + h - top - bottom);
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
     if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
     auto X = [&](double x) { return left + (float)((x - xmin) / (xmax - xmin) * pw); };
     auto Y = [&](double y) { return top + ph - (float)((y - ymin) / (ymax - ymin) * ph); };
-    if (!f.title.empty()) plot_text(f.title, left + (pw - plot_text_width(f.title, fs + 2)) / 2, 8, fs + 2, { 40, 40, 40, 255 });
+    if (!f.title.empty()) plot_text(f.title, left + (pw - plot_text_width(f.title, fs + 2)) / 2, (float)oy + 8, fs + 2, { 40, 40, 40, 255 });
     DrawRectangleLines(left, top, (int)pw, (int)ph, { 120, 120, 120, 255 });
     double sx = nice_step(xmax - xmin, 6), sy = nice_step(ymax - ymin, 5);
     for (double t = std::ceil(xmin / sx) * sx; t <= xmax + 1e-9 * sx; t += sx) {
@@ -148,8 +159,8 @@ inline void render_2d(const figure& f, int w, int h, const plot_view& view) {
         float py = Y(t); DrawLine(left, (int)py, left + (int)pw, (int)py, { 225, 225, 225, 255 });
         std::string ss = tick_label(t); plot_text(ss, left - 6 - plot_text_width(ss, fs - 2), py - (fs - 2) / 2.0f, fs - 2, { 80, 80, 80, 255 });
     }
-    if (!f.xlabel.empty()) plot_text(f.xlabel, left + (pw - plot_text_width(f.xlabel, fs)) / 2, h - fs - 6, fs, { 60, 60, 60, 255 });
-    if (!f.ylabel.empty()) { rlPushMatrix(); rlTranslatef(14, top + ph / 2 + plot_text_width(f.ylabel, fs) / 2, 0); rlRotatef(-90, 0, 0, 1); plot_text(f.ylabel, 0, 0, fs, { 60, 60, 60, 255 }); rlPopMatrix(); }
+    if (!f.xlabel.empty()) plot_text(f.xlabel, left + (pw - plot_text_width(f.xlabel, fs)) / 2, (float)(oy + h) - fs - 6, fs, { 60, 60, 60, 255 });
+    if (!f.ylabel.empty()) { rlPushMatrix(); rlTranslatef((float)ox + 14, top + ph / 2 + plot_text_width(f.ylabel, fs) / 2, 0); rlRotatef(-90, 0, 0, 1); plot_text(f.ylabel, 0, 0, fs, { 60, 60, 60, 255 }); rlPopMatrix(); }
     BeginScissorMode(left, top, (int)pw, (int)ph);
     size_t ci = 0; std::vector<std::pair<std::string, Color>> legend;
     for (auto& L : f.layers) {
@@ -196,21 +207,38 @@ inline void render_2d(const figure& f, int w, int h, const plot_view& view) {
         DrawRectangle(left + 4, top + 4, (int)tw, fs + 6, { 255, 255, 255, 220 });
         plot_text(ss, left + 10, top + 7, fs - 1, { 40, 40, 40, 255 });
     }
-    if (view.zoomed) plot_text("zoomed: r resets", (float)w - 130, (float)h - fs - 6, fs - 2, { 130, 130, 130, 255 });
+    if (view.zoomed) plot_text("zoomed: 0 resets", (float)(ox + w) - 130, (float)(oy + h) - fs - 6, fs - 2, { 130, 130, 130, 255 });
 }
-// Mouse and keys over a figure drawn at rect: wheel zooms around the cursor, drag pans, r resets,
-// the cursor's data coordinates and the nearest point are stored in the view (in figure pixels)
+inline float angle_of(const plot_view& v) { return v.angle; }
+// Keys and mouse over a figure drawn at rect. Keys (they do not depend on the wheel, which
+// macOS trackpads report unreliably): + and - zoom around the centre, 0 resets, W A S D pan,
+// arrows orbit a surface. Mouse: drag pans (or orbits), the wheel zooms around the cursor; the
+// cursor's data coordinates and the nearest point are stored in the view.
 inline void plot_interact(const figure& f, const plot_view& in, plot_view& view, Rectangle rect, Vector2 mouse) {
     view = in;
+    if (f.is_grid()) return;                     // a grid of subplots is a static picture
     const int fs = 14; int left = 64, right = 20, top = f.title.empty() ? 16 : 34, bottom = 44;
     (void)fs;
     float pw = rect.width - left - right, ph = rect.height - top - bottom;
     bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
     bool inside = CheckCollisionPointRec(mouse, rect);
+    bool plus = view.chars.count('+') || view.chars.count('=') || IsKeyPressed(KEY_KP_ADD) || IsKeyPressedRepeat(KEY_EQUAL) || IsKeyPressedRepeat(KEY_RIGHT_BRACKET);
+    bool minus = view.chars.count('-') || IsKeyPressed(KEY_KP_SUBTRACT) || IsKeyPressedRepeat(KEY_MINUS) || IsKeyPressedRepeat(KEY_SLASH);
     if (surface) {
         if (inside && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { view.angle += GetMouseDelta().x * 0.01f; view.pitch = std::max(0.05f, std::min(1.5f, view.pitch - GetMouseDelta().y * 0.01f)); }
         if (IsKeyDown(KEY_LEFT)) view.angle -= 0.03f;
         if (IsKeyDown(KEY_RIGHT)) view.angle += 0.03f;
+        if (IsKeyDown(KEY_UP)) view.pitch = std::min(1.5f, view.pitch + 0.02f);
+        if (IsKeyDown(KEY_DOWN)) view.pitch = std::max(0.05f, view.pitch - 0.02f);
+        if (plus || GetMouseWheelMove() > 0) view.dist = std::max(0.6f, view.dist * 0.9f);
+        if (minus || GetMouseWheelMove() < 0) view.dist = std::min(8.0f, view.dist * 1.1f);
+        float pan = 0.03f * view.dist;      // pan in the camera's horizontal frame
+        float rx = -std::sin(angle_of(view)), rz = std::cos(angle_of(view));
+        if (IsKeyDown(KEY_A) || view.chars.count('a')) { view.tx -= pan * rx; view.tz -= pan * rz; }
+        if (IsKeyDown(KEY_D) || view.chars.count('d')) { view.tx += pan * rx; view.tz += pan * rz; }
+        if (IsKeyDown(KEY_W) || view.chars.count('w')) view.ty += pan;
+        if (IsKeyDown(KEY_S) || view.chars.count('s')) view.ty -= pan;
+        if (view.chars.count('0') || view.chars.count('r') || IsKeyPressed(KEY_KP_0)) { view.angle = 0.9f; view.pitch = 0.6f; view.dist = 2.6f; view.tx = view.ty = view.tz = 0; }
         return;
     }
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
@@ -240,19 +268,37 @@ inline void plot_interact(const figure& f, const plot_view& in, plot_view& view,
             if (d.x != 0 || d.y != 0) { view.xmin = xmin + ddx; view.xmax = xmax + ddx; view.ymin = ymin + ddy; view.ymax = ymax + ddy; view.zoomed = true; }
         }
     }
-    if (IsKeyPressed(KEY_R)) view.zoomed = false;
+    // keyboard zoom and pan, on the current view
+    double cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2, hw = (xmax - xmin) / 2, hh = (ymax - ymin) / 2;
+    auto set = [&](double nx0, double nx1, double ny0, double ny1) { view.xmin = nx0; view.xmax = nx1; view.ymin = ny0; view.ymax = ny1; view.zoomed = true; };
+    if (plus)  set(cx - hw * 0.8, cx + hw * 0.8, cy - hh * 0.8, cy + hh * 0.8);
+    if (minus) set(cx - hw * 1.25, cx + hw * 1.25, cy - hh * 1.25, cy + hh * 1.25);
+    double step = 0.05;
+    if (IsKeyDown(KEY_A) || view.chars.count('a')) set(xmin - hw * step, xmax - hw * step, ymin, ymax);
+    if (IsKeyDown(KEY_D) || view.chars.count('d')) set(xmin + hw * step, xmax + hw * step, ymin, ymax);
+    if (IsKeyDown(KEY_W) || view.chars.count('w')) set(xmin, xmax, ymin + hh * step, ymax + hh * step);
+    if (IsKeyDown(KEY_S) || view.chars.count('s')) set(xmin, xmax, ymin - hh * step, ymax - hh * step);
+    if (view.chars.count('0') || view.chars.count('r') || IsKeyPressed(KEY_KP_0)) view.zoomed = false;
 }
 
 // 3D surface: z = m[r][c] over a unit square, coloured by height, seen from an orbiting camera
-inline void render_surface(const figure& f, const plot_layer& L, int w, int h, const plot_view& view) {
+// The 3D viewport is in framebuffer pixels: on a Retina screen that is twice the logical size the
+// rest of the drawing uses (which is why a surface once occupied a quarter of its cell). Render
+// textures are 1:1, so figure_to_png sets the scale to 1 around its call.
+inline float& plot_target_scale() { static float s = 0; return s; }
+inline void render_surface(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, int target_h, const plot_view& view) {
     float angle = view.angle, pitch = view.pitch;
-    ClearBackground({ 250, 250, 250, 255 });
-    if (!f.title.empty()) plot_text(f.title, (w - plot_text_width(f.title, 16)) / 2, 8, 16, { 40, 40, 40, 255 });
+    float sc = plot_target_scale() > 0 ? plot_target_scale() : (GetScreenWidth() > 0 ? (float)GetRenderWidth() / GetScreenWidth() : 1.0f);
+    DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
+    if (!f.title.empty()) plot_text(f.title, ox + (w - plot_text_width(f.title, 16)) / 2, (float)oy + 8, 16, { 40, 40, 40, 255 });
     size_t rows = L.m.size(), cols = L.m[0].size();
     double lo = 1e300, hi = -1e300; for (auto& r : L.m) for (double v : r) { lo = std::min(lo, v); hi = std::max(hi, v); }
     if (hi <= lo) hi = lo + 1;
-    float dist = 2.6f;
-    Camera3D cam = { { dist * std::cos(angle) * std::cos(pitch), dist * std::sin(pitch), dist * std::sin(angle) * std::cos(pitch) }, { 0, 0.25f, 0 }, { 0, 1, 0 }, 40, CAMERA_PERSPECTIVE };
+    float dist = view.dist;
+    Vector3 target = { view.tx, 0.25f + view.ty, view.tz };
+    Camera3D cam = { { target.x + dist * std::cos(angle) * std::cos(pitch), target.y + dist * std::sin(pitch), target.z + dist * std::sin(angle) * std::cos(pitch) }, target, { 0, 1, 0 }, 40, CAMERA_PERSPECTIVE };
+    rlDrawRenderBatchActive(); rlViewport((int)(ox * sc), (int)((target_h - oy - h) * sc), (int)(w * sc), (int)(h * sc));   // the 3D view fills this cell only
+    rlMatrixMode(RL_PROJECTION); rlPushMatrix(); rlLoadIdentity(); rlMatrixMode(RL_MODELVIEW); rlLoadIdentity();
     BeginMode3D(cam);
     rlDisableBackfaceCulling();
     // large matrices are drawn at reduced resolution (block averages), which keeps rotation fluid
@@ -277,25 +323,53 @@ inline void render_surface(const figure& f, const plot_layer& L, int w, int h, c
     DrawLine3D({ -0.5f, 0, -0.5f }, { 0.5f, 0, -0.5f }, GRAY); DrawLine3D({ -0.5f, 0, -0.5f }, { -0.5f, 0, 0.5f }, GRAY);
     DrawLine3D({ -0.5f, 0, -0.5f }, { -0.5f, 0.8f, -0.5f }, GRAY);
     EndMode3D();
-    plot_text((f.xlabel.empty() ? "columns" : f.xlabel) + "  (drag to orbit)", 12, (float)h - 22, 13, { 90, 90, 90, 255 });
-    plot_text(tick_label(lo) + " .. " + tick_label(hi), (float)w - 140, (float)h - 22, 13, { 90, 90, 90, 255 });
+    rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
+    rlMatrixMode(RL_PROJECTION); rlPopMatrix(); rlMatrixMode(RL_MODELVIEW); rlLoadIdentity();
+    plot_text((f.xlabel.empty() ? "columns" : f.xlabel) + "  (arrows or drag orbit)", (float)ox + 12, (float)(oy + h) - 22, 13, { 90, 90, 90, 255 });
+    plot_text(tick_label(lo) + " .. " + tick_label(hi), (float)(ox + w) - 140, (float)(oy + h) - 22, 13, { 90, 90, 90, 255 });
 }
 
-// Draw the figure into the current target.
-inline void render_figure(const figure& f, int w, int h, const plot_view& view = plot_view()) {
-    for (auto& L : f.layers) if (L.kind == "surface") { render_surface(f, L, w, h, view); return; }
-    render_2d(f, w, h, view);
+// Draw the figure into the rectangle (ox, oy, w, h) of a target of height target_h (needed for the 3D viewport).
+inline void render_figure_at(const figure& f, int ox, int oy, int w, int h, int target_h, const plot_view& view) {
+    if (f.is_grid()) {
+        int n = (int)f.layers.size();
+        int cols = f.cols > 0 ? f.cols : (int)std::ceil(std::sqrt((double)n)), rows = f.rows > 0 ? f.rows : (n + cols - 1) / cols;
+        int top = f.title.empty() ? 0 : 30;
+        DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
+        if (!f.title.empty()) plot_text(f.title, ox + (w - plot_text_width(f.title, 16)) / 2, (float)oy + 8, 16, { 40, 40, 40, 255 });
+        int cw = w / cols, ch = (h - top) / rows;
+        for (int k = 0; k < n; k++) {
+            int r = k / cols, c = k % cols;
+            render_figure_at(*f.layers[k].sub, ox + c * cw, oy + top + r * ch, cw, ch, target_h, plot_view());
+            DrawRectangleLines(ox + c * cw, oy + top + r * ch, cw, ch, { 215, 215, 215, 255 });
+        }
+        return;
+    }
+    for (auto& L : f.layers) if (L.kind == "surface") { render_surface(f, L, ox, oy, w, h, target_h, view); return; }
+    render_2d(f, ox, oy, w, h, view);
 }
-// A file name for a saved plot: musil_plot_<title or n>.png in the current directory
+inline void render_figure(const figure& f, int w, int h, const plot_view& view = plot_view()) {
+    ClearBackground({ 250, 250, 250, 255 });
+    render_figure_at(f, 0, 0, w, h, h, view);
+}
+// Where an exported PNG goes: the current directory when it is writable (a script run from the
+// command line), otherwise the home directory (an application launched from the Finder has "/"
+// as its current directory). Always an absolute path, so the host can print it.
 inline std::string plot_save_name(const figure& f) {
     static int n = 0; std::string base = f.title.empty() ? "plot" : f.title;
     for (auto& c : base) if (!std::isalnum((unsigned char)c)) c = '_';
-    return "musil_" + base + "_" + std::to_string(++n) + ".png";
+    std::string name = "musil_" + base + "_" + std::to_string(++n) + ".png";
+    std::error_code ec; fs::path dir = fs::current_path(ec);
+    auto writable = [](const fs::path& d) { std::ofstream t(d / ".musil_write_test"); bool ok = (bool)t; t.close(); std::error_code e; fs::remove(d / ".musil_write_test", e); return ok; };
+    if (ec || dir == "/" || !writable(dir)) { const char* home = std::getenv("HOME"); dir = home ? fs::path(home) : fs::temp_directory_path(); }
+    return (dir / name).string();
 }
 // Render to a PNG file. The caller must own a window (hidden is fine).
 inline void figure_to_png(const figure& f, const std::string& path, int w, int h) {
     RenderTexture2D rt = LoadRenderTexture(w, h);
+    plot_target_scale() = 1.0f;
     BeginTextureMode(rt); render_figure(f, w, h); EndTextureMode();
+    plot_target_scale() = 0.0f;
     plot_cache_clear();                       // textures were keyed by this figure's layers
     Image img = LoadImageFromTexture(rt.texture); ImageFlipVertical(&img);
     bool ok = ExportImage(img, path.c_str());
@@ -303,10 +377,20 @@ inline void figure_to_png(const figure& f, const std::string& path, int w, int h
     if (!ok) throw std::runtime_error("save-png: cannot write " + path);
 }
 
-// --- a minimal host: the CLI. show = window until closed or Esc; save-png = hidden window ---
+// --- hosts ------------------------------------------------------------------------------
+// The CLI: show opens the window and waits until Esc (plot after plot); save-png uses a hidden
+// window. The Listener draws the same figures in its own window with the same key map.
+inline const char* plot_keys_hint = "+ - zoom   W A S D pan   arrows orbit   0 or r reset   drag pans   e exports a PNG   Esc or q closes";
+// The characters typed this frame, for layout-independent keys (+ - 0 w a x d)
+inline void plot_collect_chars(plot_view& view) { view.chars.clear(); for (int c = GetCharPressed(); c; c = GetCharPressed()) view.chars.insert(c); }
 inline void plot_ensure_window(bool visible, int w, int h) {
-    if (!IsWindowReady()) { SetTraceLogLevel(LOG_WARNING); if (!visible) SetConfigFlags(FLAG_WINDOW_HIDDEN); InitWindow(w, h, "musil"); if (!IsWindowReady()) throw std::runtime_error("plot: cannot open a window (no display?)"); }
+    if (!IsWindowReady()) { SetTraceLogLevel(LOG_WARNING); SetConfigFlags(visible ? FLAG_WINDOW_RESIZABLE : FLAG_WINDOW_HIDDEN); InitWindow(w, h, "musil"); if (!IsWindowReady()) throw std::runtime_error("plot: cannot open a window (no display?)"); }
     else { if (visible && IsWindowHidden()) ClearWindowState(FLAG_WINDOW_HIDDEN); SetWindowSize(w, h); }
+    if (visible) {   // centre on the current monitor and take the keyboard: a window opened from a terminal is not focused by default on macOS
+        int m = GetCurrentMonitor(); Vector2 mp = GetMonitorPosition(m);
+        SetWindowPosition((int)mp.x + (GetMonitorWidth(m) - w) / 2, (int)mp.y + (GetMonitorHeight(m) - h) / 2);
+        SetWindowFocused();
+    }
 }
 // (save-png fig path [w h]) render a figure to a PNG file (900 x 560 by default)
 inline vptr cli_save_png(vlist& a, Interp& i) {
@@ -315,24 +399,24 @@ inline vptr cli_save_png(vlist& a, Interp& i) {
     try { plot_ensure_window(false, 64, 64); figure_to_png(f, i.str(a[1]), w, h); } catch (std::exception& e) { i.bad(e.what()); }
     return v_nil();
 }
-// (show fig [w h]) show a figure: a window in the CLI (Esc closes; none when MUSIL_NOSHOW is set), a panel in the Listener
+// (show fig [w h]) show a figure in a window and wait until it is closed with Esc (skipped when MUSIL_NOSHOW is set)
 inline vptr cli_show(vlist& a, Interp& i) {
     figure f; try { f = parse_figure(a[0]); } catch (std::exception& e) { i.bad(e.what()); }
     if (std::getenv("MUSIL_NOSHOW")) return v_nil();     // tests and batch runs
-    int w = a.size() > 1 ? (int)i.scalar(a[1]) : 900, h = a.size() > 2 ? (int)i.scalar(a[2]) : 560;
+    int w = a.size() > 1 ? (int)i.scalar(a[1]) : 1100, h = a.size() > 2 ? (int)i.scalar(a[2]) : 700;
     try { plot_ensure_window(true, w, h); } catch (std::exception& e) { i.bad(e.what()); }
-    SetWindowTitle(f.title.empty() ? "musil  (wheel zooms, drag pans, r resets, s saves, Esc closes)" : (f.title + "  (wheel zooms, drag pans, r resets, s saves, Esc closes)").c_str());
-    MaximizeWindow();
+    SetWindowTitle(f.title.empty() ? "musil" : f.title.c_str());
     plot_view view; plot_cache_clear();
     while (!WindowShouldClose()) {
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) break;
+        plot_collect_chars(view);
+        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || view.chars.count('q')) break;
         int W = GetScreenWidth(), H = GetScreenHeight();
         plot_interact(f, view, view, { 0, 0, (float)W, (float)H }, GetMousePosition());
-        if (IsKeyPressed(KEY_S)) { std::string p = plot_save_name(f); try { figure_to_png(f, p, W, H); *i.out << "saved " << p << "\n" << std::flush; } catch (std::exception& e) { *i.out << e.what() << "\n"; } }
-        BeginDrawing(); render_figure(f, W, H, view); EndDrawing();
+        if (view.chars.count('e')) { std::string p = plot_save_name(f); try { figure_to_png(f, p, W, H); *i.out << "saved " << p << "\n" << std::flush; } catch (std::exception& e) { *i.out << "error: " << e.what() << "\n"; } }
+        BeginDrawing(); render_figure(f, W, H, view); plot_text(plot_keys_hint, 8, (float)H - 18, 12, { 150, 150, 150, 255 }); EndDrawing();
     }
     plot_cache_clear();
-    if (WindowShouldClose()) CloseWindow();
+    CloseWindow();
     return v_nil();
 }
 inline void add_plot(Interp& i) {   // the CLI host; the Listener registers its own show/save-png

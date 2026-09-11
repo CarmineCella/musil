@@ -76,7 +76,7 @@ if(MUSIL_RAYLIB)
   target_link_libraries(musil PRIVATE raylib)
 endif()
 
-# --- The Listener: a window to run, watch, plot and play ---------------------
+# --- The Listener: a window to run, watch and read ------------------------------
 if(MUSIL_RAYLIB)
   add_executable(musil-listener listener/main.cpp)
   target_link_libraries(musil-listener PRIVATE musil_base raylib)

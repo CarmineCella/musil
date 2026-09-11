@@ -170,31 +170,45 @@ check (equal? (gather (vec 10 20 30) (vec 2 0 -1)) (vec 30 10 30)) "gather"
 check (contains? (error-of (function () (gather (vec 1) (vec 5)))) "out of range") "gather: range"
 check (near? (princarg (vec 0 3.5 -3.5 7)) (vec 0 (- 3.5 tau) (- tau 3.5) (- 7 tau)) 1e-12) "princarg"
 var tone (osc sr (+ (zeros 8000) 220) (gen 1024 (vec 1 0.5 0.3)))
-var st (pvoc-stretch tone 1024 256 2)
-check (> (length st) (* 1.8 (length tone))) "pvoc-stretch: about twice as long"
+var st (pvoc-stretch tone 2)
+check (near? (length st) (* 2 (length tone)) 300) "pvoc-stretch: about twice as long"
 check (near? (acf-f0 (slice st 6000 2048) sr) (acf-f0 (slice tone 2000 2048) sr) 2) "pvoc-stretch: pitch kept"
-check (near? (slice (pvoc-stretch tone 1024 256 1) 2048 4000) (slice tone 2048 4000) 1e-9) "pvoc-stretch: factor 1 is the identity"
+check (near? (slice (pvoc-stretch tone 1) 2048 4000) (slice tone 2048 4000) 1e-9) "pvoc-stretch: factor 1 is the identity"
 check (near? (rms (slice st 4000 8000)) (rms tone) 0.1) "pvoc-stretch: level kept"
-check (== (length (pvoc-pitch tone 1024 256 1.5)) (length tone)) "pvoc-pitch: same length"
-check (near? (acf-f0 (slice (pvoc-pitch tone 1024 256 1.5) 2000 2048) sr) 333.3 3) "pvoc-pitch: a fifth up"
-check (near? (acf-f0 (slice (pvoc-pitch tone 1024 256 0.5) 2000 2048) sr) 111 2) "pvoc-pitch: an octave down"
-check (== (length (robotize tone 512 128)) (length (istft (stft tone 512 128) 512 128))) "robotize: length"
-check (== (length (whisperize tone 512 128)) (length (robotize tone 512 128))) "whisperize: length"
-check (equal? (pvoc-stretch (vec) 256 64 2) (vec)) "pvoc-stretch: empty input"
+var st4 (pvoc-stretch tone 4)
+var env4 (envelope-follow (slice st4 4000 24000) 2000)
+check (< (/ (- (max env4) (min env4)) (mean env4)) 0.05) "pvoc-stretch x4: no amplitude modulation (fixed synthesis hop)"
+check (near? (length (pvoc-pitch tone 1.5)) (length tone) 300) "pvoc-pitch: same length"
+check (near? (acf-f0 (slice (pvoc-pitch tone 1.5) 2000 2048) sr) 333.3 3) "pvoc-pitch: a fifth up"
+check (near? (acf-f0 (slice (pvoc-pitch tone 0.5) 2000 2048) sr) 111 2) "pvoc-pitch: an octave down"
+check (near? (length (pvoc tone (list (list "stretch" (list 1 3))))) (* 1.5 (length tone)) 400) "pvoc: a ramped stretch 1->3 (the hop ramps linearly, as in sparkle: 1.5x overall)"
+check (equal? (pvoc (vec) (list)) (vec)) "pvoc: empty input"
+check (contains? (error-of (function () (pvoc tone (list (list "nope" 1))))) "unknown option") "pvoc: unknown option"
+check (contains? (error-of (function () (pvoc tone (list (list "cross" (list 2 0.5 tone)))))) "needs an envelope") "pvoc: cross mode 2 needs an envelope"
 var voiced (bandpass (osc sr (+ (zeros 8000) 200) (gen 512 (ones 12))) sr 900 3)
-var shifted (pvoc-pitch-formant voiced 1024 256 1.5 20)
-check (== (length shifted) (length (istft (stft voiced 1024 256) 1024 256))) "pvoc-pitch-formant: length"
-function bin-mag (v k) (getidx (magnitude-spectrum (* (slice v 2000 2048) (hann 2048))) k)
-check (> (bin-mag shifted 77) (* 10 (+ 1e-9 (bin-mag shifted 51)))) "pvoc-pitch-formant: harmonics moved to 300 Hz (bin 77), none left at 200 (bin 51)"
 function formant-bin (v) (argmax (take (spectral-envelope (magnitudes (fft (* (slice v 2000 1024) (hann 1024)))) 20) 512))
-check (< (abs (- (formant-bin shifted) (formant-bin voiced))) 12) "pvoc-pitch-formant: formant stayed"
-check (> (abs (- (formant-bin (pvoc-pitch voiced 1024 256 1.5)) (formant-bin voiced))) 12) "pvoc-pitch: formant moves without preservation"
+function bin-mag (v k) (getidx (magnitude-spectrum (* (slice v 2000 2048) (hann 2048))) k)
+var shifted (pvoc-pitch-formant voiced 1.5 100)
+check (> (bin-mag shifted 77) (* 10 (+ 1e-9 (bin-mag shifted 51)))) "pvoc-pitch-formant: harmonics moved to 300 Hz (bin 77), none left at 200 (bin 51)"
+check (< (abs (- (formant-bin shifted) (formant-bin voiced))) 15) "pvoc-pitch-formant: formant stayed"
+check (> (abs (- (formant-bin (pvoc-pitch voiced 1.5)) (formant-bin voiced))) 15) "pvoc-pitch: formant moves without preservation"
+check (< (formant-bin (pvoc-formants voiced 0.5 100)) (* 0.7 (formant-bin voiced))) "pvoc-formants: formants move down, pitch kept"
+check (near? (acf-f0 (slice (pvoc-formants voiced 0.5 100) 2000 2048) sr) 200 3) "pvoc-formants: pitch kept"
 check (equal? (gate-spectrum (vec 1 0.05 0.5) 0.1) (vec 1 0 0.5)) "gate-spectrum"
+check (near? (length (denoise tone 0.05)) (length tone) 300) "denoise: length"
+check (< (rms (denoise (* 0.01 (noise 8000)) 0.5)) 0.002) "denoise: a quiet noise below the threshold is removed"
+check (near? (length (robotize tone)) (length tone) 300) "robotize: length"
+check (near? (length (whisperize tone)) (length tone) 300) "whisperize: length"
 var m0 (spectral-morph tone voiced 0 1024 256)
 var m1 (spectral-morph tone voiced 1 1024 256)
 check (near? (slice m0 2048 2000) (slice tone 2048 2000) 1e-9) "spectral-morph: t = 0 is the first sound"
 check (near? (slice m1 2048 2000) (slice voiced 2048 2000) 1e-9) "spectral-morph: t = 1 is the second"
 check (== (length (spectral-morph tone voiced 0.5 1024 256)) (length m0)) "spectral-morph: halfway"
+var xs (pvoc-cross voiced tone 2 1 100)
+check (near? (length xs) (length voiced) 300) "pvoc-cross: length"
+check (> (rms xs) 0) "pvoc-cross mode 2: something comes out"
+check (> (rms (pvoc-cross voiced tone 1 0.5 100)) 0) "pvoc-cross mode 1"
+check (near? (slice (pvoc-cross voiced tone 3 0 100) 4096 2000) (slice (pvoc voiced (list)) 4096 2000) 1e-9) "pvoc-cross mode 3 at 0 is the first sound"
 
 # --- resampling ---
 var slow (sine sr 100 0.02)

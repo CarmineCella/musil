@@ -1,9 +1,12 @@
 # musil — library reference: plot (plot.h + plot.mu)
 #
 # A figure is (list title layers options). plot.mu builds it; the host renders it:
-# (show fig) opens a window (the CLI) or a panel (the Listener), (save-png fig path
-# [w h]) writes a file. The one-call helpers plot, scatter, bars, image, surface build
-# and show in one go. plot.mu loads signals.mu (and so scientific and std).
+# (show fig) opens the window and waits until Esc (the CLI) or turns the Listener's
+# window into the figure; (save-png fig path [w h]) writes a file. Keys in a figure:
+# + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports, Esc or q closes. The
+# one-call helpers plot, scatter, bars, image, surface build and show in one go;
+# subplots puts several figures in a grid. plot.mu loads signals.mu (and so scientific
+# and std).
 # Run with: musil reference_plot.mu     (set MUSIL_NOSHOW=1 to skip the windows)
 
 load "system.mu"
@@ -44,7 +47,16 @@ save-png (add-image (figure "image") M) "/tmp/musil_ref_image.png"
 save-png (add-surface (figure "surface") M) "/tmp/musil_ref_surface.png"
 print "wrote bars, image, surface:" (map (list "/tmp/musil_ref_bars.png" "/tmp/musil_ref_image.png" "/tmp/musil_ref_surface.png") exists?)
 
-# --- 3. One-call helpers -------------------------------------------------------------
+# --- 3. Subplots ----------------------------------------------------------------------
+print ""
+print "--- subplots ---"
+var grid (subplots "four views" (list (add-line (figure "line") nil (sin (/ (range 60) 6)) "") (add-bars (figure "bars") nil (vec 2 5 3) "")
+                                       (add-image (figure "image") M) (add-surface (figure "surface") M)) 2 2)
+print "subplots        :" (length (fig-layers grid)) "figures in a" (getidx (head (fig-options grid)) 1) "x" (getidx (last (fig-options grid)) 1) "grid"
+save-png grid "/tmp/musil_ref_grid.png" 1000 700
+print "wrote the grid  :" (exists? "/tmp/musil_ref_grid.png")
+
+# --- 4. One-call helpers -------------------------------------------------------------
 print ""
 print "--- one-call helpers (they show; here MUSIL_NOSHOW may be set) ---"
 plot (sin (/ (range 50) 5))
@@ -56,7 +68,7 @@ image M
 surface M
 print "plot plot-xy plot-lines scatter bars image surface: shown"
 
-# --- 4. Ready-made figures for sound and data ------------------------------------------
+# --- 5. Ready-made figures for sound and data ------------------------------------------
 print ""
 print "--- ready-made ---"
 var tone (* (sine sr 440 0.5) (exp (* -3 (/ (range 4000) sr))))
@@ -72,14 +84,14 @@ save-png (waveform tone sr) "/tmp/musil_ref_wave.png"
 save-png sg "/tmp/musil_ref_spec.png"
 print "wrote waveform and spectrogram:" (exists? "/tmp/musil_ref_wave.png") (exists? "/tmp/musil_ref_spec.png")
 
-# --- 5. Errors -------------------------------------------------------------------------
+# --- 6. Errors -------------------------------------------------------------------------
 print ""
 print "--- errors ---"
 print "empty figure    :" (try (save-png (figure "e") "/tmp/x.png") catch e e)
 print "length mismatch :" (try (save-png (add-line (figure "e") (vec 1 2) (vec 1) "") "/tmp/x.png") catch e e)
 print "unknown option  :" (try (save-png (set-option (add-line (figure "e") nil (vec 1) "") "nope" 1) "/tmp/x.png") catch e e)
 
-each (list "lines" "small" "bars" "image" "surface" "wave" "spec") (function (n) (remove (concat "/tmp/musil_ref_" n ".png")))
+each (list "lines" "small" "bars" "image" "surface" "wave" "spec" "grid") (function (n) (remove (concat "/tmp/musil_ref_" n ".png")))
 print ""
 print "================================================================"
 print "  end of plot reference"

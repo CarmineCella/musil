@@ -1,12 +1,11 @@
-# cross synthesis: one sound shaped by another, frame by frame, in two ways
+# cross synthesis: one sound shaped by another, with the phase vocoder's three modes
 # Usage: musil cross_synth.mu [modulator.wav carrier.wav]   (defaults to the bundled data/ files)
 #
-# The modulator (a voice) lends its spectral shape; the carrier (an orchestra) lends its
-# fine structure and phases. Two methods:
-#   mean:     magnitudes = sqrt(voice * carrier), the classic geometric mean
-#   envelope: the carrier flattened by its own spectral envelope, then shaped by the
-#             voice's envelope (cepstral, `order` coefficients): the "voice is the
-#             orchestra" effect, robust to the carrier's own formants
+#   mode 1  multiplicative: magnitudes = sqrt(voice * orchestra), phases blended by the amount
+#   mode 2  spectral flattener: the orchestra flattened by its own envelope and shaped by the
+#           voice's ("voice is the orchestra"); needs the envelope order
+#   mode 3  morphing: magnitudes interpolated, phases from one sound below 0.5 and the other above
+# The amount may ramp: (list mode 0 1 other) goes from none to full over the file.
 load "system.mu"
 load "signals.mu"
 
@@ -14,34 +13,19 @@ var a (read-wav (if (> (length args) 0) (getidx args 0) "data/Vox.wav"))
 var b (read-wav (if (> (length args) 1) (getidx args 1) "data/Beethoven_Symph7.wav"))
 var sr (head a)
 var voice (head (getidx a 1))
-var carrier (head (getidx b 1))
-var n (next-pow2 (/ sr 20))          # ~50 ms: short enough to follow the voice's articulation (2048 at 44.1 kHz)
-var hop (/ n 8)
-var order 80 #(floor (/ sr 300))         # cepstral order ~ sr / (2 f0): follows the formants, not the harmonics (147 at 44.1 kHz)
-var gate 0.0                        # voice bins below 1% of the frame's peak are silenced (noise floor)
-var fa (stft voice n hop)
-var fb (stft carrier n hop)
-var frames (min (length fa) (length fb))
-print "cross-synthesising" frames "frames of" n "samples, hop" hop ", cepstral order" order
+var orchestra (head (getidx b 1))
+var order 80 #(floor (/ sr 100))
+print "voice" (length voice) "samples, orchestra" (length orchestra) "samples at" sr "Hz"
 
-var pairs (zip (take fa frames) (take fb frames))
-function gated (mags) (* mags (> mags (* gate (max mags))))
-
-var mean-frames (map pairs (function (p) {
-    var ma (gated (magnitudes (head p)))
-    var pb (car->pol (last p))
-    return (pol->car (list (sqrt (* ma (head pb))) (last pb)))
-}))
-var out-mean (istft mean-frames n hop)
-write-wav "/tmp/musil_cross_synth_mean.wav" sr (normalize-peak out-mean)
-
-var env-frames (map pairs (function (p) {
-    var ma (gated (magnitudes (head p)))
-    var pb (car->pol (last p))
-    return (pol->car (list (impose-envelope (head pb) ma order) (last pb)))
-}))
-var out-env (istft env-frames n hop)
-write-wav "/tmp/musil_cross_synth_envelope.wav" sr (normalize-peak out-env)
-
-print "mean method    :" (length out-mean) "samples, rms" (fixed (rms out-mean) 4) "-> /tmp/musil_cross_synth_mean.wav"
-print "envelope method:" (length out-env) "samples, rms" (fixed (rms out-env) 4) "-> /tmp/musil_cross_synth_envelope.wav"
+# the voice is the input, the orchestra the second signal (looped if shorter)
+var m1 (pvoc-cross voice orchestra 1 2 order)
+write-wav "/tmp/musil_cross_1_multiplicative.wav" sr (normalize-peak m1)
+var m2 (pvoc-cross orchestra voice 2 1 order)                 # here the orchestra is the input: it takes the voice's envelope
+write-wav "/tmp/musil_cross_2_flattener.wav" sr (normalize-peak m2)
+var m3 (pvoc orchestra (list (list "cross" (list 3 0 1 voice))))   # a morph from the orchestra to the voice over the file
+write-wav "/tmp/musil_cross_3_morph.wav" sr (normalize-peak m3)
+# denoising the voice first removes its noise floor from the product
+var m1d (pvoc voice (list (list "threshold" 0.01) (list "cross" (list 1 1 orchestra))))
+write-wav "/tmp/musil_cross_1_denoised.wav" sr (normalize-peak m1d)
+print "mode 1:" (fixed (rms m1) 4) " mode 2:" (fixed (rms m2) 4) " mode 3:" (fixed (rms m3) 4) " mode 1 denoised:" (fixed (rms m1d) 4)
+print "written to /tmp/musil_cross_*.wav"

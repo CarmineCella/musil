@@ -378,22 +378,27 @@ copy). Strings and numbers behave as values.
 \textit{Musil} the application is the interpreter with a window around it, for people
 who don't use a terminal and for everyone when there is something to see or hear.
 
+Tab moves the focus between its panels (the focused one has a blue frame).
 \begin{itemize}[nosep]
-  \item \textbf{Console} (left): everything printed, and a line to type Musil into.
-        Enter runs it; Up and Down recall history; Esc or Ctrl-C stops a running
-        program.
+  \item \textbf{Console} (left): everything printed, wrapped, and a line to type Musil
+        into. Enter runs it, or continues it while braces or parentheses are open;
+        Up and Down recall history; Right arrow completes a name; Esc or Ctrl-C stops
+        a running program; Ctrl-L clears; Ctrl-R runs the last file again;
+        Ctrl-+ / Ctrl-- change the text size.
   \item \textbf{Files} (top right): drop \texttt{.mu} files on the window to run them.
         They stay in the list, are watched, and run again each time you save them, so
-        the loop is: edit in any editor, save, look. Click a file to run it again.
-  \item \textbf{Variables} (bottom right): your globals with a preview of their values,
-        and your functions below. Click one to print it.
-  \item \textbf{Plot} (top left): \musil{(show fig)} from the plot library opens the
-        figure here. The wheel zooms around the cursor, dragging pans, \texttt{r} resets,
-        the coordinates under the cursor and the nearest data point are shown, \texttt{s}
-        or the button saves a PNG; drag to orbit a surface; \texttt{x} or Esc closes it.
-  \item \textbf{Sound}: \musil{(play signal sr)} plays a vector, or
-        \musil{(list left right)}; \musil{(stop-audio)} stops it.
-  \item \textbf{Reference} (top right corner): opens this manual.
+        the loop is: edit in any editor, save, look. Up/Down select, Enter runs again.
+  \item \textbf{Variables} (middle right): your globals with a preview of their values,
+        a coloured dot per kind, and your functions below. Up/Down select, Enter prints.
+  \item \textbf{Help} (bottom right): type a name or a word to search the documentation
+        of every function; Enter prints the first match. \musil{(manual)} opens this PDF.
+  \item \textbf{Plots}: \musil{(show fig)} turns the window into the figure, as the
+        command line's window does; Esc returns to the console. The figures of a session
+        stay in a gallery: \texttt{,} and \texttt{.} page through them. In a figure,
+        \texttt{+}/\texttt{-} zoom, W A S D pan, arrows orbit a surface, \texttt{0} or
+        \texttt{r} reset, dragging pans or orbits, \texttt{e} exports a PNG, Esc or
+        \texttt{q} closes; the coordinates under the cursor and the nearest data point
+        are shown.
 \end{itemize}
 
 The interpreter runs on its own thread; one program at a time, and the window stays
@@ -513,27 +518,32 @@ load "signals.mu"
 var x (sine 44100 440 1)
 var frames (stft x 2048 512)
 var y (istft frames 2048 512)               # exact reconstruction
-var slow (pvoc-stretch x 2048 512 2)         # twice as long, same pitch
-var up (pvoc-pitch-formant x 2048 512 1.5 147)   # a fifth up, formants kept
+var slow (pvoc-stretch x 2)                  # twice as long, same pitch
+var up (pvoc-pitch-formant x 1.5 400)        # a fifth up, formants kept
+var any (pvoc x (list (list "stretch" (list 1 3)) (list "pitch" 0.75) (list "envelope" 400)))
 var lp (lowpass x 44100 500 0.707)
 print (spectral-centroid (magnitude-spectrum x) (spectrum-freqs 65536 44100))
 \end{lstlisting}
 
-Everything the phase vocoder of earlier Musil versions did is available as a
-composition: time stretching and pitch shifting with peak-locked phases
-(\musil{pvoc-stretch}, \musil{pvoc-pitch}), formant preservation through the cepstral
-envelope (\musil{pvoc-pitch-formant}, \musil{impose-envelope}), cross synthesis
-(\texttt{examples/cross\_synth.mu}), morphing (\musil{spectral-morph}), denoising
-(\musil{gate-spectrum}), robotisation and whisperisation.
+The phase vocoder is one engine, \musil{pvoc}, in C++ (a frame is sixty vector
+operations on 4096 bins, ten thousand times a minute): a fixed synthesis hop with the
+analysis hop derived from the stretch, zero-phase windowing, phases locked to the
+nearest spectral peak, pitch shift and formant move in the spectrum, envelope
+preservation through the cepstral envelope, denoising, three cross-synthesis modes and
+two phase effects, every parameter able to ramp over the file. \musil{pvoc-stretch},
+\musil{pvoc-pitch}, \musil{pvoc-pitch-formant}, \musil{pvoc-formants},
+\musil{pvoc-cross}, \musil{denoise}, \musil{robotize} and \musil{whisperize} are
+one-line wrappers around it.
 
 \input{generated/signals.tex}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{plot}
 
-A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and the host
-renders it: \musil{show} opens a window (the command line) or a panel (the Listener);
-\musil{save-png} writes a file. Layers are lines, points, bars, an image (a matrix as
+A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and
+\musil{show} displays it: the command line opens its window and waits until Esc, plot
+after plot; the Listener turns its window into the figure and keeps a gallery.
+\musil{save-png} writes a file. \musil{subplots} puts several figures in one grid. Layers are lines, points, bars, an image (a matrix as
 a heat map) or a surface (a matrix in 3D). The one-call helpers build and show in one
 go; the ready-made figures know about signals and data.
 

@@ -49,6 +49,18 @@ remove out
 save-png f out 300 200
 check (exists? out) "save-png: custom size"
 
+# --- subplots ---
+var g (subplots "grid" (list (add-line (figure "a") nil (vec 1 2) "") (add-bars (figure "b") nil (vec 3 4) "")) 1 2)
+check (== (length (fig-layers g)) 2) "subplots: one layer per figure"
+check (equal? (head (head (fig-layers g))) "subplot") "subplots: layer kind"
+check (equal? (fig-options g) (list (list "rows" 1) (list "cols" 2))) "subplots: rows and cols"
+check (equal? (fig-options (subplots "auto" (list (figure "a")) 0 0)) (list)) "subplots: automatic layout has no options"
+add-subplot g (add-image (figure "c") (list (vec 1 2) (vec 3 4)))
+check (== (length (fig-layers g)) 3) "add-subplot"
+check (png-ok? g) "save-png: a grid of subplots"
+check (png-ok? (subplots "with a surface" (list (waveform (sine 8000 100 0.02) 8000) (add-surface (figure "s") (list (vec 1 2 3) (vec 2 3 4) (vec 3 4 5)))) 0 0)) "save-png: a grid with a 3D cell"
+check (contains? (error-of (function () (save-png (add-line g nil (vec 1) "") out))) "only subplots") "subplots: cannot mix with plain layers"
+
 # --- errors ---
 check (contains? (error-of (function () (save-png (list "bad" 1 2) out))) "layers must be a list") "save-png: malformed figure"
 check (contains? (error-of (function () (save-png (figure "e") out))) "no layers") "save-png: empty figure"

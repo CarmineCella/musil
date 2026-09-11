@@ -1,5 +1,5 @@
 # uninstall.cmake — remove what `cmake --install` put in place, without conditions:
-#   <prefix>/bin/musil, <prefix>/bin/musil-listener, <prefix>/include/musil/, ~/.musil/
+#   <prefix>/bin/musil, musil-listener, <prefix>/include/musil/, ~/.musil/
 # and, when a manifest of the last install exists, every file it lists (covers an install
 # made with --prefix somewhere else).
 set(n 0)

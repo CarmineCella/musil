@@ -117,10 +117,14 @@ print "--- phase vocoder ---"
 var tone (osc sr (+ (zeros 4000) 220) (gen 512 (vec 1 0.5 0.3)))
 print "local-maxima     :" (local-maxima (vec 0 1 0 2 3 2 0)) "  gather:" (gather (vec 10 20 30) (vec 2 0 -1))
 print "princarg 7       :" (fixed (princarg 7) 4)
-var st (pvoc-stretch tone 512 128 2)
+print "pvoc x opts      : one pass for everything; opts are (list key value), ramps as (list start end)"
+var st (pvoc-stretch tone 2)
 print "pvoc-stretch x2  :" (length st) "samples from" (length tone) "; f0" (fixed (acf-f0 (slice st 3000 1024) sr) 1) "Hz, same as the original" (fixed (acf-f0 (slice tone 1000 1024) sr) 1)
-print "pvoc-pitch x1.5  :" (length (pvoc-pitch tone 512 128 1.5)) "samples; f0" (fixed (acf-f0 (slice (pvoc-pitch tone 512 128 1.5) 1000 1024) sr) 1) "Hz"
-print "robotize, whisperize: phases set to zero / to noise; lengths" (length (robotize tone 512 128)) (length (whisperize tone 512 128))
+print "pvoc-pitch x1.5  :" (length (pvoc-pitch tone 1.5)) "samples; f0" (fixed (acf-f0 (slice (pvoc-pitch tone 1.5) 1000 1024) sr) 1) "Hz"
+print "pvoc-pitch-formant, pvoc-formants: with the cepstral envelope (order ~ sr/100)"
+print "ramped           :" (length (pvoc tone (list (list "stretch" (list 1 3)) (list "pitch" (list 1 2))))) "samples, stretch 1->3 and pitch 1->2 at once"
+print "pvoc-cross       : modes 1 (multiplicative), 2 (flattener), 3 (morph); denoise, robotize, whisperize"
+print "robotize, whisperize, denoise: lengths" (length (robotize tone)) (length (whisperize tone)) (length (denoise tone 0.05))
 
 # --- 7. Resampling and channels --------------------------------------------------
 print ""

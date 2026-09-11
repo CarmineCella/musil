@@ -72,9 +72,13 @@ delay 1.5        : (0 0 1.5 2.5)
 --- phase vocoder ---
 local-maxima     : (1 4)   gather: (30 10 30)
 princarg 7       : 0.7168
-pvoc-stretch x2  : 7424 samples from 4000 ; f0 222.2 Hz, same as the original 222.2
-pvoc-pitch x1.5  : 4000 samples; f0 333.3 Hz
-robotize, whisperize: phases set to zero / to noise; lengths 3968 3968
+pvoc x opts      : one pass for everything; opts are (list key value), ramps as (list start end)
+pvoc-stretch x2  : 8192 samples from 4000 ; f0 222.2 Hz, same as the original 222.2
+pvoc-pitch x1.5  : 4096 samples; f0 333.3 Hz
+pvoc-pitch-formant, pvoc-formants: with the cepstral envelope (order ~ sr/100)
+ramped           : 6144 samples, stretch 1->3 and pitch 1->2 at once
+pvoc-cross       : modes 1 (multiplicative), 2 (flattener), 3 (morph); denoise, robotize, whisperize
+robotize, whisperize, denoise: lengths 4096 4032 4096
 
 --- resampling and channels ---
 resample x2      : 320 samples

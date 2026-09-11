@@ -9,7 +9,8 @@
 //
 // Only what needs an element loop is here: the FFT, the table oscillator,
 // the recursive (IIR) filter, fractional delay, windowed-sinc resampling,
-// autocorrelation, channel (de)interleaving, peak picking and gather. Windows, wavetables,
+// autocorrelation, channel (de)interleaving, peak picking, gather, the in-place
+// overlap-add, and the comb and allpass delay lines. Windows, wavetables,
 // polar conversion, convolution, spectral features, filter design, comb and
 // allpass sections, STFT and overlap-add are compositions of vector
 // operations and live in signals.mu.
@@ -181,12 +182,176 @@ inline vptr sig_gather(vlist& a, Interp& i) {
     return v_arr(std::move(out));
 }
 
+// (add-at! dst pos src) => dst, with src added in place starting at pos; dst must be long enough.
+// The overlap-add of an STFT is O(total) with this and O(frames x total) with copies.
+inline vptr sig_add_at_inplace(vlist& a, Interp& i) {
+    varr& dst = a[0]->t == Value::NUM ? a[0]->num : (i.num(a[0]), a[0]->num);
+    long pos = i.index(a[1]); const varr& src = i.num(a[2]);
+    if (pos < 0 || (size_t)pos + src.size() > dst.size()) i.bad("does not fit: " + std::to_string(src.size()) + " samples at " + std::to_string(pos) + " into " + std::to_string(dst.size()));
+    for (size_t k = 0; k < src.size(); k++) dst[pos + k] += src[k];
+    return a[0];
+}
+// (comb x d g) => feedback comb y[n] = x[n] + g y[n-d]; (allpass x d g) => Schroeder allpass
+// y[n] = -g x[n] + x[n-d] + g y[n-d]. Both are a delay line, not a dense IIR: O(n) whatever d is.
+inline vptr sig_comb(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); long d = i.index(a[1]); double g = i.scalar(a[2]);
+    if (d < 1) i.bad("delay must be >= 1");
+    varr y(0.0, x.size());
+    for (size_t n = 0; n < x.size(); n++) y[n] = x[n] + (n >= (size_t)d ? g * y[n - d] : 0.0);
+    return v_arr(std::move(y));
+}
+inline vptr sig_allpass(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); long d = i.index(a[1]); double g = i.scalar(a[2]);
+    if (d < 1) i.bad("delay must be >= 1");
+    varr y(0.0, x.size());
+    for (size_t n = 0; n < x.size(); n++) y[n] = -g * x[n] + (n >= (size_t)d ? x[n - d] + g * y[n - d] : 0.0);
+    return v_arr(std::move(y));
+}
+
+// --- the phase vocoder engine ---------------------------------------------------------
+// (pvoc x opts) after sparkle: fixed synthesis hop I = window/overlap, analysis hop D = I/stretch
+// (so the synthesis overlap never thins out), zero-phase windowing in a zero-padded frame,
+// peak-locked phases (Laroche-Dolson), pitch shift and formant move by spectral resampling,
+// formant preservation through the cepstral (true) envelope, denoising, three cross-synthesis
+// modes and two phase effects. Parameters may ramp: a value given as (list start end).
+// It is C++ because a frame is sixty vector operations on 4096 bins, ten thousand times a
+// minute: the interpreter's per-operation cost dominated (25x slower than this loop).
+struct pvoc_opts { double stretch0 = 1, stretch1 = 1, pitch0 = 1, pitch1 = 1, form0 = 1, form1 = 1, thr0 = 0, thr1 = 0, xa0 = 0, xa1 = 0;
+                   int window = 2048, overlap = 8, pad = 1, env = 0, xmode = 0; std::string phase; const varr* other = nullptr; };
+inline void pvoc_ramp(Interp& i, const vptr& v, double& a, double& b) {
+    if (v->t == Value::LIST) { if (v->l.size() != 2) i.bad("a ramp is (list start end)"); a = i.scalar(v->l[0]); b = i.scalar(v->l[1]); }
+    else a = b = i.scalar(v);
+}
+// cepstral smoothing of a full N-bin log spectrum: keep the first `order` cepstral coefficients
+// (one pass, two FFTs, as sparkle's cepstralEnvelope; the iterated "true envelope" of signals.mu is
+// better for analysis but twenty times the work, too much for ten thousand frames)
+inline void pvoc_lifter(std::vector<double>& logspec, int order, std::vector<double>& buf) {
+    size_t n = logspec.size();
+    buf.assign(2 * n, 0.0); for (size_t k = 0; k < n; k++) buf[2 * k] = logspec[k];
+    fft_inplace(buf.data(), n, 1);
+    for (size_t k = 0; k < n; k++) { bool keep = k <= (size_t)order || k >= n - (size_t)order; buf[2 * k] = keep ? buf[2 * k] / n : 0; buf[2 * k + 1] = 0; }
+    fft_inplace(buf.data(), n, -1);
+    for (size_t k = 0; k < n; k++) logspec[k] = buf[2 * k];
+}
+inline vptr sig_pvoc(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); vlist& opts = i.list(a[1]);
+    pvoc_opts o;
+    for (auto& e : opts) {
+        vlist& kv = i.list(e); if (kv.size() != 2 || kv[0]->t != Value::STR) i.bad("an option is (list \"key\" value)");
+        const std::string& k = kv[0]->s; const vptr& v = kv[1];
+        if (k == "stretch") pvoc_ramp(i, v, o.stretch0, o.stretch1);
+        else if (k == "pitch") pvoc_ramp(i, v, o.pitch0, o.pitch1);
+        else if (k == "formants") pvoc_ramp(i, v, o.form0, o.form1);
+        else if (k == "threshold") pvoc_ramp(i, v, o.thr0, o.thr1);
+        else if (k == "window") o.window = (int)i.scalar(v);
+        else if (k == "overlap") o.overlap = (int)i.scalar(v);
+        else if (k == "pad") o.pad = (int)i.scalar(v);
+        else if (k == "envelope") o.env = (int)i.scalar(v);
+        else if (k == "phase") o.phase = i.str(v);
+        else if (k == "cross") {
+            vlist& c = i.list(v); if (c.size() != 3 && c.size() != 4) i.bad("cross is (list mode amount other) or (list mode start end other)");
+            o.xmode = (int)i.scalar(c[0]); o.xa0 = i.scalar(c[1]); o.xa1 = c.size() == 4 ? i.scalar(c[2]) : o.xa0; o.other = &i.num(c.back());
+            if (o.xmode < 1 || o.xmode > 3) i.bad("cross mode is 1, 2 or 3");
+        } else i.bad("unknown option " + k);
+    }
+    if (o.window < 8 || o.overlap < 1 || o.pad < 0 || o.env < 0 || o.stretch0 <= 0 || o.stretch1 <= 0 || o.pitch0 <= 0 || o.pitch1 <= 0 || o.form0 <= 0 || o.form1 <= 0) i.bad("invalid parameters");
+    if (o.xmode == 2 && o.env == 0) i.bad("cross mode 2 needs an envelope order");
+    size_t tot = x.size(); if (tot == 0) return v_arr(varr());
+    size_t Wn = (size_t)o.window, N = next_pow2(Wn) << o.pad, N2 = N / 2;
+    size_t I = std::max<size_t>(1, Wn / (size_t)o.overlap);
+    double D0 = (double)I / o.stretch0, D1 = (double)I / o.stretch1;
+    size_t frames = (size_t)std::ceil((double)tot / ((D0 + D1) / 2)), offset = (N - Wn) / 2;
+    std::vector<double> w(Wn); double gain = 0;
+    for (size_t k = 0; k < Wn; k++) { w[k] = 0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * k / Wn); gain += w[k] * w[k]; }
+    gain /= I;
+    double peak = 0; for (double v : x) peak = std::max(peak, std::fabs(v));
+    double wsum = 0; for (double v : w) wsum += v;
+    double peak_mag = peak * wsum / 2;          // the magnitude a full-scale sine at the signal's peak would have: the threshold's unit
+    std::vector<double> out(I * frames + N, 0.0), buf(2 * N), buf2(2 * N), mags(N2), phase(N2), mags2(N2), phase2(N2), psi(N2, 0.0),
+                        oldan(N2, 0.0), oldsyn(N2, 0.0), inc(N2), env1, env2, tmp, newm(N2), newp(N2);
+    std::vector<size_t> peaks; peaks.reserve(N2); std::vector<size_t> owner(N2);
+    const double tau = 2 * 3.14159265358979323846;
+    auto analyse = [&](const varr& sig, double read, bool wrap, std::vector<double>& m, std::vector<double>& ph) {
+        std::fill(buf.begin(), buf.end(), 0.0);
+        long p = (long)std::floor(read); if (wrap && sig.size()) p %= (long)sig.size();
+        for (size_t k = 0; k < Wn; k++) { long idx = p + (long)k; double v = (idx >= 0 && (size_t)idx < sig.size()) ? sig[idx] : 0.0; buf[2 * ((offset + k + N2) % N)] = v * w[k]; }   // centred, then fftshift
+        fft_inplace(buf.data(), N, -1);
+        for (size_t k = 0; k < N2; k++) { double re = buf[2 * k], im = buf[2 * k + 1]; m[k] = std::sqrt(re * re + im * im); ph[k] = std::atan2(im, re); }
+    };
+    // smoothed log envelope (half spectrum in, half out), on the symmetric full spectrum
+    // The envelope must ride the harmonic peaks, not average peaks and valleys: the log magnitudes
+    // are first replaced by their peak-to-peak interpolation (a one-pass stand-in for the iterated
+    // "true envelope"), then smoothed once by the lifter.
+    auto log_envelope = [&](const std::vector<double>& half, std::vector<double>& env) {
+        double mx = 1e-12; for (double v : half) mx = std::max(mx, v);
+        double fl = 1e-4 * mx;
+        std::vector<double>& lg = env; lg.resize(N2); for (size_t k = 0; k < N2; k++) lg[k] = std::log(std::max(half[k], fl));
+        size_t last = 0; bool have = false;
+        for (size_t k = 1; k + 1 < N2; k++) if (lg[k] > lg[k - 1] && lg[k] > lg[k + 1]) {
+            if (!have) { for (size_t j = 0; j < k; j++) lg[j] = lg[k]; have = true; }
+            else for (size_t j = last + 1; j < k; j++) lg[j] = lg[last] + (lg[k] - lg[last]) * (double)(j - last) / (k - last);
+            last = k;
+        }
+        if (have) for (size_t j = last + 1; j < N2; j++) lg[j] = lg[last];
+        tmp.assign(N, 0.0); for (size_t k = 0; k < N2; k++) { tmp[k] = lg[k]; if (k) tmp[N - k] = lg[k]; } tmp[N2] = lg[N2 - 1];
+        pvoc_lifter(tmp, o.env, buf2); env.assign(tmp.begin(), tmp.begin() + N2);
+    };
+    auto princarg = [&](double v) { return v - tau * std::round(v / tau); };
+    double read = 0;
+    for (size_t f = 0; f < frames; f++) {
+        double t = frames > 1 ? (double)f / (frames - 1) : 0;
+        double D = D0 + (D1 - D0) * t, P = o.pitch0 + (o.pitch1 - o.pitch0) * t, K = o.form0 + (o.form1 - o.form0) * t;
+        double T = o.thr0 + (o.thr1 - o.thr0) * t, A = o.xa0 + (o.xa1 - o.xa0) * t;
+        analyse(x, read, false, mags, phase);
+        if (T > 0) for (size_t k = 0; k < N2; k++) if (mags[k] < T * peak_mag) mags[k] = 0;
+        if (o.xmode) {
+            analyse(*o.other, read, true, mags2, phase2);
+            if (o.xmode == 1) for (size_t k = 0; k < N2; k++) { mags[k] = std::sqrt(mags[k] * mags2[k]); phase[k] = (1 - A) * phase[k] + A * phase2[k]; }
+            else if (o.xmode == 2) { log_envelope(mags, env1); log_envelope(mags2, env2); for (size_t k = 0; k < N2; k++) mags[k] *= (1 - A) + A * std::exp(env2[k] - env1[k]); }
+            else for (size_t k = 0; k < N2; k++) { mags[k] += (mags2[k] - mags[k]) * A; if (A >= 0.5) phase[k] = phase2[k]; }
+        }
+        // phase sync
+        for (size_t k = 0; k < N2; k++) { double omega = tau * k * D / N; inc[k] = P * (omega + princarg(phase[k] - oldan[k] - omega)) / D; }
+        peaks.clear(); for (size_t k = 1; k + 1 < N2; k++) if (mags[k] > mags[k - 1] && mags[k] > mags[k + 1]) peaks.push_back(k);
+        if (peaks.empty()) peaks.push_back(0);
+        { size_t r = 0, next_start = peaks.size() > 1 ? (peaks[0] + peaks[1]) / 2 + 1 : N2;
+          for (size_t k = 0; k < N2; k++) { while (k >= next_start && r + 1 < peaks.size()) { r++; next_start = r + 1 < peaks.size() ? (peaks[r] + peaks[r + 1]) / 2 + 1 : N2; } owner[k] = peaks[r]; } }
+        for (size_t k = 0; k < N2; k++) { size_t pk = owner[k]; psi[k] = oldsyn[pk] + I * inc[pk] + (phase[k] - phase[pk]); }
+        oldan = phase; oldsyn = psi;
+        // formant preservation
+        if (o.env > 0 && (P != 1 || K != 1)) {
+            double r = K / P;
+            // the envelope of the spectrum moved by K/P is the moved envelope: one smoothing per frame,
+            // and the correction is the log difference between the two
+            log_envelope(mags, env1);
+            for (size_t k = 0; k < N2; k++) { double src = k / r; double e = src < N2 ? env1[(size_t)src] : env1[N2 - 1]; mags[k] *= std::exp(e - env1[k]); }
+        }
+        // pitch shift by spectral resampling
+        if (P != 1) {
+            for (size_t k = 0; k < N2; k++) { double src = k / P; bool keep = src < N2; size_t idx = keep ? (size_t)src : 0; newm[k] = keep ? mags[idx] : 0; newp[k] = keep ? psi[idx] : 0; }
+            mags.swap(newm); psi.swap(newp);
+        }
+        if (o.phase == "robot") std::fill(psi.begin(), psi.end(), 0.0);
+        else if (o.phase == "whisper") { std::uniform_real_distribution<double> d(0, tau); for (auto& p : psi) p = d(i.rng); }
+        // synthesis
+        std::fill(buf.begin(), buf.end(), 0.0);
+        for (size_t k = 0; k < N2; k++) { double re = mags[k] * std::cos(psi[k]), im = mags[k] * std::sin(psi[k]); buf[2 * k] = re; buf[2 * k + 1] = im; if (k) { buf[2 * (N - k)] = re; buf[2 * (N - k) + 1] = -im; } }
+        fft_inplace(buf.data(), N, 1);
+        for (size_t k = 0; k < Wn; k++) out[f * I + k] += buf[2 * ((offset + k + N2) % N)] / N * w[k];   // unshift, centre, window, overlap-add
+        read += D;
+    }
+    varr y(I * frames); for (size_t k = 0; k < y.size(); k++) y[k] = out[k] / gain;
+    return v_arr(std::move(y));
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
     i.def("resample", sig_resample, 2, 2); i.def("autocorr", sig_autocorr, 1, 1);
     i.def("interleave", sig_interleave, 1, 1); i.def("deinterleave", sig_deinterleave, 2, 2);
     i.def("local-maxima", sig_local_maxima, 1, 1); i.def("gather", sig_gather, 2, 2);
+    i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
+    i.def("pvoc", sig_pvoc, 2, 2);
 }
 
 } // namespace musil

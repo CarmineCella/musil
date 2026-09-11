@@ -2,7 +2,7 @@
 
 **Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
 
-It comes as a command-line interpreter (`musil`) and as **Musil**, the Listener: a window where you type Musil, drop files to run them (they re-run when you save), see your variables, and where plots appear and sound plays.
+It comes as a command-line interpreter (`musil`) and as **Musil**, the Listener: a window where you type Musil, drop files to run them (they re-run when you save), see your variables, search the documentation and look at your plots.
 
 The core of the language is made of a single [C++ header](src/core.h) and a more or less comprehensive overview of the language can be found [here](examples/reference.mu).
 
@@ -102,7 +102,7 @@ or the operating system and a `.mu` file for what is better written in Musil its
 - **scientific**: matrices, decompositions, regression, PCA, k-means, KNN;
 - **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
   descriptors, filters and reverb;
-- **plot**: figures of lines, points, bars, images and 3D surfaces, in a window or as PNG.
+- **plot**: figures of lines, points, bars, images and 3D surfaces, grids of subplots, shown in a window or saved as PNG.
 
 Every library has a test and a runnable reference (`examples/reference_<name>.mu`);
 `examples/` also holds short programs on sound and data, from pitch-class sets to

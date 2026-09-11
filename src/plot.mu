@@ -7,8 +7,10 @@
 # with add-line / add-scatter / add-bars / add-image / add-surface, set options with
 # set-option, then (show fig) or (save-png fig "file.png" [w h]). The one-call helpers
 # below (plot, scatter, bars, image, surface) build and show in one go.
-# show and save-png come from the host: the CLI opens a window (or none when the
-# environment variable MUSIL_NOSHOW is set), the Listener shows the figure in a panel.
+# show and save-png come from the host: the CLI opens a window and waits until Esc (or
+# skips it when the environment variable MUSIL_NOSHOW is set); the Listener shows the
+# figure in its window and keeps the figures of the session in a gallery. Keys in both:
+# + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports a PNG, Esc or q closes.
 load "signals.mu"
 
 # --- building figures ----------------------------------------------------------
@@ -48,6 +50,18 @@ function set-labels (fig xlabel ylabel) (set-option (set-option fig "xlabel" xla
 function set-xrange (fig lo hi) (set-option (set-option fig "xmin" lo) "xmax" hi)
 # (set-yrange fig lo hi) y-axis limits
 function set-yrange (fig lo hi) (set-option (set-option fig "ymin" lo) "ymax" hi)
+
+# --- subplots: one figure made of several -----------------------------------------------
+# (subplots title figs rows cols)   a grid of figures, drawn together; rows or cols may be 0 (auto)
+function subplots (title figs rows cols) {
+    var fig (figure title)
+    each figs (function (f) (add-layer fig (list "subplot" f)))
+    if (> rows 0) { set-option fig "rows" rows }
+    if (> cols 0) { set-option fig "cols" cols }
+    return fig
+}
+# (add-subplot fig sub)    add one more figure to a grid
+function add-subplot (fig sub) (add-layer fig (list "subplot" sub))
 
 # --- one-call helpers: build and show ------------------------------------------------
 # (plot y) or (plot-xy x y)      a line

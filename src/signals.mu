@@ -154,7 +154,7 @@ function istft (frames n hop) {
     var gain (/ (sum (* w w)) hop)
     var out (zeros (+ (* hop (- (length frames) 1)) n))
     for (var k 0) (< k (length frames)) (var k (+ k 1)) {
-        var out (add-at out (* k hop) (* (take (ifft (getidx frames k)) n) w))
+        add-at! out (* k hop) (* (take (ifft (getidx frames k)) n) w)
     }
     return (/ out gain)
 }
@@ -164,63 +164,57 @@ function stft-magnitudes (frames) (map frames (function (s) (take (magnitudes s)
 # --- phase vocoder --------------------------------------------------------------
 # (princarg x)             wrap a phase to (-pi, pi]
 function princarg (x) (- x (* tau (round (/ x tau))))
-# (pvoc-stretch x n hop factor)   time-stretch by factor (2 = twice as long) with the pitch kept:
-#                          analysis at hop, synthesis at hop*factor, phases advanced by each bin's
-#                          measured frequency and locked to the nearest spectral peak (Laroche-Dolson),
-#                          which keeps partials coherent instead of smearing them
-function pvoc-stretch (x n hop factor) {
-    var frames (stft x n hop)
-    if (== (length frames) 0) { return (vec) }
-    var hs (max 1 (round (* hop factor)))
-    var w (hann n)
-    var gain (/ (sum (* w w)) hs)
-    var omega (* tau (range n) (/ hop n))            # expected phase advance per analysis hop, per bin
-    var ratio (/ hs hop)
-    var out (zeros (+ (* hs (- (length frames) 1)) n))
-    var prev (zeros n)
-    var psi (zeros n)
-    for (var k 0) (< k (length frames)) (var k (+ k 1)) {
-        var polar (car->pol (getidx frames k))
-        var mags (head polar)
-        var phase (last polar)
-        if (== k 0) {
-            set psi phase
-        } {
-            var inc (+ omega (princarg (- phase prev omega)))       # true phase advance per hop, per bin
-            var peaks (local-maxima mags)
-            if (== (length peaks) 0) { set peaks (vec 0) }
-            # each bin belongs to the region of its nearest peak: regions start halfway between peaks
-            var starts (floor (/ (+ (take peaks (- (length peaks) 1)) (drop peaks 1)) 2))
-            var marks (zeros n)
-            each starts (function (b) (setidx marks (+ b 1) 1))
-            var owner (gather peaks (cumsum marks))               # the peak bin that owns each bin
-            var peak-psi (+ (gather psi owner) (* ratio (gather inc owner)))
-            set psi (+ peak-psi (- phase (gather phase owner)))    # bins follow their peak's rotation
-        }
-        set prev phase
-        set out (add-at out (* k hs) (* (take (ifft (pol->car (list mags psi))) n) w))
-    }
-    return (/ out gain)
+# (opt opts key default)   the value of key in a list of (list key value) options, or default
+function opt (opts key default) {
+    var found (filter opts (function (o) (equal? (head o) key)))
+    if (== (length found) 0) { return default }
+    return (last (head found))
 }
-# (pvoc-pitch x n hop ratio)   pitch-shift by ratio (2 = an octave up) at the same length:
-#                          a time-stretch by ratio followed by resampling back
-function pvoc-pitch (x n hop ratio) {
-    var y (resample (pvoc-stretch x n hop ratio) (/ 1 ratio))
-    if (>= (length y) (length x)) { return (take y (length x)) }
-    return (vec y (zeros (- (length x) (length y))))
+# (ramp v)                 a parameter given as a number or as (list start end) -> (list start end)
+function ramp (v) (if (equal? (type v) "list") v (list v v))
+# (fftshift v)             rotate a vector by half its length (zero-phase windowing)
+function fftshift (v) {
+    var h (floor (/ (length v) 2))
+    return (vec (drop v h) (take v h))
 }
-# (pvoc-pitch-formant x n hop ratio order)   pitch-shift keeping the formants: the shifted sound
-#                          gets, frame by frame, the spectral envelope of the original (cepstral,
-#                          `order` coefficients, about sr / (2 f0)), so a voice stays the same voice
-function pvoc-pitch-formant (x n hop ratio order) {
-    var shifted (stft (pvoc-pitch x n hop ratio) n hop)
-    var original (stft x n hop)
-    var frames (map (zip shifted original) (function (p) {
-        var ps (car->pol (head p))
-        return (pol->car (list (impose-envelope (head ps) (magnitudes (last p)) order) (last ps)))
-    }))
-    return (istft frames n hop)
-}
+# (pvoc x opts)            the phase vocoder (signals.h): analysis, phase-locked resynthesis and
+#                          every transformation in one pass, as sparkle did. opts is a list of
+#                          (list key value); a value given as (list start end) ramps over the file.
+#                            "stretch"   time-stretch ratio (2 = twice as long)              default 1
+#                            "pitch"     pitch-shift ratio (2 = an octave up)                  1
+#                            "formants"  formant-move ratio, needs "envelope"                  1
+#                            "envelope"  cepstral order for envelope preservation: about sr/100
+#                                        (80 at 8 kHz, 400 at 44.1 kHz); 0 = off                0
+#                            "window"    analysis window in samples                            2048
+#                            "overlap"   synthesis overlap factor: output hop = window/overlap  8
+#                            "pad"       zero-padding: fft size = next-pow2(window) * 2^pad     1
+#                            "threshold" denoise: bins below threshold x the level of a full-scale sine at the
+#                                        signal's peak are zeroed (0.01 - 0.1 removes a noise floor)  0
+#                            "cross"     (list mode amount other) or (list mode start end other):
+#                                        mode 1 multiplicative, 2 spectral flattener (needs "envelope"),
+#                                        3 morphing; amount 0..1; other is the second signal
+#                            "phase"     "robot" (zero phases) or "whisper" (random phases)
+#                          The output hop is fixed and the input hop is output-hop/stretch, so the
+#                          synthesis overlap never thins out however large the stretch. Ramps are
+#                          linear in the hop (as in sparkle): a stretch of (list 1 3) is 1.5x overall.
+# The specific uses, as wrappers around pvoc
+# (pvoc-stretch x factor)                time-stretch by factor with the pitch kept
+function pvoc-stretch (x factor) (pvoc x (list (list "stretch" factor)))
+# (pvoc-pitch x ratio)                   pitch-shift by ratio at the same length (formants move too)
+function pvoc-pitch (x ratio) (pvoc x (list (list "pitch" ratio)))
+# (pvoc-pitch-formant x ratio order)     pitch-shift keeping the formants (order about sr/100: 400 at 44.1 kHz)
+function pvoc-pitch-formant (x ratio order) (pvoc x (list (list "pitch" ratio) (list "envelope" order)))
+# (pvoc-formants x ratio order)          move the formants by ratio, the pitch kept
+function pvoc-formants (x ratio order) (pvoc x (list (list "formants" ratio) (list "envelope" order)))
+# (pvoc-cross x y mode amount order)     cross synthesis of x by y: mode 1 multiplicative,
+#                                        2 spectral flattener (y's envelope on x), 3 morphing
+function pvoc-cross (x y mode amount order) (pvoc x (list (list "cross" (list mode amount y)) (list "envelope" order)))
+# (robotize x)                           zero phases: a buzz at the frame rate
+function robotize (x) (pvoc x (list (list "phase" "robot") (list "overlap" 16)))
+# (whisperize x)                         random phases: the spectral envelope on noise
+function whisperize (x) (pvoc x (list (list "phase" "whisper") (list "window" 256) (list "overlap" 4)))
+# (denoise x threshold)                  magnitudes below threshold x the peak are zeroed (0.01 - 0.1)
+function denoise (x threshold) (pvoc x (list (list "threshold" threshold)))
 # (gate-spectrum mags threshold)   magnitudes below threshold times the frame's peak set to zero
 function gate-spectrum (mags threshold) (* mags (> mags (* threshold (max mags))))
 # (spectral-morph a b t n hop)   between two sounds of the same length: magnitudes interpolated
@@ -235,10 +229,6 @@ function spectral-morph (a b t n hop) {
     }))
     return (istft frames n hop)
 }
-# (robotize x n hop)       every frame with zero phase: a buzz at the frame rate
-function robotize (x n hop) (istft (map (stft x n hop) (function (s) (pol->car (list (magnitudes s) (zeros n))))) n hop)
-# (whisperize x n hop)     every frame with random phases: the spectral envelope on noise
-function whisperize (x n hop) (istft (map (stft x n hop) (function (s) (pol->car (list (magnitudes s) (* tau (rand n)))))) n hop)
 
 # --- spectral and temporal features (amps: positive-frequency magnitudes; freqs: their frequencies) ---
 # (spectral-moment amps freqs order centroid) weighted moment of the frequencies about a centroid
@@ -361,10 +351,6 @@ function reson (x sr freq tau) {
     return (iir input (vec (* radius (sin om))) (vec 1 (* -2 radius (cos om)) (* radius radius)))
 }
 var tau-const tau                          # tau the constant 2 pi, kept apart from the decay-time parameter
-# (comb x d g)             feedback comb: y[n] = x[n] + g y[n-d]
-function comb (x d g) (iir x (vec 1) (vec 1 (zeros (- d 1)) (- 0 g)))
-# (allpass x d g)          Schroeder allpass section: y[n] = -g x[n] + x[n-d] + g y[n-d]
-function allpass (x d g) (iir x (vec (- 0 g) (zeros (- d 1)) 1) (vec 1 (zeros (- d 1)) (- 0 g)))
 # (schroeder-reverb x sr rt60)   four parallel combs into two allpasses; rt60 is the decay time in
 #                          seconds (how long the tail takes to fall by 60 dB). The output is the input
 #                          plus rt60 seconds, so the tail is not cut off.
