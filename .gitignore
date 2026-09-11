@@ -1,6 +1,8 @@
 build/
 build-*
 dist
+docs/generated
+src/help.txt
 *.o
 *.a
 .DS_Store
