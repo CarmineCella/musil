@@ -102,6 +102,8 @@ or the operating system and a `.mu` file for what is better written in Musil its
 - **scientific**: matrices, decompositions, regression, PCA, k-means, KNN;
 - **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
   descriptors, filters and reverb;
+- **live**: real-time sound: an audio device, a sample-accurate clock, voices that play
+  buffers and files, scheduled ahead of time;
 - **plot**: figures of lines, points, bars, images and 3D surfaces, grids of subplots, shown in a window or saved as PNG.
 
 Every library has a test and a runnable reference (`examples/reference_<name>.mu`);

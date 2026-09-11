@@ -87,7 +87,7 @@ print "spectral-decrease    :" (fixed (spectral-decrease a) 3)
 print "spectral-flatness    :" (fixed (spectral-flatness (ones 8)) 3) (fixed (spectral-flatness (vec 1 0 0 0)) 3) "(white, tonal)"
 print "spectral-rolloff 0.85:" (spectral-rolloff a f 0.85)
 print "hfc                  :" (fixed (hfc a) 4)
-print "energy, zcr          :" (fixed (energy s) 4) (fixed (zcr s) 3)
+print "rms, zcr             :" (fixed (rms s) 4) (fixed (zcr s) 3)
 print "acf-f0               :" (fixed (acf-f0 sig sr) 1) "Hz;" (acf-f0 (noise 800) sr) "for noise"
 print "autocorr             :" (fixed (take (autocorr (sine sr 1000 0.004)) 5) 3)
 
@@ -138,6 +138,7 @@ print "deinterleave     :" (deinterleave (vec 1 3 2 4) 2)
 # --- 8. Envelopes ----------------------------------------------------------------
 print ""
 print "--- envelopes ---"
+print "bpf 0 ((4 1) (4 0)):" (bpf 0 (list (list 4 1) (list 4 0))) "(an attack and a decay; each end starts the next segment)"
 print "envelope-follow  :" (envelope-follow (vec 1 1 -1 -1 0 0) 2)
 print "envelope-from-values:" (envelope-from-values (vec 0 1 0) 2)
 

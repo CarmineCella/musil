@@ -33,7 +33,13 @@ function oscbank (sr amps freqs table) {
     return (reduce (zip amps freqs) (function (acc p) (+ acc (* (head p) (osc sr (last p) table)))) 0)
 }
 # (mix layers)             overlay (list (list position signal) ...) into one signal
-function mix (layers) (reduce layers (function (acc p) (add-at acc (head p) (last p))) (vec))
+function mix (layers) {
+    if (== (length layers) 0) { return (vec) }
+    var total (max-of (map layers (function (p) (+ (head p) (length (last p))))))
+    var out (zeros (max 0 total))
+    each layers (function (p) (add-at! out (head p) (last p)))
+    return out
+}
 # (add-at dst pos src)     dst with src added starting at pos; dst grows if needed
 function add-at (dst pos src) {
     var need (+ pos (length src))
@@ -279,8 +285,6 @@ function spectral-rolloff (amps freqs fraction) {
 }
 # (hfc amps)                     high-frequency content
 function hfc (amps) (/ (sum (* amps amps (range (length amps)))) (max 1 (sum (range (length amps)))))
-# (energy x)                     rms of a frame; (zcr x) zero-crossing rate per sample
-function energy (x) (rms x)
 # (zcr x) zero-crossing rate per sample
 function zcr (x) (/ (sum (!= (sign (drop x 1)) (sign (take x (- (length x) 1))))) (length x))
 # (acf-f0 x sr)                  fundamental by autocorrelation; 0 when no clear peak
@@ -369,6 +373,21 @@ function schroeder-reverb (x sr rt60) {
 function resample-to (x sr-in sr-out) (resample x (/ sr-out sr-in))
 
 # --- envelopes ---------------------------------------------------------------
+# (bpf start segments)     break-point function: piecewise linear segments as one vector; segments is a
+#                          list of (list length end): (bpf 0 (list (list 4 1) (list 4 0))) rises then falls.
+#                          Each segment's end value is excluded (it starts the next one).
+function bpf (start segments) {
+    var out (vec)
+    var cur start
+    each segments (function (seg) {
+        var len (head seg)
+        var end (last seg)
+        if (< len 1) { error "bpf: segment length must be >= 1" }
+        set out (vec out (+ cur (* (range len) (/ (- end cur) len))))
+        set cur end
+    })
+    return out
+}
 # (envelope-follow x n)    rms over hops of n samples, one value per hop
 function envelope-follow (x n) {
     var out (list)

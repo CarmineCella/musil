@@ -8,7 +8,7 @@
 // Only what needs an element loop in C++ is here: products, transpose,
 // elimination (det, rank, inv, solve), the symmetric eigensolver, the running
 // median, k-means and KNN. Everything that composes vector operations
-// (statistics, covariance, PCA, regression, break-point functions, the
+// (statistics, covariance, PCA, regression, the
 // helper layers) is written in Musil in scientific.mu at the same speed.
 
 #pragma once

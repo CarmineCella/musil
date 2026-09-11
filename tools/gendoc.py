@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LIBS = [("core", ["src/core.h"]), ("std", ["src/std.h", "src/std.mu"]), ("system", ["src/system.h", "src/system.mu"]),
         ("scientific", ["src/scientific.h", "src/scientific.mu"]), ("signals", ["src/signals.h", "src/signals.mu"]),
-        ("plot", ["src/plot.h", "src/plot.mu"])]
+        ("live", ["src/live.h", "src/live.mu"]), ("plot", ["src/plot.h", "src/plot.mu"])]
 FORM = re.compile(r"^\(([^\s()]+)[^)]*\)")
 
 REG = re.compile(r'(?:i\.def\(|\ba\(|\{)\s*"([^"]+)"')          # names registered in a .h file: i.def("x"), a("x"), {"x", fn}

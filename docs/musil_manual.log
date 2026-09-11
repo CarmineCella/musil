@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.8.13)  11 SEP 2026 15:33
+This is pdfTeX, Version 3.141592653-2.6-1.40.26 (TeX Live 2024) (preloaded format=pdflatex 2024.8.13)  11 SEP 2026 15:47
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -618,7 +618,7 @@ Package hyperref Info: Link coloring OFF on input line 69.
 \@outlinefile=\write3
 \openout3 = `musil_manual.out'.
 
-<musil_logo.png, id=104, 1541.76pt x 1027.84pt>
+<musil_logo.png, id=108, 1541.76pt x 1027.84pt>
 File: musil_logo.png Graphic file (type png)
 <use musil_logo.png>
 Package pdftex.def Info: musil_logo.png  used on input line 74.
@@ -658,7 +658,7 @@ r/m/n/10.95 are runnable tours of the core and of each li-brary; \T1/cmtt/m/n/1
 
 [2{/usr/local/texlive/2024/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc
 }] [3] [4] [5] [6]
-Overfull \hbox (87.45815pt too wide) in paragraph at lines 419--431
+Overfull \hbox (87.45815pt too wide) in paragraph at lines 419--432
  [] 
  []
 
@@ -671,12 +671,12 @@ Underfull \hbox (badness 10000) in paragraph at lines 20--20
 [8] [9]) (./generated/std.tex [10] [11] [12] [13] [14]) (./generated/system.tex
 [15] [16]) (./generated/scientific.tex [17] [18] [19] [20] [21]) [22]
 (./generated/signals.tex [23] [24] [25] [26] [27]
-Underfull \hbox (badness 10000) in paragraph at lines 81--81
+Underfull \hbox (badness 10000) in paragraph at lines 80--80
 \T1/cmtt/m/n/10.95 (peak-eq x sr f0 q gain-db) (lowshelf x sr f0 q gain-db) (hi
 ghshelf x sr f0 q
  []
 
-[28]) (./generated/plot.tex [29] [30])
+[28]) (./generated/live.tex [29] [30]) (./generated/plot.tex [31] [32])
 (/usr/local/texlive/2024/texmf-dist/tex/latex/listings/lstlang1.sty
 File: lstlang1.sty 2024/02/21 1.10 listings language file
 )
@@ -685,34 +685,34 @@ File: lstlang1.sty 2024/02/21 1.10 listings language file
 )
 (/usr/local/texlive/2024/texmf-dist/tex/latex/listings/lstmisc.sty
 File: lstmisc.sty 2024/02/21 1.10 (Carsten Heinz)
-) [31]
-Overfull \hbox (45.59578pt too wide) in paragraph at lines 588--593
+) [33]
+Overfull \hbox (45.59578pt too wide) in paragraph at lines 622--627
 []\T1/cmr/m/n/10.95 Document a builtin with a com-ment above it in the form \T1
 /cmtt/m/n/10.95 // (name args) description\T1/cmr/m/n/10.95 ; \T1/cmtt/m/n/10.9
 5 tools/gendoc.py
  []
 
 
-Overfull \hbox (279.19817pt too wide) in paragraph at lines 600--612
+Overfull \hbox (279.19817pt too wide) in paragraph at lines 634--647
  [] 
  []
 
-[32] (./musil_manual.aux)
+[34] (./musil_manual.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-02-20>
  ***********
 Package rerunfilecheck Info: File `musil_manual.out' has not changed.
-(rerunfilecheck)             Checksum: 82963A3154DC1D298A6059024625AED6;2938.
+(rerunfilecheck)             Checksum: 4CE9CE225E11303F5DDFDB6C54D43B37;3016.
  ) 
 Here is how much of TeX's memory you used:
- 14490 strings out of 474116
- 222281 string characters out of 5743682
+ 14522 strings out of 474116
+ 222747 string characters out of 5743682
  2260187 words of memory out of 5000000
- 36452 multiletter control sequences out of 15000+600000
+ 36467 multiletter control sequences out of 15000+600000
  567995 words of font info for 59 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 79i,14n,93p,1201b,1988s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 79i,14n,93p,1201b,2130s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb>
 </usr/local/texlive/2024/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><
 /usr/local/texlive/2024/texmf-dist/fonts/type1/public/cm-super/sfbx1095.pfb></u
@@ -725,10 +725,10 @@ exlive/2024/texmf-dist/fonts/type1/public/cm-super/sfti1000.pfb></usr/local/tex
 live/2024/texmf-dist/fonts/type1/public/cm-super/sfti1095.pfb></usr/local/texli
 ve/2024/texmf-dist/fonts/type1/public/cm-super/sftt1000.pfb></usr/local/texlive
 /2024/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb>
-Output written on musil_manual.pdf (33 pages, 544317 bytes).
+Output written on musil_manual.pdf (35 pages, 551180 bytes).
 PDF statistics:
- 508 PDF objects out of 1000 (max. 8388607)
- 442 compressed objects within 5 object streams
- 186 named destinations out of 1000 (max. 500000)
- 206 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 535 PDF objects out of 1000 (max. 8388607)
+ 467 compressed objects within 5 object streams
+ 200 named destinations out of 1000 (max. 500000)
+ 214 words of extra memory for PDF output out of 10000 (max. 10000000)
 

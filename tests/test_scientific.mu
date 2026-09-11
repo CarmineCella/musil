@@ -160,12 +160,6 @@ check (near? (linreg-predict X b) y 1e-12) "linreg-predict"
 check (near? (linreg-residuals X y b) (zeros 4) 1e-12) "linreg-residuals"
 check (equal? (add-intercept (list (vec 5) (vec 6))) (list (vec 1 5) (vec 1 6))) "add-intercept"
 
-# --- break-point functions ---
-check (equal? (bpf 0 (list (list 4 1))) (vec 0 0.25 0.5 0.75)) "bpf: one segment, end excluded"
-check (equal? (bpf 0 (list (list 2 1) (list 2 0))) (vec 0 0.5 1 0.5)) "bpf: two segments"
-check (equal? (bpf 5 (list)) (vec)) "bpf: no segments"
-check (contains? (error-of (function () (bpf 0 (list (list 0 1))))) ">= 1") "bpf: zero-length segment"
-
 # --- display ---
 check (equal? (mat-round (list (vec 1.234 5.678)) 1) (list (vec 1.2 5.7))) "mat-round"
 check (equal? (mat-str A 1) "1.0  2.0\n3.0  4.0") "mat-str"

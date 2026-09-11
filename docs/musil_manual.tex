@@ -425,6 +425,7 @@ std & \musil{load "std.mu"} & vector constructors and statistics, sequences, str
 system & \musil{load "system.mu"} & processes, directories, CSV, WAV, UDP/OSC \\
 scientific & \musil{load "scientific.mu"} & matrices, decompositions, regression, PCA, k-means, KNN \\
 signals & \musil{load "signals.mu"} & generators, FFT, STFT, phase vocoder, features, filters, reverb \\
+live & \musil{load "live.mu"} & the audio device, a sample-accurate clock, voices playing buffers and files \\
 plot & \musil{load "plot.mu"} & figures of lines, points, bars, images and surfaces; windows and PNGs \\
 \bottomrule
 \end{tabular}
@@ -538,6 +539,39 @@ one-line wrappers around it.
 \input{generated/signals.tex}
 
 % ─────────────────────────────────────────────────────────────────────────────
+\subsection{live}
+
+Real-time sound. The interpreter never runs on the audio thread: it posts commands
+(play this buffer at this time, stop that voice, set the gain) into a lock-free queue,
+and the audio callback drains the queue, advances a sample clock and mixes the voices
+into an N-channel bus. A voice plays a buffer (mono, or a list of channels) at its own
+sample rate, with amplitude, pan, rate and loop, from a start time on the clock, so
+sounds asked for slightly ahead land exactly where asked however late the program is.
+The device is miniaudio, with no window needed; a silent ``null'' device (the option
+\musil{(list (list "device" "null"))}, or the environment variable
+\texttt{MUSIL\_NULL\_AUDIO}) runs the same callback from a timer, which is how the test
+suite exercises everything but the ears.
+
+\begin{lstlisting}
+load "live.mu"
+audio-init                                   # 44100 Hz, 256 samples, stereo, started
+var v (play-file "data/drums.wav")           # a voice
+wait-for v
+var lp (loop-buffer x sr)
+set-rate lp 0.5
+stop lp
+var t (audio-time)
+each (range 8) (function (k) (play-at (+ t (* k 0.25)) hit sr))   # sample-accurate, ahead of time
+audio-quit
+\end{lstlisting}
+
+This is the first slice of \texttt{live}; the streaming graph (synth functions
+compiled to nodes), the scheduler's patterns and the controls come on top of the same
+queue, clock and voices.
+
+\input{generated/live.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{plot}
 
 A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and
@@ -607,6 +641,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{stft, filters, reverb, cross\_synth, transients, additive, features} & signal processing on recordings \\
 \texttt{phase\_vocoder.mu} & time stretching, pitch shifting with and without formants, robot, whisper \\
 \texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
+\texttt{live\_play.mu}, \texttt{live\_probe.mu} & sounds through the device, scheduled on the clock; a device check \\
 \bottomrule
 \end{tabular}
 \end{center}

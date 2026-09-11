@@ -140,14 +140,7 @@ seed 1
 var split (train-test-split (shuffle training) 0.5)
 print "train-test-split:" (map split length) "(after shuffle)"
 
-# --- 10. Break-point functions ---------------------------------------------------
-print ""
-print "--- bpf ---"
-print "one segment     :" (bpf 0 (list (list 4 1))) "(4 samples from 0 towards 1, end excluded)"
-print "attack, decay   :" (bpf 0 (list (list 4 1) (list 4 0)))
-print "an envelope     :" (fixed (bpf 0 (list (list 3 1) (list 5 0.5) (list 4 0))) 2)
-
-# --- 11. Display ---------------------------------------------------------------
+# --- 10. Display ---------------------------------------------------------------
 print ""
 print "--- display ---"
 print "mat-str M 2:"

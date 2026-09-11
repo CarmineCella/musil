@@ -1,0 +1,35 @@
+================================================================
+  musil: library reference (live)
+================================================================
+
+--- device ---
+audio-devices    : 1 (a list of the playback devices' names)
+audio-open       : opened; 44100 Hz, block 256 , 2 channels, device null
+audio-start      : running 1
+audio-time       : 1 (the clock advances, in seconds)
+audio-report     : prints every field of audio-status (open, running, sr, block, channels, device, time, voices, load, peak)
+
+--- voices ---
+play             : voice 1 ; playing: 1
+play-with        : amp, pan, rate, loop, at: 2
+stereo           : 3 (a list of channels)
+loop-buffer, set-amp/pan/rate: voice 4
+stop, stop-all   : voices left 0
+wait-for         : waited for voice 1 to end
+
+--- time: sample-accurate scheduling on the clock ---
+play-at t+0.2    : voice 5 waits for its time
+wait-until       : now 1
+sequence         : 2 voices scheduled at once
+
+--- files ---
+play-file        : voice 8 (any sample rate: the voice resamples)
+play-file-with   : voice 9
+
+--- closing ---
+audio-stop       : running 0
+audio-quit       : open 0
+
+================================================================
+  end of live reference
+================================================================

@@ -228,23 +228,6 @@ function pca-explained (P) {
     return (/ e (sum e))
 }
 
-# --- break-point functions ------------------------------------------------------
-# (bpf start segments)     piecewise linear function as one vector; segments is a list of
-#                          (list length end): (bpf 0 (list (list 4 1) (list 4 0))) rises then falls.
-#                          Each segment's end value is excluded (it starts the next one).
-function bpf (start segments) {
-    var out (vec)
-    var cur start
-    each segments (function (seg) {
-        var len (head seg)
-        var end (last seg)
-        if (< len 1) { error "bpf: segment length must be >= 1" }
-        set out (vec out (+ cur (* (range len) (/ (- end cur) len))))
-        set cur end
-    })
-    return out
-}
-
 # --- k-means helpers (kmeans returns (list labels centroids)) -----------------
 # (kmeans-labels result) (kmeans-centroids result) the two parts of a kmeans result
 function kmeans-labels (result) (head result)

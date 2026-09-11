@@ -21,7 +21,7 @@ var flux (vec (map (zip (drop frames 1) frames) (function (p) (spectral-flux (he
 # temporal descriptors per frame
 var segments (map (vec->list (range (length frames))) (function (k) (slice x (* k hop) n)))
 var f0 (median-filter (vec (map segments (function (s) (acf-f0 s sr)))) 3)
-var energy-track (vec (map segments energy))
+var energy-track (vec (map segments rms))
 var zc (vec (map segments zcr))
 
 print ""

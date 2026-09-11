@@ -9,6 +9,7 @@
 #include "system.h"
 #include "scientific.h"
 #include "signals.h"
+#include "live.h"
 #ifdef MUSIL_HAS_RAYLIB
 #include "plot.h"
 #endif
@@ -20,6 +21,7 @@ inline void make_env(Interp& i) {
     add_system(i);
     add_scientific(i);
     add_signals(i);
+    add_live(i);
 #ifdef MUSIL_HAS_RAYLIB
     add_plot(i);
 #endif

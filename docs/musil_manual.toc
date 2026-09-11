@@ -20,6 +20,7 @@
 \contentsline {subsection}{\numberline {4.3}system}{15}{subsection.4.3}%
 \contentsline {subsection}{\numberline {4.4}scientific}{17}{subsection.4.4}%
 \contentsline {subsection}{\numberline {4.5}signals}{22}{subsection.4.5}%
-\contentsline {subsection}{\numberline {4.6}plot}{29}{subsection.4.6}%
-\contentsline {section}{\numberline {5}Extending Musil from C++}{31}{section.5}%
-\contentsline {section}{\numberline {6}Examples}{32}{section.6}%
+\contentsline {subsection}{\numberline {4.6}live}{29}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}plot}{31}{subsection.4.7}%
+\contentsline {section}{\numberline {5}Extending Musil from C++}{33}{section.5}%
+\contentsline {section}{\numberline {6}Examples}{34}{section.6}%

@@ -117,7 +117,6 @@ check (near? (spectral-flatness (ones 8)) 1 1e-9) "spectral-flatness: white"
 check (< (spectral-flatness (vec 1 0 0 0)) 0.01) "spectral-flatness: tonal"
 check (== (spectral-rolloff (vec 1 1 1 1) (vec 0 1 2 3) 0.5) 1) "spectral-rolloff"
 check (near? (hfc (vec 0 0 1)) (/ 2 3) 1e-12) "hfc: sum of a^2 i over sum of i"
-check (near? (energy s440) 0.7071 1e-3) "energy"
 check (near? (zcr s440) 0.11 1e-3) "zcr: 440 Hz at 8 kHz crosses ~0.11 per sample"
 check (== (zcr (ones 10)) 0) "zcr: no crossings"
 check (near? (acf-f0 sig sr) 200 1e-9) "acf-f0: 200 Hz"
@@ -227,6 +226,10 @@ check (contains? (error-of (function () (interleave (list (vec 1) (vec 1 2))))) 
 check (contains? (error-of (function () (deinterleave (vec 1 2 3) 2))) "multiple") "deinterleave: length"
 
 # --- envelopes ---
+check (equal? (bpf 0 (list (list 4 1))) (vec 0 0.25 0.5 0.75)) "bpf: one segment, end excluded"
+check (equal? (bpf 0 (list (list 2 1) (list 2 0))) (vec 0 0.5 1 0.5)) "bpf: two segments"
+check (equal? (bpf 5 (list)) (vec)) "bpf: no segments"
+check (contains? (error-of (function () (bpf 0 (list (list 0 1))))) ">= 1") "bpf: zero-length segment"
 check (equal? (envelope-follow (vec 1 1 -1 -1 0 0) 2) (vec 1 1 0)) "envelope-follow"
 check (equal? (envelope-from-values (vec 0 1 0) 2) (vec 0 0.5 1 0.5)) "envelope-from-values"
 
