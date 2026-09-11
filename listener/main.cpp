@@ -438,17 +438,17 @@ int main(int argc, char** argv) {
         }
         // files: the drop area
         DrawRectangleRec(files_r, DROP); DrawRectangleLinesEx(files_r, 1, focus == 1 ? FOCUS : LINE);
-        text("files  (drop .mu here; Enter runs)", files_r.x + 8, files_r.y + 6, DIM, FS - 2);
+        text("files  (drop .mu here)", files_r.x + 8, files_r.y + 6, DIM, FS - 2);
         for (size_t k = 0; k < files.size(); k++) {
             Rectangle row = { files_r.x + 2, files_r.y + 30 + k * line_h, files_r.width - 4, (float)line_h };
             if (row.y + line_h > files_r.y + files_r.height) break;
             if ((int)k == sel_file) DrawRectangleRec(row, focus == 1 ? SEL : DROP);
             text(fs::path(files[k].path).filename().string(), row.x + 6, row.y + 2, (int)k == sel_file ? ACCENT : INK, FS);
         }
-        if (files.empty()) text("(none yet: drop a .mu file anywhere on the window)", files_r.x + 8, files_r.y + 32, DIM, FS - 1);
+        if (files.empty()) text("<emtpy>", files_r.x + 8, files_r.y + 32, DIM, FS - 1);
         // variables, with a colour per kind
         DrawRectangleRec(vars_r, PANEL); DrawRectangleLinesEx(vars_r, 1, focus == 2 ? FOCUS : LINE);
-        text("variables  (Enter prints)", vars_r.x + 8, vars_r.y + 6, DIM, FS - 2);
+        text("variables", vars_r.x + 8, vars_r.y + 6, DIM, FS - 2);
         {   float lx = vars_r.x + vars_r.width - 8; const char* names[] = { "fn", "list", "str", "num" }; const char kinds[] = { 'f', 'l', 's', 'n' };
             for (int k = 0; k < 4; k++) { float w = width(names[k], FS - 4); lx -= w; text(names[k], lx, vars_r.y + 7, DIM, FS - 4); lx -= 10; DrawCircle((int)lx + 3, (int)vars_r.y + 12, 3.5f, kind_color(kinds[k])); lx -= 12; } }
         int var_rows = std::max(1, (int)((vars_r.height - 34) / line_h));
@@ -468,7 +468,7 @@ int main(int argc, char** argv) {
         EndScissorMode();
         // help: a search over help.txt
         DrawRectangleRec(help_r, PANEL); DrawRectangleLinesEx(help_r, 1, focus == 3 ? FOCUS : LINE);
-        text("help  (type to search, Enter prints)", help_r.x + 8, help_r.y + 6, DIM, FS - 2);
+        text("help  (type to search)", help_r.x + 8, help_r.y + 6, DIM, FS - 2);
         Rectangle q_r = { help_r.x + 6, help_r.y + 26, help_r.width - 12, (float)line_h + 4 };
         DrawRectangleRec(q_r, DROP); DrawRectangleLinesEx(q_r, 1, LINE);
         text(query + ((focus == 3 && ((int)(GetTime() * 2) & 1)) ? "_" : ""), q_r.x + 6, q_r.y + 3, INK, FS);
