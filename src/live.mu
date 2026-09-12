@@ -30,6 +30,8 @@ load "signals.mu"
 function audio-init () (audio-init-with 44100 256 2)
 # (audio-init-with sr block channels)   the same with your numbers. With the environment variable
 #                          MUSIL_NULL_AUDIO set (the test suite does), the silent null device is used.
+#                          A device left open by a stopped program is reused (or reopened if the
+#                          numbers differ), so running one live example after another just works.
 function audio-init-with (sr block channels) {
     if (equal? (type (getenv "MUSIL_NULL_AUDIO")) "nil") { audio-open sr block channels } { audio-open sr block channels (list (list "device" "null")) }
     audio-start

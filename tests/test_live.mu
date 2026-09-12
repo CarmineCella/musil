@@ -27,7 +27,8 @@ check (== (audio-channels) 2) "audio-channels"
 check (== (opt (audio-status) "block" 0) 256) "audio-status: block"
 check (equal? (opt (audio-status) "device" "") "null") "audio-status: the null device"
 check (== (audio-running?) 0) "not running until audio-start"
-check (contains? (error-of (function () (audio-open sr 256 2 null-opts))) "already open") "audio-open: twice is an error"
+audio-open sr 256 2 null-opts
+check (== (opt (audio-status) "open" 0) 1) "audio-open: twice reuses the open device"
 check (== (audio-time) 0) "audio-time: zero before start"
 audio-start
 check (== (audio-running?) 1) "audio-start"

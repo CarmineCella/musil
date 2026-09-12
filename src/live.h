@@ -388,12 +388,18 @@ inline void sched_reset();
 // --- builtins ---
 inline audio_engine& need_open(Interp& i) { if (!engine().open) i.bad("no audio device open: (audio-open sr block channels) first"); return engine(); }
 
-// (audio-open sr block channels [opts]) open the audio device; opts: (list "device" "null") for the
+inline vptr live_close(vlist&, Interp&);
+// (audio-open sr block channels [opts]) open the audio device; if one is already open with the same
+//   sample rate and channels it is reused (voices cleared), otherwise it is closed and reopened. opts: (list "device" "null") for the
 //   silent backend (tests, headless machines). Fails if a device is already open.
 inline vptr live_open(vlist& a, Interp& i) {
     audio_engine& e = engine();
-    if (e.open) i.bad("a device is already open: (audio-close) first");
-    e.sr = i.scalar(a[0]); e.block = (int)i.scalar(a[1]); e.channels = (int)i.scalar(a[2]);
+    double want_sr = i.scalar(a[0]); int want_block = (int)i.scalar(a[1]), want_ch = (int)i.scalar(a[2]);
+    if (e.open) {                                          // already open (a stopped program left it so): reuse it if it matches, else reopen
+        if (e.sr == want_sr && e.channels == want_ch) { for (auto& v : e.voices) v.active = false; return v_nil(); }
+        vlist none; live_close(none, i);
+    }
+    e.sr = want_sr; e.block = want_block; e.channels = want_ch;
     if (e.sr < 8000 || e.block < 16 || e.block > 8192 || e.channels < 1 || e.channels > 64) i.bad("invalid parameters (sr >= 8000, 16 <= block <= 8192, 1..64 channels)");
     bool want_null = false;
     if (a.size() > 3) for (auto& o : i.list(a[3])) { vlist& kv = i.list(o); if (kv.size() == 2 && str_of(kv[0]) == "device" && str_of(kv[1]) == "null") want_null = true; }

@@ -13,6 +13,8 @@
 #include <FL/Fl_Value_Slider.H>
 #include <FL/Fl_Check_Button.H>
 #include <FL/Fl_Scroll.H>
+#include <atomic>
+#include <thread>
 
 namespace musil {
 
@@ -22,7 +24,6 @@ struct controls_window : Fl_Double_Window {
     controls_window() : Fl_Double_Window(460, 100, "musil controls") {
         scroll = new Fl_Scroll(0, 0, 460, 100); scroll->type(Fl_Scroll::VERTICAL); end();
         rebuild(); Fl::add_timeout(0.1, tick, this);
-        callback([](Fl_Widget* w, void*) { w->hide(); });
     }
     ~controls_window() override { Fl::remove_timeout(tick, this); }
     static void slider_cb(Fl_Widget* w, void* d) { row* r = (row*)d; queue_control_edit(r->name, ((Fl_Value_Slider*)w)->value()); }
@@ -54,16 +55,22 @@ struct controls_window : Fl_Double_Window {
     }
 };
 inline controls_window*& the_controls_window() { static controls_window* w = nullptr; return w; }
-inline void controls_open() { if (!the_controls_window()) the_controls_window() = new controls_window(); else the_controls_window()->rebuild(); the_controls_window()->show(); Fl::add_timeout(0.1, controls_window::tick, the_controls_window()); }
+inline std::atomic<bool>& controls_shown() { static std::atomic<bool> b{false}; return b; }   // readable from the interpreter thread
+inline void controls_open() {
+    if (!the_controls_window()) { the_controls_window() = new controls_window(); the_controls_window()->callback([](Fl_Widget* w, void*) { w->hide(); controls_shown() = false; }); }
+    else the_controls_window()->rebuild();
+    the_controls_window()->show(); controls_shown() = true; Fl::add_timeout(0.1, controls_window::tick, the_controls_window());
+}
 inline void controls_awake_cb(void*) { controls_open(); }
 // (controls) open the controls window and return; the sound, the loops and the port keep running
 inline vptr fn_controls_window(vlist&, Interp& i) {
     if (controls().empty()) i.bad("no controls declared: (control name lo hi value) first");
     if (std::getenv("MUSIL_NOSHOW")) return v_nil();
-    if (plot_needs_awake()) Fl::awake(controls_awake_cb, nullptr); else { controls_open(); Fl::check(); }
+    if (plot_needs_awake()) { controls_shown() = false; Fl::awake(controls_awake_cb, nullptr); for (int k = 0; k < 100 && !controls_shown(); k++) std::this_thread::sleep_for(std::chrono::milliseconds(10)); }   // wait for the FLTK thread to make it
+    else { controls_open(); Fl::check(); }
     return v_nil();
 }
-inline bool controls_window_open() { return the_controls_window() && the_controls_window()->shown(); }
+inline bool controls_window_open() { return controls_shown(); }
 // (controls-open?) => is the controls window open? A script can wait on it: while (controls-open?) { sleep 0.1 }
 inline vptr fn_controls_open(vlist&, Interp&) { return v_bool(controls_window_open()); }
 inline void add_controls_window(Interp& i) { i.def("controls", fn_controls_window, 0, 0); i.def("controls-open?", fn_controls_open, 0, 0); }

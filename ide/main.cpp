@@ -422,8 +422,8 @@ static void settings_cb(Fl_Widget*, void*) {
     dlg->numbers->value(show_line_numbers); dlg->curline->value(highlight_current_line); dlg->margin->value(margin_col);
     dlg->win->show();
 }
-static Fl_Button* tool_button(int& x, int y, int w, const char* label, const char* tip, Fl_Callback* cb, void* d = nullptr) {
-    Fl_Button* b = new Fl_Button(x, y, w, 24, label); b->box(FL_FLAT_BOX); b->down_box(FL_FLAT_BOX); b->labelsize(12); b->color(fl_rgb_color(236, 236, 234)); b->selection_color(fl_rgb_color(205, 215, 235)); b->tooltip(tip); b->callback(cb, d); b->clear_visible_focus(); x += w + 4; return b;
+static Fl_Button* tool_button(int& x, int y, int w, const char* label, const char* tip, Fl_Callback* cb, void* d = nullptr, Fl_Color col = FL_BLACK) {
+    Fl_Button* b = new Fl_Button(x, y, w, 24, label); b->box(FL_FLAT_BOX); b->down_box(FL_FLAT_BOX); b->labelsize(14); b->labelcolor(col); b->color(fl_rgb_color(236, 236, 234)); b->selection_color(fl_rgb_color(205, 215, 235)); b->tooltip(tip); b->callback(cb, d); b->clear_visible_focus(); x += w + 2; return b;
 }
 
 int main(int argc, char** argv) {
@@ -469,15 +469,16 @@ int main(int argc, char** argv) {
     const int TOOL_H = 32;
     toolbar = new Fl_Group(0, top, W, TOOL_H); toolbar->box(FL_FLAT_BOX); toolbar->color(fl_rgb_color(236, 236, 234));
     { int x = 8, y = top + 4;
-      tool_button(x, y, 72, "Run file", "run the whole file (Cmd-Shift-Enter)", run_file);
-      tool_button(x, y, 80, "Run block", "run the block around the cursor, or the selection (Cmd-Enter)", run_block);
-      tool_button(x, y, 72, "Run line", "run the current line (Cmd-Alt-Enter)", run_line);
-      tool_button(x, y, 50, "Stop", "stop the running program (Esc)", stop_cb);
-      x += 12;
-      tool_button(x, y, 60, "Clear", "clear the console (Cmd-L)", clear_console_cb);
-      tool_button(x, y, 70, "Controls", "open the controls window", [](Fl_Widget*, void*) { submit("(if (> (length (controls-list)) 0) (controls) (print \"no controls declared\"))", "<console>"); });
-      tool_button(x, y, 70, "Settings", "font, size, line numbers, current line, margin", settings_cb);
-      Fl_Box* pad = new Fl_Box(x, y, W - x, 24); toolbar->resizable(pad); }
+      tool_button(x, y, 34, "@>>", "Run file (Cmd-Shift-Enter)", run_file, nullptr, fl_rgb_color(30, 130, 70));
+      tool_button(x, y, 34, "@>", "Run block: the lines around the cursor, or the selection (Cmd-Enter)", run_block, nullptr, fl_rgb_color(30, 130, 70));
+      tool_button(x, y, 34, "@->", "Run line (Cmd-Alt-Enter)", run_line, nullptr, fl_rgb_color(30, 130, 70));
+      tool_button(x, y, 34, "@square", "Stop (Esc)", stop_cb, nullptr, fl_rgb_color(190, 50, 50));
+      x += 10;
+      tool_button(x, y, 34, "@reload", "Clear the console (Cmd-L)", clear_console_cb, nullptr, fl_rgb_color(90, 90, 90));
+      tool_button(x, y, 34, "@menu", "Controls window (the hot parameters)", [](Fl_Widget*, void*) { submit("(if (> (length (controls-list)) 0) (controls) (print \"no controls declared\"))", "<console>"); }, nullptr, fl_rgb_color(60, 100, 180));
+      tool_button(x, y, 34, "@circle", "Settings: font, size, line numbers, current line, margin (Cmd-,)", settings_cb, nullptr, fl_rgb_color(90, 90, 90));
+      Fl_Box* legend = new Fl_Box(x + 8, y, 480, 24, "run file   run block   run line   stop      clear   controls   settings"); legend->labelsize(10); legend->labelcolor(fl_rgb_color(140, 140, 140)); legend->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+      Fl_Box* pad = new Fl_Box(x + 500, y, W - x - 500, 24); toolbar->resizable(pad); }
     toolbar->end();
     top += TOOL_H;
     int tile_h = H - top - STATUS_H, left_w = 900, right_w = W - left_w, ed_h = (int)(tile_h * 0.58), cons_h = tile_h - ed_h - INPUT_H, vars_h = (int)(tile_h * 0.5);

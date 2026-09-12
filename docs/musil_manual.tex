@@ -621,8 +621,10 @@ code, \musil{(controls)} opens the window of sliders and check boxes and returns
 with \texttt{--serve 7770 -i}) opens a local port that evaluates the text it receives, in
 the session, as if typed. The VS Code extension in \texttt{editors/vscode/musil} sends the
 block around the cursor with Cmd-Enter (the file with Cmd-Shift-Enter) and gives
-\texttt{.mu} files syntax colouring, from a grammar generated with \texttt{help}. Any editor
-that can run \texttt{nc localhost 7770 < block.mu} can do the same.
+\texttt{.mu} files syntax colouring, from a grammar generated with \texttt{help}. From a
+shell, \texttt{musil --send 7770 block.mu} (or with the code on stdin) sends and prints the
+reply, and any editor that can run a command can do the same; the two Musil processes
+stay separate sessions, the port only lets one hand code to the other.
 
 \input{generated/live.tex}
 
