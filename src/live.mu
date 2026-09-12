@@ -3,11 +3,25 @@
 # Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
 #
 # Not loaded automatically: (load "live.mu"). Needs system.mu (files) and signals.mu.
-# The C++ half (live.h) is the device, the command queue, the clock and the sampler voices:
-# audio-open, audio-close, audio-start, audio-stop, audio-status, audio-devices, audio-time,
-# play-buffer, stop, stop-all, master-gain, voice-set, voices. This file is the comfortable
-# surface over them. Sounds are played by voices: (play buffer sr) returns a voice id that
-# stop, voice-set and voices refer to.
+# The C++ half (live.h) is the device, the command queue, the clock, the sampler voices and
+# the streaming graph: audio-open, audio-close, audio-start, audio-stop, audio-status,
+# audio-devices, audio-time, play-buffer, stop, stop-all, master-gain, voice-set, voices,
+# synth, set-param, free, synth-params, synths, streamable, synth-render. This file is the
+# comfortable surface over them.
+#
+# Two kinds of sound. A voice plays a buffer: (play buffer sr) returns a voice id that stop,
+# voice-set and voices refer to. A synth is an ordinary Musil function of its parameters
+# whose body uses streamable builtins (osc, adsr, lowpass, delay, comb, conv, pan, + * ...):
+# called normally it returns a buffer; (synth f) compiles the same body into a graph the
+# audio thread runs, and the parameters become hot: (set-param id 'freq 440) changes the
+# running sound, (set-param id 'cutoff 200 0.5) ramps it over half a second. By convention
+# a parameter named gate drives the envelope: note-on and note-off set it.
+#
+# Offline and streamed agree to float precision where both are defined (synth-render checks
+# it), with one difference to know: control arguments of filters and envelopes (a cutoff, an
+# attack time) are single numbers offline (biquad computes its coefficients once) and
+# per-block controls when streaming, so a moving cutoff is a streaming feature; oscillator
+# frequencies and gates are signals in both.
 load "system.mu"
 load "signals.mu"
 
@@ -69,3 +83,42 @@ function wait-until (t) {
 }
 # (sequence steps)         play (list (list time buffer sr) ...) at their times, all scheduled at once
 function sequence (steps) (map steps (function (s) (play-at (head s) (getidx s 1) (last s))))
+
+# --- synths ----------------------------------------------------------------------
+# (note-on id) (note-off id)   set the synth's gate parameter to 1 or 0
+function note-on (id) (set-param id 'gate 1)
+function note-off (id) (set-param id 'gate 0)
+# (note id dur)            gate on now, off after dur seconds (sample-accurate, scheduled)
+function note (id dur) {
+    set-param id 'gate 1
+    set-param id 'gate 0 0 (+ (audio-time) dur)
+    return nil
+}
+# (note-at t id dur)       the same at time t on the clock
+function note-at (t id dur) {
+    set-param id 'gate 1 0 t
+    set-param id 'gate 0 0 (+ t dur)
+    return nil
+}
+# (set-params id pairs)    several parameters at once: (list (list 'freq 440) (list 'cutoff 800))
+function set-params (id pairs) {
+    each pairs (function (p) (set-param id (head p) (last p)))
+    return nil
+}
+# (play-synth f pairs)     compile f, set its parameters, gate it on; => id
+function play-synth (f pairs) {
+    var id (synth f)
+    set-params id pairs
+    note-on id
+    return id
+}
+# (free-all)               free every synth
+function free-all () (each (synths) free)
+# (synth-render-file f pairs seconds path)   render a synth offline through its graph and write a WAV
+function synth-render-file (f pairs seconds path) (write-wav path (audio-sr-or 44100) (synth-render f pairs seconds))
+function audio-sr-or (default) (if (opt (audio-status) "open" 0) (audio-sr) default)
+# Tables for osc, made once: sine, saw, square, triangle (bandlimited by their harmonic count)
+var sine-table (gen 1024 (vec 1))
+var saw-table (gen 1024 (/ 1 (range 1 40)))
+var square-table (gen 1024 (* (/ 1 (range 1 40)) (mod (range 1 40) 2)))
+var triangle-table (gen 1024 (* (/ 1 (* (range 1 40) (range 1 40))) (mod (range 1 40) 2)))

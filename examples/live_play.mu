@@ -4,7 +4,7 @@ load "live.mu"
 
 audio-init                                   # 44100 Hz, 256 samples, stereo, started
 audio-report
-var path (if (> (length args) 0) (getidx args 0) "data/Gambale_cut.wav")
+var path (if (> (length args) 0) (getidx args 0) "data/drums.wav")
 var w (read-wav path)
 var sr (head w)
 var x (head (getidx w 1))

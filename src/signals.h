@@ -69,46 +69,73 @@ inline vptr sig_ifft(vlist& a, Interp& i) {
 
 // (osc sr freqs table) => one sample per element of freqs, reading the wavetable with linear
 // interpolation. The table's last element must equal its first (a guard point; gen makes one).
+// --- stateful loops: each is written once, with its state as an argument, so the offline builtin
+// (fresh state, the whole vector) and the streaming node in live.h (state kept between blocks)
+// run the same code and produce the same samples ---
+struct osc_state { double phase = 0; };
+inline void osc_run(const double* freq, double* out, size_t n, const double* table, size_t table_len, double sr, osc_state& st) {
+    size_t len = table_len - 1; double fn = sr / (double)len;
+    for (size_t k = 0; k < n; k++) {
+        size_t ip = (size_t)st.phase; double fp = st.phase - (double)ip;
+        out[k] = (1 - fp) * table[ip] + fp * table[ip + 1];
+        st.phase += freq[k] / fn;
+        while (st.phase >= (double)len) st.phase -= (double)len;
+        while (st.phase < 0) st.phase += (double)len;
+    }
+}
 inline vptr sig_osc(vlist& a, Interp& i) {
     double sr = i.scalar(a[0]); const varr& f = i.num(a[1]); const varr& t = i.num(a[2]);
     if (t.size() < 2) i.bad("table must have at least 2 elements");
-    size_t n = t.size() - 1; double fn = sr / (double)n;
-    varr out(f.size()); double phi = 0;
-    for (size_t k = 0; k < f.size(); k++) {
-        size_t ip = (size_t)phi; double fp = phi - (double)ip;
-        out[k] = (1 - fp) * t[ip] + fp * t[ip + 1];
-        phi += f[k] / fn;
-        while (phi >= (double)n) phi -= (double)n;
-        while (phi < 0) phi += (double)n;
-    }
+    varr out(f.size()); osc_state st;
+    if (f.size()) osc_run(&f[0], &out[0], f.size(), &t[0], t.size(), sr, st);
     return v_arr(std::move(out));
 }
 
 // (iir x b a) => y with a0 y[n] = sum b[k] x[n-k] - sum a[k>0] y[n-k]; a[0] need not be 1
+struct iir_state { std::vector<double> xs, ys; };   // the last nb inputs and na outputs, newest first
+inline void iir_run(const double* x, double* y, size_t n, const double* b, size_t nb, const double* a, size_t na, iir_state& st) {
+    if (st.xs.size() != nb) st.xs.assign(nb, 0.0);
+    if (st.ys.size() != na) st.ys.assign(na, 0.0);
+    for (size_t k = 0; k < n; k++) {
+        for (size_t j = nb - 1; j > 0; j--) st.xs[j] = st.xs[j - 1];
+        st.xs[0] = x[k];
+        double acc = 0;
+        for (size_t j = 0; j < nb; j++) acc += b[j] * st.xs[j];
+        for (size_t j = 1; j < na; j++) acc -= a[j] * st.ys[j];
+        double out = acc / a[0];
+        for (size_t j = na - 1; j > 0; j--) st.ys[j] = st.ys[j - 1];
+        st.ys[1 < na ? 1 : 0] = out; st.ys[0] = out;
+        y[k] = out;
+    }
+}
 inline vptr sig_iir(vlist& a, Interp& i) {
     const varr& x = i.num(a[0]); const varr& b = i.num(a[1]); const varr& av = i.num(a[2]);
     if (av.size() == 0 || b.size() == 0) i.bad("b and a must not be empty");
     if (av[0] == 0) i.bad("a[0] must be nonzero");
-    size_t n = x.size(), nb = b.size(), na = av.size(); varr y(0.0, n);
-    for (size_t k = 0; k < n; k++) {
-        double acc = 0;
-        for (size_t j = 0; j < nb && j <= k; j++) acc += b[j] * x[k - j];
-        for (size_t j = 1; j < na && j <= k; j++) acc -= av[j] * y[k - j];
-        y[k] = acc / av[0];
-    }
+    varr y(0.0, x.size()); iir_state st;
+    if (x.size()) iir_run(&x[0], &y[0], x.size(), &b[0], b.size(), &av[0], av.size(), st);
     return v_arr(std::move(y));
 }
 
 // (delay x d) => x delayed by d samples (fractional, linear interpolation), same length
+struct delay_state { std::vector<double> ring; size_t w = 0; };   // a ring of past inputs; w is the write index
+inline void delay_run(const double* x, double* y, size_t n, const double* d, delay_state& st, size_t max_delay) {
+    size_t cap = max_delay + 2;
+    if (st.ring.size() != cap) { st.ring.assign(cap, 0.0); st.w = 0; }
+    for (size_t k = 0; k < n; k++) {
+        st.ring[st.w] = x[k];
+        double dd = d[k] < 0 ? 0 : (d[k] > (double)max_delay ? (double)max_delay : d[k]);
+        double pos = (double)st.w - dd; while (pos < 0) pos += cap;
+        size_t i0 = (size_t)pos, i1 = (i0 + 1) % cap; double fr = pos - (double)i0;
+        y[k] = (1 - fr) * st.ring[i0] + fr * st.ring[i1 % cap];
+        st.w = (st.w + 1) % cap;
+    }
+}
 inline vptr sig_delay(vlist& a, Interp& i) {
     const varr& x = i.num(a[0]); double d = i.scalar(a[1]);
     if (d < 0) i.bad("delay must be >= 0");
-    size_t n = x.size(); varr y(0.0, n);
-    for (size_t k = 0; k < n; k++) {
-        double pos = (double)k - d; if (pos < 0) continue;
-        size_t i0 = (size_t)pos; double fr = pos - (double)i0;
-        y[k] = i0 + 1 < n ? (1 - fr) * x[i0] + fr * x[i0 + 1] : x[std::min(i0, n - 1)];
-    }
+    size_t n = x.size(); varr y(0.0, n); delay_state st; varr dd(d, n);
+    if (n) delay_run(&x[0], &y[0], n, &dd[0], st, (size_t)std::ceil(d) + 1);
     return v_arr(std::move(y));
 }
 
@@ -193,18 +220,30 @@ inline vptr sig_add_at_inplace(vlist& a, Interp& i) {
 }
 // (comb x d g) => feedback comb y[n] = x[n] + g y[n-d]; (allpass x d g) => Schroeder allpass
 // y[n] = -g x[n] + x[n-d] + g y[n-d]. Both are a delay line, not a dense IIR: O(n) whatever d is.
+struct comb_state { std::vector<double> ring; size_t w = 0; };
+// y[n] = x[n] + g y[n-d]
+inline void comb_run(const double* x, double* y, size_t n, size_t d, double g, comb_state& st) {
+    if (st.ring.size() != d) { st.ring.assign(d, 0.0); st.w = 0; }
+    for (size_t k = 0; k < n; k++) { double out = x[k] + g * st.ring[st.w]; st.ring[st.w] = out; st.w = (st.w + 1) % d; y[k] = out; }
+}
+struct allpass_state { std::vector<double> xin, yout; size_t w = 0; };
+// y[n] = -g x[n] + x[n-d] + g y[n-d]
+inline void allpass_run(const double* x, double* y, size_t n, size_t d, double g, allpass_state& st) {
+    if (st.xin.size() != d) { st.xin.assign(d, 0.0); st.yout.assign(d, 0.0); st.w = 0; }
+    for (size_t k = 0; k < n; k++) { double out = -g * x[k] + st.xin[st.w] + g * st.yout[st.w]; st.xin[st.w] = x[k]; st.yout[st.w] = out; st.w = (st.w + 1) % d; y[k] = out; }
+}
 inline vptr sig_comb(vlist& a, Interp& i) {
     const varr& x = i.num(a[0]); long d = i.index(a[1]); double g = i.scalar(a[2]);
     if (d < 1) i.bad("delay must be >= 1");
-    varr y(0.0, x.size());
-    for (size_t n = 0; n < x.size(); n++) y[n] = x[n] + (n >= (size_t)d ? g * y[n - d] : 0.0);
+    varr y(0.0, x.size()); comb_state st;
+    if (x.size()) comb_run(&x[0], &y[0], x.size(), (size_t)d, g, st);
     return v_arr(std::move(y));
 }
 inline vptr sig_allpass(vlist& a, Interp& i) {
     const varr& x = i.num(a[0]); long d = i.index(a[1]); double g = i.scalar(a[2]);
     if (d < 1) i.bad("delay must be >= 1");
-    varr y(0.0, x.size());
-    for (size_t n = 0; n < x.size(); n++) y[n] = -g * x[n] + (n >= (size_t)d ? x[n - d] + g * y[n - d] : 0.0);
+    varr y(0.0, x.size()); allpass_state st;
+    if (x.size()) allpass_run(&x[0], &y[0], x.size(), (size_t)d, g, st);
     return v_arr(std::move(y));
 }
 
@@ -344,6 +383,46 @@ inline vptr sig_pvoc(vlist& a, Interp& i) {
     return v_arr(std::move(y));
 }
 
+// (adsr sr gate a d s r) => an envelope following a gate signal (1 = on, 0 = off): attack a and
+// decay d seconds towards the sustain level s while the gate is on, release r seconds when it goes off;
+// exponential segments, so it sounds even; the same code runs in the live engine's adsr node.
+struct adsr_state { double level = 0; int stage = 0; };   // stages: 0 idle, 1 attack, 2 decay/sustain, 3 release
+inline void adsr_run(const double* gate, double* out, size_t n, double a, double d, double s, double r, double sr, adsr_state& st) {
+    auto coef = [&](double secs) { return secs <= 0 ? 0.0 : std::exp(-1.0 / (std::max(secs, 1e-4) * sr)); };
+    double ca = coef(a), cd = coef(d), cr = coef(r);
+    for (size_t k = 0; k < n; k++) {
+        bool on = gate[k] > 0.5;
+        if (on && (st.stage == 0 || st.stage == 3)) st.stage = 1;
+        if (!on && (st.stage == 1 || st.stage == 2)) st.stage = 3;
+        if (st.stage == 1) { st.level = 1.2 - (1.2 - st.level) * ca; if (st.level >= 1) { st.level = 1; st.stage = 2; } }
+        else if (st.stage == 2) st.level = s + (st.level - s) * cd;
+        else if (st.stage == 3) { st.level *= cr; if (st.level < 1e-5) { st.level = 0; st.stage = 0; } }
+        out[k] = st.level;
+    }
+}
+inline vptr sig_adsr(vlist& a, Interp& i) {
+    double sr = i.scalar(a[0]); const varr& g = i.num(a[1]);
+    double at = i.scalar(a[2]), de = i.scalar(a[3]), su = i.scalar(a[4]), re = i.scalar(a[5]);
+    if (sr <= 0 || at < 0 || de < 0 || re < 0 || su < 0 || su > 1) i.bad("times must be >= 0 and sustain in [0, 1]");
+    varr out(0.0, g.size()); adsr_state st;
+    if (g.size()) adsr_run(&g[0], &out[0], g.size(), at, de, su, re, sr, st);
+    return v_arr(std::move(out));
+}
+// (lag x sr seconds) => x smoothed by a one-pole lowpass with the given time constant (parameter
+// smoothing, envelope following); the live engine's lag node
+struct lag_state { double y = 0; };
+inline void lag_run(const double* x, double* out, size_t n, double coef, lag_state& st) {
+    for (size_t k = 0; k < n; k++) { st.y += (x[k] - st.y) * (1 - coef); out[k] = st.y; }
+}
+inline vptr sig_lag(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); double sr = i.scalar(a[1]), secs = i.scalar(a[2]);
+    if (sr <= 0 || secs < 0) i.bad("sr must be > 0 and seconds >= 0");
+    double coef = secs <= 0 ? 0.0 : std::exp(-1.0 / (secs * sr));
+    varr out(0.0, x.size()); lag_state st;
+    if (x.size()) lag_run(&x[0], &out[0], x.size(), coef, st);
+    return v_arr(std::move(out));
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
@@ -352,6 +431,7 @@ inline void add_signals(Interp& i) {
     i.def("local-maxima", sig_local_maxima, 1, 1); i.def("gather", sig_gather, 2, 2);
     i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
     i.def("pvoc", sig_pvoc, 2, 2);
+    i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3);
 }
 
 } // namespace musil

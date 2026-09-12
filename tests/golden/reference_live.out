@@ -26,6 +26,20 @@ sequence         : 2 voices scheduled at once
 play-file        : voice 8 (any sample rate: the voice resamples)
 play-file-with   : voice 9
 
+--- synths ---
+streamable       : (* + - / abs adsr allpass bandpass clip comb conv cos dc-block delay exp floor highpass highshelf iir lag list lowpass lowshelf max min noise notch osc pan peak-eq pow sin sqrt tanh)
+offline call     : 2 channels of 8820 samples
+synth            : id 10 , parameters (gate freq cutoff)
+note-on          : sounding 1
+set-param        : cutoff ramped to 200 over 0.2 s
+note-off         : released 1
+note             : gate on now, off in 0.1 s (scheduled)
+free             : synths 0
+play-synth       : id 11 (compile, set, gate on)
+synth-render     : the graph offline; equals the call within 1
+not streamable   : reference_live.mu:99: synth: not streamable: pvoc-stretch (see (streamable))
+tables           : sine-table saw-table square-table triangle-table, for osc
+
 --- closing ---
 audio-stop       : running 0
 audio-quit       : open 0

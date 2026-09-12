@@ -159,7 +159,7 @@ var late (db (rms (slice rev 3300 800)))
 check (< late (- early 30)) "schroeder-reverb: the tail decays"
 check (> late -120) "schroeder-reverb: but is still there at the end"
 check (equal? (delay (vec 1 2 3 4) 1) (vec 0 1 2 3)) "delay: integer"
-check (equal? (delay (vec 1 2 3 4) 1.5) (vec 0 0 1.5 2.5)) "delay: fractional"
+check (equal? (delay (vec 1 2 3 4) 1.5) (vec 0 0.5 1.5 2.5)) "delay: fractional (interpolates from silence too)"
 check (contains? (error-of (function () (delay (vec 1) -1))) ">= 0") "delay: negative"
 
 # --- phase vocoder ---

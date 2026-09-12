@@ -103,7 +103,9 @@ or the operating system and a `.mu` file for what is better written in Musil its
 - **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
   descriptors, filters and reverb;
 - **live**: real-time sound: an audio device, a sample-accurate clock, voices that play
-  buffers and files, scheduled ahead of time;
+  buffers and files scheduled ahead of time, and synths: an instrument is an ordinary
+  function of its parameters (oscillators, envelopes, filters, delays, convolution, pan),
+  called for a buffer or compiled into the audio thread with hot parameters;
 - **plot**: figures of lines, points, bars, images and 3D surfaces, grids of subplots, shown in a window or saved as PNG.
 
 Every library has a test and a runnable reference (`examples/reference_<name>.mu`);

@@ -68,7 +68,38 @@ print "play-file        : voice" (play-file "/tmp/musil_live_ref.wav") "(any sam
 print "play-file-with   : voice" (play-file-with "/tmp/musil_live_ref.wav" (list (list "rate" 2)))
 remove "/tmp/musil_live_ref.wav"
 
-# --- 5. Closing --------------------------------------------------------------------------
+# --- 5. Synths: a function of parameters, streamed --------------------------------------
+print ""
+print "--- synths ---"
+print "streamable       :" (streamable)
+# an instrument is an ordinary function: called, it returns a buffer; given to synth, it streams
+function beep (gate freq cutoff) (pan (* (adsr sr gate 0.01 0.1 0.6 0.3) (lowpass (osc sr freq sine-table) sr cutoff 0.7)) 0)
+var offline (beep (vec (ones 4410) (zeros 4410)) (+ (zeros 8820) 440) 1500)
+print "offline call     :" (length offline) "channels of" (length (head offline)) "samples"
+var s (synth beep)
+print "synth            : id" s ", parameters" (synth-params s)
+set-params s (list (list 'freq 440) (list 'cutoff 1500))
+note-on s
+sleep 0.05
+print "note-on          : sounding" (> (opt (audio-status) "peak" 0) 0.1)
+set-param s 'cutoff 200 0.2
+print "set-param        : cutoff ramped to 200 over 0.2 s"
+note-off s
+sleep 0.4
+print "note-off         : released" (< (opt (audio-status) "peak" 1) 0.05)
+note s 0.1
+print "note             : gate on now, off in 0.1 s (scheduled)"
+sleep 0.2
+free s
+print "free             : synths" (length (synths))
+print "play-synth       : id" (play-synth beep (list (list 'freq 220) (list 'cutoff 800))) "(compile, set, gate on)"
+free-all
+var streamed (synth-render beep (list (list 'gate (vec (ones 4410) (zeros 4410))) (list 'freq 440) (list 'cutoff 1500)) 0.2)
+print "synth-render     : the graph offline; equals the call within" (< (max (abs (- (head streamed) (head offline)))) 1e-5)
+print "not streamable   :" (try (synth (function (freq) (pvoc-stretch (osc sr freq sine-table) 2))) catch e e)
+print "tables           : sine-table saw-table square-table triangle-table, for osc"
+
+# --- 6. Closing --------------------------------------------------------------------------
 print ""
 print "--- closing ---"
 master-gain 0.8

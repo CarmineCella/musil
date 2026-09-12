@@ -565,9 +565,33 @@ each (range 8) (function (k) (play-at (+ t (* k 0.25)) hit sr))   # sample-accur
 audio-quit
 \end{lstlisting}
 
-This is the first slice of \texttt{live}; the streaming graph (synth functions
-compiled to nodes), the scheduler's patterns and the controls come on top of the same
-queue, clock and voices.
+\textbf{Synths.} An instrument is an ordinary Musil function of its parameters whose
+body combines the \emph{streamable} builtins: \musil{osc}, \musil{noise}, \musil{adsr},
+\musil{lag}, the biquads (\musil{lowpass} \ldots\ \musil{highshelf}), \musil{iir},
+\musil{dc-block}, \musil{delay}, \musil{comb}, \musil{allpass}, \musil{conv} (partitioned
+when streaming), \musil{pan}, \musil{list}, arithmetic and elementwise math (the list is
+\musil{(streamable)}). Called normally it returns a buffer, because every one of those is
+a vector function in \texttt{signals}. Handed to \musil{(synth f)} its body is compiled
+into a graph of nodes that run \emph{the same loops} from \texttt{signals.h} one block at
+a time, and its parameters become hot: \musil{(set-param id 'cutoff 200 0.5)} ramps the
+running sound; a parameter named \musil{gate} is what \musil{note-on}/\musil{note-off}
+set. \musil{synth-render} runs the graph offline with parameter curves, and the test suite
+checks it equals the direct call to float precision. Anything not streamable
+(\musil{pvoc}, \musil{resample}, \ldots) is refused by name; it is still a fine offline
+instrument.
+
+\begin{lstlisting}
+function lead (gate freq cutoff) \
+    (pan (* (adsr sr gate 0.01 0.2 0.5 0.4) (lowpass (osc sr freq saw-table) sr cutoff 2)) 0)
+var a (synth lead)                               # compiled, silent
+set-params a (list (list 'freq 110) (list 'cutoff 1200))
+note a 0.5                                       # gate on, off after half a second (scheduled)
+set-param a 'cutoff 300 1.5                      # ramp while it plays
+var y (lead gate-vector freq-vector 1200)        # the same function, offline: a buffer
+\end{lstlisting}
+
+The scheduler's patterns and the controls window come next, on the same queue, clock,
+voices and synths.
 
 \input{generated/live.tex}
 
@@ -641,7 +665,8 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{stft, filters, reverb, cross\_synth, transients, additive, features} & signal processing on recordings \\
 \texttt{phase\_vocoder.mu} & time stretching, pitch shifting with and without formants, robot, whisper \\
 \texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
-\texttt{live\_play.mu}, \texttt{live\_probe.mu} & sounds through the device, scheduled on the clock; a device check \\
+\texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
+\texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \bottomrule
 \end{tabular}
 \end{center}

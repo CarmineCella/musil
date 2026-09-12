@@ -46,6 +46,11 @@ function add-at (dst pos src) {
     var base (if (< (length dst) need) (vec dst (zeros (- need (length dst)))) dst)
     return (vec (take base pos) (+ (slice base pos (length src)) src) (drop base need))
 }
+# (pan x pos)              a mono signal to (list left right), equal power; pos from -1 (left) to 1 (right)
+function pan (x pos) {
+    var p (max -1 (min 1 pos))
+    return (list (* x (sqrt (* 0.5 (- 1 p)))) (* x (sqrt (* 0.5 (+ 1 p)))))
+}
 # (fade-in x n) (fade-out x n)   linear fades over n samples
 function fade-in (x n) (* x (vec (/ (range n) n) (ones (- (length x) n))))
 function fade-out (x n) (reverse (fade-in (reverse x) n))

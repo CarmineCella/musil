@@ -7,6 +7,7 @@
 
 load "test.mu"
 load "live.mu"
+function near? (a b eps) (< (max (abs (- a b))) eps)
 
 var sr 44100
 var tone (* 0.5 (sine sr 440 0.2))
@@ -86,6 +87,66 @@ wait-for fv
 check (equal? (type (play-file-with "/tmp/musil_live_test.wav" (list (list "amp" 0.5)))) "scalar") "play-file-with"
 remove "/tmp/musil_live_test.wav"
 stop-all
+
+# --- synths: a function of parameters, streamed ---
+var table (gen 1024 (vec 1 0.5))
+function beep (gate freq cutoff) (pan (* (adsr sr gate 0.01 0.1 0.6 0.3) (lowpass (osc sr freq table) sr cutoff 0.7)) -0.3)
+check (contains? (streamable) "osc") "streamable: lists the ugens"
+check (contains? (streamable) "conv") "streamable: conv (partitioned)"
+check (not (contains? (streamable) "pvoc")) "streamable: pvoc is not"
+var s (synth beep)
+check (equal? (type s) "scalar") "synth: returns an id"
+check (equal? (synth-params s) (list "gate" "freq" "cutoff")) "synth-params: the function's parameters, in order"
+sleep 0.05
+check (contains? (synths) s) "synths: lists it"
+set-params s (list (list 'freq 440) (list 'cutoff 2000))
+sleep 0.05
+check (< (opt (audio-status) "peak" 1) 0.001) "silent while the gate is 0"
+note-on s
+sleep 0.1
+check (> (opt (audio-status) "peak" 0) 0.2) "note-on: sound"
+set-param s 'cutoff 100 0.3
+sleep 0.5
+check (< (opt (audio-status) "peak" 1) 0.1) "set-param with a ramp: the filter closed"
+note-off s
+sleep 0.6
+check (< (opt (audio-status) "peak" 1) 0.01) "note-off: released"
+check (contains? (error-of (function () (set-param s 'nope 1))) "no parameter") "set-param: unknown parameter"
+check (contains? (error-of (function () (set-param 999 'gate 1))) "no synth") "set-param: unknown synth"
+free s
+sleep 0.05
+check (not (contains? (synths) s)) "free"
+function bad (freq) (pvoc-stretch (osc sr freq table) 2)
+check (contains? (error-of (function () (synth bad))) "not streamable: pvoc-stretch") "synth: refuses a non-streamable body, naming it"
+check (contains? (error-of (function () (synth sin))) "Musil function") "synth: needs a Musil function"
+var f (synth (function (freq index) (osc sr (+ freq (* index freq (osc sr (* 2 freq) table))) table)))
+set-params f (list (list 'freq 220) (list 'index 0.5))
+sleep 0.1
+check (> (opt (audio-status) "peak" 0) 0.5) "fm: a modulated frequency input"
+free f
+var ps (play-synth beep (list (list 'freq 330) (list 'cutoff 3000)))
+sleep 0.05
+check (contains? (synths) ps) "play-synth"
+note ps 0.1
+sleep 0.5
+free-all
+sleep 0.05
+check (equal? (synths) (list)) "free-all"
+# the streamed graph equals the function called offline, to float precision
+var n 22050
+var gate (vec (ones 11025) (zeros 11025))
+var offline (beep gate (+ (zeros n) 220) 1500)
+var streamed (synth-render beep (list (list 'gate gate) (list 'freq 220) (list 'cutoff 1500)) 0.5)
+check (== (length streamed) 2) "synth-render: stereo out of pan"
+check (near? (head streamed) (head offline) 1e-5) "synth-render equals the offline call (left)"
+check (near? (last streamed) (last offline) 1e-5) "synth-render equals the offline call (right)"
+function chain (freq) (lowpass (highpass (osc sr freq table) sr 100 0.7) sr 3000 0.7)
+check (near? (synth-render chain (list (list 'freq 330)) 0.2) (chain (+ (zeros 8820) 330)) 1e-5) "synth-render: a filter chain equals its offline version"
+function fx (amp) (* amp (comb (noise 0) 441 0.8))
+check (== (length (synth-render fx (list (list 'amp 0.5)) 0.1)) 4410) "synth-render: noise and comb, mono"
+function verb (amp) (* amp (conv (noise 0) (vec 1 (zeros 300) 0.5)))
+check (> (rms (synth-render verb (list (list 'amp 0.5)) 0.2)) 0.1) "synth-render: partitioned conv streams"
+check (contains? (error-of (function () (synth-render beep (list (list 'nope 1)) 0.1))) "no parameter") "synth-render: unknown parameter"
 
 # --- stopping and closing ---
 master-gain 0.5
