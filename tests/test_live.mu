@@ -224,6 +224,10 @@ osc-send "127.0.0.1" 47131 "/level" 3
 sleep 0.1
 check (== (control-value 'level) 1) "osc-map: clamped"
 check (contains? (error-of (function () (osc-map "/x" 'nope))) "no control") "osc-map: unknown control"
+var msg (osc-encode "/synth/freq" 440 "hello")
+check (== (mod (length msg) 4) 0) "osc-encode: padded to 4 bytes"
+check (equal? (osc-decode msg) (list "/synth/freq" 440 "hello")) "osc-decode: round trip through the language"
+check (equal? (type (osc-decode "nonsense")) "nil") "osc-decode: not OSC is nil"
 osc-stop
 clear-controls
 free-all

@@ -45,7 +45,7 @@
 #include <unistd.h>
 #endif
 
-#define MUSIL_VERSION "0.6"
+#define MUSIL_VERSION "0.7"
 
 namespace musil {
 namespace fs = std::filesystem;

@@ -18,6 +18,7 @@
 
 namespace musil {
 
+inline std::atomic<bool>& controls_shown() { static std::atomic<bool> b{false}; return b; }   // readable from the interpreter thread
 struct controls_window : Fl_Double_Window {
     struct row { std::string name; Fl_Value_Slider* slider = nullptr; Fl_Check_Button* check = nullptr; };
     std::vector<row> rows; Fl_Scroll* scroll;
@@ -42,8 +43,9 @@ struct controls_window : Fl_Double_Window {
         int h = std::min(700, y + 8); size(460, h); scroll->size(460, h);
         redraw();
     }
-    static void tick(void* p) {                      // follow the registry: new controls, values moved by code or OSC
+    static void tick(void* p) {                      // follow the registry: new controls, values moved by code or OSC; none left: close
         controls_window* w = (controls_window*)p;
+        if (controls().empty()) { w->hide(); controls_shown() = false; return; }
         if (w->rows.size() != controls().size()) w->rebuild();
         else for (size_t k = 0; k < w->rows.size(); k++) {
             control& c = controls()[k]; row& r = w->rows[k];
@@ -55,11 +57,13 @@ struct controls_window : Fl_Double_Window {
     }
 };
 inline controls_window*& the_controls_window() { static controls_window* w = nullptr; return w; }
-inline std::atomic<bool>& controls_shown() { static std::atomic<bool> b{false}; return b; }   // readable from the interpreter thread
 inline void controls_open() {
+    ui_style_once();
     if (!the_controls_window()) { the_controls_window() = new controls_window(); the_controls_window()->callback([](Fl_Widget* w, void*) { w->hide(); controls_shown() = false; }); }
     else the_controls_window()->rebuild();
-    the_controls_window()->show(); controls_shown() = true; Fl::add_timeout(0.1, controls_window::tick, the_controls_window());
+    controls_window* w = the_controls_window();
+    w->position((Fl::w() - w->w()) / 2, (Fl::h() - w->h()) / 2);
+    w->show(); controls_shown() = true; Fl::add_timeout(0.1, controls_window::tick, w);
 }
 inline void controls_awake_cb(void*) { controls_open(); }
 // (controls) open the controls window and return; the sound, the loops and the port keep running

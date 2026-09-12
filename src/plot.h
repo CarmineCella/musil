@@ -434,10 +434,17 @@ struct plot_widget : Fl_Widget {
         return Fl_Widget::handle(e);
     }
 };
+// The look of every Musil window (the IDE, plots, controls): set once, before the first window
+inline void ui_style_once() {
+    static bool done = false; if (done) return; done = true;
+    Fl::scheme("oxy"); Fl::background(240, 240, 238); Fl::background2(255, 255, 255); Fl::foreground(40, 40, 40);
+}
 inline std::vector<Fl_Double_Window*>& plot_windows() { static std::vector<Fl_Double_Window*> w; return w; }
 inline void plot_open_window(figure f, int w, int h) {
-    static int n = 0; int off = 60 + 30 * (n++ % 8);         // cascade, so several windows do not cover each other
-    Fl_Double_Window* win = new Fl_Double_Window(off, off, w, h, f.title.empty() ? "musil" : f.title.c_str());
+    ui_style_once();
+    static int n = 0; int k = n++ % 8;                       // centred on the screen, cascading so several windows do not cover each other
+    int x = (Fl::w() - w) / 2 + 30 * k - 100, y = (Fl::h() - h) / 2 + 30 * k - 100;
+    Fl_Double_Window* win = new Fl_Double_Window(std::max(0, x), std::max(0, y), w, h, f.title.empty() ? "musil" : f.title.c_str());
     plot_widget* pw = new plot_widget(0, 0, w, h, std::move(f));
     win->resizable(pw); win->end(); win->size_range(300, 200);
     win->callback([](Fl_Widget* wd, void*) { wd->hide(); });

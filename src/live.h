@@ -389,6 +389,7 @@ inline void sched_reset();
 inline audio_engine& need_open(Interp& i) { if (!engine().open) i.bad("no audio device open: (audio-open sr block channels) first"); return engine(); }
 
 inline vptr live_close(vlist&, Interp&);
+struct control; inline std::vector<control>& controls();
 // (audio-open sr block channels [opts]) open the audio device; if one is already open with the same
 //   sample rate and channels it is reused (voices cleared), otherwise it is closed and reopened. opts: (list "device" "null") for the
 //   silent backend (tests, headless machines). Fails if a device is already open.
@@ -424,7 +425,7 @@ inline vptr live_open(vlist& a, Interp& i) {
 inline vptr live_close(vlist&, Interp&) {
     audio_engine& e = engine(); if (!e.open) return v_nil();
     ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear();
-    sched_reset(); return v_nil();
+    sched_reset(); controls().clear(); return v_nil();
 }
 // (audio-start) (audio-stop) run or pause the callback; the clock advances only while running
 inline vptr live_start(vlist&, Interp& i) { audio_engine& e = need_open(i); if (!e.running) { if (ma_device_start(&e.device) != MA_SUCCESS) i.bad("cannot start the device"); e.running = true; } return v_nil(); }
@@ -797,6 +798,10 @@ inline vptr live_unbind_control(vlist& a, Interp& i) { std::string name = a[0]->
 // (clear-controls) forget every control
 inline vptr live_clear_controls(vlist&, Interp&) { controls().clear(); return v_nil(); }
 
+// (osc-encode address args...) => the bytes of an OSC message as a string, for udp-send; (osc-decode bytes) => (list address args...)
+//   or nil: OSC in the language, on top of udp-send and udp-receive; osc-send, osc-listen and osc-map are conveniences over them
+inline vptr live_osc_encode(vlist& a, Interp& i) { vlist args(a.begin() + 1, a.end()); return v_str(osc_encode(i.str(a[0]), args)); }
+inline vptr live_osc_decode(vlist& a, Interp& i) { std::string addr; vlist args; if (!osc_decode(i.str(a[0]), addr, args)) return v_nil(); vlist out = { v_str(addr) }; out.insert(out.end(), args.begin(), args.end()); return v_list(std::move(out)); }
 // (osc-send host port address args...) send an OSC message (numbers as floats, anything else as strings)
 inline vptr live_osc_send(vlist& a, Interp& i) {
 #ifndef _WIN32
@@ -834,7 +839,7 @@ inline vptr live_osc_stop(vlist&, Interp&) {
 
 // Close the device without an interpreter (at exit, in the hosts): the audio thread must stop before
 // the engine's statics are destroyed
-inline void live_shutdown() { audio_engine& e = engine(); if (e.open) { ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear(); } sched_reset(); }
+inline void live_shutdown() { audio_engine& e = engine(); if (e.open) { ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear(); } sched_reset(); controls().clear(); }
 inline void add_live(Interp& i) {
     i.def("audio-open", live_open, 3, 4); i.def("audio-close", live_close, 0, 0);
     i.def("audio-start", live_start, 0, 0); i.def("audio-stop", live_stop, 0, 0);
@@ -850,6 +855,7 @@ inline void add_live(Interp& i) {
     i.def("control", live_control, 4, 4); i.def("toggle", live_toggle, 2, 2); i.def("set-control", live_set_control, 2, 2); i.def("control-value", live_control_value, 1, 1);
     i.def("controls-list", live_controls_list, 0, 0); i.def("bind-control", live_bind_control, 3, 3); i.def("unbind-control", live_unbind_control, 1, 1); i.def("clear-controls", live_clear_controls, 0, 0);
     i.def("osc-send", live_osc_send, 3, -1); i.def("osc-listen", live_osc_listen, 1, 1); i.def("osc-map", live_osc_map, 2, 2); i.def("osc-stop", live_osc_stop, 0, 0);
+    i.def("osc-encode", live_osc_encode, 1, -1); i.def("osc-decode", live_osc_decode, 1, 1);
     i.idle_fn = [&i]() { live_idle(i); };
 }
 

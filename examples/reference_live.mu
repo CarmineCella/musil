@@ -138,6 +138,7 @@ osc-map "/cutoff" 'cutoff
 osc-send "127.0.0.1" 47131 "/cutoff" 2000
 sleep 0.1
 print "osc-send/listen  : after a message to /cutoff, the control is" (control-value 'cutoff)
+print "osc-encode/decode:" (osc-decode (osc-encode "/a" 1 "two")) "(OSC bytes for udp-send, and back)"
 osc-stop
 clear-controls
 free q

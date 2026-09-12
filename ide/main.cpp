@@ -47,6 +47,7 @@
 #include <mutex>
 #include <set>
 #include <thread>
+#include <array>
 
 using namespace musil;
 namespace fs = std::filesystem;
@@ -64,11 +65,11 @@ static Fl_Double_Window* win;
 static Fl_Text_Editor* editor; static Fl_Text_Buffer* text_buf; static Fl_Text_Buffer* style_buf;
 static Fl_Text_Display* console; static Fl_Text_Buffer* console_buf;
 static Fl_Input* input; static Fl_Hold_Browser* vars; static Fl_Input* help_query; static Fl_Text_Display* help_view; static Fl_Text_Buffer* help_buf;
-static Fl_Box* status;
+static Fl_Box* status; static Fl_Group* toolbar; static Fl_Button* run_btn = nullptr; static Fl_Button* stop_btn = nullptr;
 static std::string filename; static bool changed = false; static int font_size = 13;
-static int editor_font = FL_COURIER; static bool show_line_numbers = true, highlight_current_line = true; static int margin_col = 80;
+static int editor_font = FL_COURIER; static bool show_line_numbers = true, highlight_current_line = true; static int margin_col = 80; static int serve_port = 7770;
 static Fl_Preferences prefs(Fl_Preferences::USER, "carminecella", "musil");
-static Fl_Group* toolbar;
+
 static std::vector<std::string> history; static int hist_pos = -1;
 static std::vector<std::string> load_paths;
 
@@ -89,16 +90,35 @@ static void load_help() {
     }
 }
 
-// --- console output from the interpreter thread ---
+// --- console output from the interpreter thread: collected under a mutex, moved to the console by a timer
+// in one append per tick, so a program printing at full speed cannot flood the window ---
 struct awake_text { std::string s; };
-static void console_append_cb(void* p) { awake_text* t = (awake_text*)p; console_buf->append(t->s.c_str()); console->insert_position(console_buf->length()); console->show_insert_position(); delete t; }
-static void console_post(const std::string& s) { Fl::awake(console_append_cb, new awake_text{ s }); }
+static std::mutex console_m; static std::string console_pending;
+static const size_t CONSOLE_MAX = 400000;             // characters kept on screen
+static void console_flush(void*) {
+    std::string text; { std::lock_guard<std::mutex> g(console_m); text.swap(console_pending); }
+    if (!text.empty()) {
+        if (text.size() > CONSOLE_MAX) text = "[... output trimmed ...]\n" + text.substr(text.size() - CONSOLE_MAX);
+        console_buf->append(text.c_str());
+        if (console_buf->length() > (int)(CONSOLE_MAX * 2)) console_buf->remove(0, console_buf->length() - (int)CONSOLE_MAX);
+        console->insert_position(console_buf->length()); console->show_insert_position();
+    }
+    Fl::repeat_timeout(0.03, console_flush, nullptr);
+}
+static void console_post(const std::string& s) {
+    std::lock_guard<std::mutex> g(console_m);
+    console_pending += s;
+    if (console_pending.size() > CONSOLE_MAX * 2) console_pending.erase(0, console_pending.size() - CONSOLE_MAX);   // a runaway print: keep the tail
+}
 struct line_buf : std::streambuf {   // the interpreter's output stream: lines go to the console as they complete
     std::string cur;
     int overflow(int c) override { if (c == EOF) return 0; cur += (char)c; if (c == '\n') { console_post(cur); cur.clear(); } return c; }
     int sync() override { if (!cur.empty()) { console_post(cur); cur.clear(); } return 0; }
 };
-static void status_cb(void* p) { awake_text* t = (awake_text*)p; status->copy_label(t->s.c_str()); delete t; }
+static void status_cb(void* p) {
+    awake_text* t = (awake_text*)p; status->copy_label(t->s.c_str()); delete t;
+    if (run_btn && stop_btn) { if (S.busy) { run_btn->deactivate(); stop_btn->activate(); } else { run_btn->activate(); stop_btn->deactivate(); } }
+}
 static void set_status(const std::string& s) { Fl::awake(status_cb, new awake_text{ s }); }
 
 // --- the variables snapshot ---
@@ -143,8 +163,10 @@ static void interpreter_thread() {
     I.yield_fn = [&I]() { if (S.stop) { S.stop = false; I.err("interrupted"); } };
     static std::atomic<bool> need_snapshot{false};
     server().on_receive = [](const std::string& code) { console_post("> [editor] " + code.substr(0, code.find('\n')) + (code.find('\n') != std::string::npos ? " ..." : "") + "\n"); need_snapshot = true; };
-    try { serve_start(I, 7770); console_post("musil " MUSIL_VERSION " ide: evaluation port 7770 open (other editors can send code to it)\n"); }
-    catch (std::exception&) { console_post("musil " MUSIL_VERSION " ide (port 7770 busy: no external editor connection)\n"); }
+    if (serve_port > 0) {
+        try { serve_start(I, serve_port); console_post("musil " MUSIL_VERSION " ide: evaluation port " + std::to_string(serve_port) + " open (other editors can send code to it)\n"); }
+        catch (std::exception&) { console_post("musil " MUSIL_VERSION " ide (port " + std::to_string(serve_port) + " busy: no external editor connection)\n"); }
+    } else console_post("musil " MUSIL_VERSION " ide (evaluation port off: Settings sets it)\n");
     snapshot_vars(I);
     while (!S.quit) {
         std::pair<std::string, std::string> cmd;
@@ -257,14 +279,16 @@ static void update_title() { std::string t = std::string("Musil  ") + (filename.
 static void text_changed(int, int ins, int del, int, const char*, void*) { if ((ins || del) && !changed) { changed = true; update_title(); } }
 void save_cb(Fl_Widget*, void*);
 static bool ok_to_discard() { if (!changed) return true; int r = fl_choice("The file has unsaved changes.", "Cancel", "Save", "Discard"); if (r == 0) return false; if (r == 1) { save_cb(nullptr, nullptr); return !changed; } return true; }
-static void load_file(const std::string& path) { if (text_buf->loadfile(path.c_str())) { fl_alert("cannot open %s", path.c_str()); return; } filename = path; changed = false; restyle_all(); update_title(); console_buf->append(("opened " + path + "\n").c_str()); }
+static std::string last_dir() { char* d = nullptr; prefs.get("last_dir", d, ""); std::string r = d ? d : ""; free(d); return r; }
+static void remember_dir(const std::string& path) { prefs.set("last_dir", fs::absolute(path).parent_path().string().c_str()); prefs.flush(); }
+static void load_file(const std::string& path) { if (text_buf->loadfile(path.c_str())) { fl_alert("cannot open %s", path.c_str()); return; } filename = path; changed = false; restyle_all(); update_title(); remember_dir(path); console_buf->append(("opened " + path + "\n").c_str()); }
 void save_cb(Fl_Widget*, void*) {
-    if (filename.empty()) { Fl_Native_File_Chooser ch; ch.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE); ch.filter("Musil\t*.mu"); ch.options(Fl_Native_File_Chooser::SAVEAS_CONFIRM); if (ch.show() != 0) return; filename = ch.filename(); if (fs::path(filename).extension().empty()) filename += ".mu"; }
+    if (filename.empty()) { Fl_Native_File_Chooser ch; ch.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE); ch.filter("Musil\t*.mu"); ch.options(Fl_Native_File_Chooser::SAVEAS_CONFIRM); ch.directory(last_dir().c_str()); if (ch.show() != 0) return; filename = ch.filename(); if (fs::path(filename).extension().empty()) filename += ".mu"; remember_dir(filename); }
     if (text_buf->savefile(filename.c_str())) { fl_alert("cannot save %s", filename.c_str()); return; }
     changed = false; update_title();
 }
 static void save_as_cb(Fl_Widget* w, void* d) { std::string old = filename; filename.clear(); save_cb(w, d); if (filename.empty()) filename = old; update_title(); }
-static void open_cb(Fl_Widget*, void*) { if (!ok_to_discard()) return; Fl_Native_File_Chooser ch; ch.type(Fl_Native_File_Chooser::BROWSE_FILE); ch.filter("Musil\t*.mu"); if (ch.show() == 0) load_file(ch.filename()); }
+static void open_cb(Fl_Widget*, void*) { if (!ok_to_discard()) return; Fl_Native_File_Chooser ch; ch.type(Fl_Native_File_Chooser::BROWSE_FILE); ch.filter("Musil\t*.mu"); ch.directory(last_dir().c_str()); if (ch.show() == 0) load_file(ch.filename()); }
 static void new_cb(Fl_Widget*, void*) { if (!ok_to_discard()) return; text_buf->text(""); filename.clear(); changed = false; restyle_all(); update_title(); }
 static void quit_cb(Fl_Widget*, void*) { if (!ok_to_discard()) return; S.quit = true; S.cv.notify_all(); win->hide(); }
 static void clear_console_cb(Fl_Widget*, void*) { console_buf->text(""); }
@@ -396,41 +420,61 @@ struct musil_editor : Fl_Text_Editor {
 static void editor_reset_current_line() { if (editor) { ((musil_editor*)editor)->cur_start = -1; ((musil_editor*)editor)->update_current_line(); } }
 
 // --- settings dialog ---
-struct settings_dialog { Fl_Double_Window* win; Fl_Choice* font; Fl_Value_Input* size; Fl_Check_Button* numbers; Fl_Check_Button* curline; Fl_Value_Input* margin; };
+struct settings_dialog { Fl_Double_Window* win; Fl_Choice* font; Fl_Value_Input* size; Fl_Check_Button* numbers; Fl_Check_Button* curline; Fl_Value_Input* margin; Fl_Value_Input* port; };
 static void settings_ok_cb(Fl_Widget*, void* d) {
     settings_dialog* dlg = (settings_dialog*)d;
     static const int fonts[] = { FL_COURIER, FL_SCREEN, FL_HELVETICA };
     editor_font = fonts[std::max(0, std::min(2, dlg->font->value()))]; font_size = std::max(8, std::min(32, (int)dlg->size->value()));
     show_line_numbers = dlg->numbers->value() != 0; highlight_current_line = dlg->curline->value() != 0; margin_col = std::max(0, (int)dlg->margin->value());
+    int new_port = std::max(0, std::min(65535, (int)dlg->port->value()));
+    if (new_port != serve_port) { serve_port = new_port; prefs.set("serve_port", serve_port); prefs.flush(); submit(new_port > 0 ? "(serve " + std::to_string(new_port) + ")" : "(serve-stop)", "<settings>"); console_buf->append(new_port > 0 ? ("evaluation port now " + std::to_string(new_port) + "\n").c_str() : "evaluation port closed\n"); }
     apply_settings(); dlg->win->hide();
 }
 static void settings_cb(Fl_Widget*, void*) {
     static settings_dialog* dlg = nullptr;
     if (!dlg) {
         dlg = new settings_dialog();
-        dlg->win = new Fl_Double_Window(380, 230, "Settings");
+        dlg->win = new Fl_Double_Window(380, 265, "Settings");
         dlg->font = new Fl_Choice(130, 15, 220, 26, "Font:"); dlg->font->add("Courier"); dlg->font->add("Screen"); dlg->font->add("Helvetica");
         dlg->size = new Fl_Value_Input(130, 50, 80, 26, "Text size:"); dlg->size->range(8, 32); dlg->size->step(1);
         dlg->numbers = new Fl_Check_Button(130, 85, 220, 26, "Line numbers");
         dlg->curline = new Fl_Check_Button(130, 115, 220, 26, "Highlight the current line");
         dlg->margin = new Fl_Value_Input(130, 150, 80, 26, "Margin at column:"); dlg->margin->range(0, 200); dlg->margin->step(1); dlg->margin->tooltip("0 for no guide");
-        Fl_Button* ok = new Fl_Button(280, 190, 80, 28, "OK"); ok->callback(settings_ok_cb, dlg);
-        Fl_Button* cancel = new Fl_Button(190, 190, 80, 28, "Cancel"); cancel->callback([](Fl_Widget* w, void*) { w->window()->hide(); });
+        dlg->port = new Fl_Value_Input(130, 185, 80, 26, "Evaluation port:"); dlg->port->range(0, 65535); dlg->port->step(1); dlg->port->tooltip("the port editors send code to (VS Code, musil --send); 0 turns it off");
+        Fl_Button* ok = new Fl_Button(280, 225, 80, 28, "OK"); ok->callback(settings_ok_cb, dlg);
+        Fl_Button* cancel = new Fl_Button(190, 225, 80, 28, "Cancel"); cancel->callback([](Fl_Widget* w, void*) { w->window()->hide(); });
         dlg->win->end(); dlg->win->set_modal();
     }
     dlg->font->value(editor_font == FL_SCREEN ? 1 : editor_font == FL_HELVETICA ? 2 : 0); dlg->size->value(font_size);
-    dlg->numbers->value(show_line_numbers); dlg->curline->value(highlight_current_line); dlg->margin->value(margin_col);
+    dlg->numbers->value(show_line_numbers); dlg->curline->value(highlight_current_line); dlg->margin->value(margin_col); dlg->port->value(serve_port);
     dlg->win->show();
 }
 static Fl_Button* tool_button(int& x, int y, int w, const char* label, const char* tip, Fl_Callback* cb, void* d = nullptr, Fl_Color col = FL_BLACK) {
     Fl_Button* b = new Fl_Button(x, y, w, 24, label); b->box(FL_FLAT_BOX); b->down_box(FL_FLAT_BOX); b->labelsize(14); b->labelcolor(col); b->color(fl_rgb_color(236, 236, 234)); b->selection_color(fl_rgb_color(205, 215, 235)); b->tooltip(tip); b->callback(cb, d); b->clear_visible_focus(); x += w + 2; return b;
 }
 
+// The main window scales the layout uniformly: whatever proportions the user dragged the tile to are kept
+struct ide_window : Fl_Double_Window {
+    Fl_Tile* tile = nullptr;
+    ide_window(int w, int h, const char* t) : Fl_Double_Window(w, h, t) {}
+    void resize(int X, int Y, int W, int H) override {
+        int ow = w(), oh = h();
+        std::vector<std::array<double, 4>> fr;                // each tile child's box as fractions of the tile
+        if (tile && ow > 0 && oh > 0) for (int k = 0; k < tile->children(); k++) { Fl_Widget* c = tile->child(k); fr.push_back({ (double)(c->x() - tile->x()) / tile->w(), (double)(c->y() - tile->y()) / tile->h(), (double)c->w() / tile->w(), (double)c->h() / tile->h() }); }
+        Fl_Double_Window::resize(X, Y, W, H);
+        if (tile && !fr.empty()) {
+            int tx = tile->x(), ty = tile->y(), tw = tile->w(), th = tile->h();
+            for (int k = 0; k < tile->children(); k++) { Fl_Widget* c = tile->child(k); auto& f = fr[k]; c->resize(tx + (int)std::lround(f[0] * tw), ty + (int)std::lround(f[1] * th), (int)std::lround(f[2] * tw), (int)std::lround(f[3] * th)); }
+            tile->init_sizes(); tile->redraw();
+        }
+    }
+};
+
 int main(int argc, char** argv) {
     Fl::lock();                                           // enables Fl::awake from the interpreter thread
     Fl::scheme("oxy");
     Fl::background(240, 240, 238); Fl::background2(255, 255, 255); Fl::foreground(40, 40, 40);
-    prefs.get("font_size", font_size, 13); prefs.get("editor_font", editor_font, (int)FL_COURIER); int ln = 1, cl = 1; prefs.get("line_numbers", ln, 1); prefs.get("current_line", cl, 1); prefs.get("margin_col", margin_col, 80);
+    prefs.get("font_size", font_size, 13); prefs.get("editor_font", editor_font, (int)FL_COURIER); int ln = 1, cl = 1; prefs.get("line_numbers", ln, 1); prefs.get("current_line", cl, 1); prefs.get("margin_col", margin_col, 80); prefs.get("serve_port", serve_port, 7770);
     show_line_numbers = ln != 0; highlight_current_line = cl != 0; build_styles();
     // libraries: next to the executable, in the bundle, ~/.musil, the source tree
     fs::path exe = fs::absolute(argv[0]).parent_path();
@@ -442,7 +486,8 @@ int main(int argc, char** argv) {
     load_help();
 
     const int W = 1280, H = 820, STATUS_H = 22, INPUT_H = 30;
-    win = new Fl_Double_Window(W, H, "Musil");
+    win = new ide_window(W, H, "Musil");
+    win->position((Fl::w() - W) / 2, (Fl::h() - H) / 2);
     Fl_Sys_Menu_Bar* menu = new Fl_Sys_Menu_Bar(0, 0, W, 26);
     menu->add("&File/&New", FL_COMMAND + 'n', new_cb); menu->add("&File/&Open...", FL_COMMAND + 'o', open_cb);
     menu->add("&File/&Save", FL_COMMAND + 's', save_cb); menu->add("&File/Save &As...", FL_COMMAND + FL_SHIFT + 's', save_as_cb, nullptr, FL_MENU_DIVIDER);
@@ -469,20 +514,16 @@ int main(int argc, char** argv) {
     const int TOOL_H = 32;
     toolbar = new Fl_Group(0, top, W, TOOL_H); toolbar->box(FL_FLAT_BOX); toolbar->color(fl_rgb_color(236, 236, 234));
     { int x = 8, y = top + 4;
-      tool_button(x, y, 34, "@>>", "Run file (Cmd-Shift-Enter)", run_file, nullptr, fl_rgb_color(30, 130, 70));
-      tool_button(x, y, 34, "@>", "Run block: the lines around the cursor, or the selection (Cmd-Enter)", run_block, nullptr, fl_rgb_color(30, 130, 70));
-      tool_button(x, y, 34, "@->", "Run line (Cmd-Alt-Enter)", run_line, nullptr, fl_rgb_color(30, 130, 70));
-      tool_button(x, y, 34, "@square", "Stop (Esc)", stop_cb, nullptr, fl_rgb_color(190, 50, 50));
+      run_btn = tool_button(x, y, 34, "@>", "Run the file (Cmd-Shift-Enter); Cmd-Enter runs the block around the cursor", run_file, nullptr, fl_rgb_color(30, 130, 70));
+      stop_btn = tool_button(x, y, 34, "@square", "Stop the running program (Esc)", stop_cb, nullptr, fl_rgb_color(190, 50, 50));
+      stop_btn->deactivate();
       x += 10;
-      tool_button(x, y, 34, "@reload", "Clear the console (Cmd-L)", clear_console_cb, nullptr, fl_rgb_color(90, 90, 90));
-      tool_button(x, y, 34, "@menu", "Controls window (the hot parameters)", [](Fl_Widget*, void*) { submit("(if (> (length (controls-list)) 0) (controls) (print \"no controls declared\"))", "<console>"); }, nullptr, fl_rgb_color(60, 100, 180));
-      tool_button(x, y, 34, "@circle", "Settings: font, size, line numbers, current line, margin (Cmd-,)", settings_cb, nullptr, fl_rgb_color(90, 90, 90));
-      Fl_Box* legend = new Fl_Box(x + 8, y, 480, 24, "run file   run block   run line   stop      clear   controls   settings"); legend->labelsize(10); legend->labelcolor(fl_rgb_color(140, 140, 140)); legend->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
-      Fl_Box* pad = new Fl_Box(x + 500, y, W - x - 500, 24); toolbar->resizable(pad); }
+      Fl_Button* clr = tool_button(x, y, 34, "\xe2\x9c\x95", "Clear the console (Cmd-L)", clear_console_cb, nullptr, fl_rgb_color(90, 90, 90)); clr->labelsize(16);
+      Fl_Box* pad = new Fl_Box(x, y, W - x, 24); toolbar->resizable(pad); }
     toolbar->end();
     top += TOOL_H;
     int tile_h = H - top - STATUS_H, left_w = 900, right_w = W - left_w, ed_h = (int)(tile_h * 0.58), cons_h = tile_h - ed_h - INPUT_H, vars_h = (int)(tile_h * 0.5);
-    Fl_Tile* tile = new Fl_Tile(0, top, W, tile_h);
+    Fl_Tile* tile = new Fl_Tile(0, top, W, tile_h); ((ide_window*)win)->tile = tile;
     text_buf = new Fl_Text_Buffer(); style_buf = new Fl_Text_Buffer(); text_buf->tab_distance(4);
     editor = new musil_editor(0, top, left_w, ed_h); editor->buffer(text_buf); editor->textfont((Fl_Font)editor_font); editor->textsize(font_size);
     editor->highlight_data(style_buf, styles, 14, 'A', nullptr, nullptr);
@@ -505,6 +546,7 @@ int main(int argc, char** argv) {
     help_search_cb(nullptr, nullptr);
     apply_settings();
     update_title();
+    Fl::add_timeout(0.03, console_flush, nullptr);
     win->show();
     std::thread worker(interpreter_thread);
     for (int k = 1; k < argc; k++) if (argv[k][0] != '-') { load_file(argv[k]); break; }

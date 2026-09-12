@@ -1,4 +1,4 @@
-% musil_manual.tex — Musil user manual, v0.6
+% musil_manual.tex — Musil user manual, v0.7
 %
 % Build:  cd docs && pdflatex musil_manual.tex && pdflatex musil_manual.tex
 % The function references in generated/*.tex come from the doc comments in src/:
@@ -56,7 +56,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\small\textit{Musil 0.6 User Manual}}
+\fancyhead[L]{\small\textit{Musil 0.7 User Manual}}
 \fancyhead[R]{\small\thepage}
 \renewcommand{\headrulewidth}{0.3pt}
 
@@ -73,7 +73,7 @@
 \vspace*{2.5cm}
 \includegraphics[width=0.9\textwidth]{musil_logo.png}\par
 \vspace{0.5cm}
-{\large\color{gray} User Manual \quad version 0.6}\par
+{\large\color{gray} User Manual \quad version 0.7}\par
 \vspace{2.5cm}
 \rule{0.5\linewidth}{0.5pt}\par
 \vspace{1.5cm}
@@ -385,8 +385,8 @@ copy). Strings and numbers behave as values.
         The lines sent flash. A toolbar has Run file, Run block, Run line, Stop, Clear,
         Controls and Settings. Undo, find (Cmd-F, Cmd-G), comment/uncomment (Cmd-/), text
         size (Cmd-+, Cmd--, for every panel), files by drag and drop; Settings (Cmd-,)
-        chooses the font, the size, line numbers, the current-line highlight and the
-        margin guide, and remembers them.
+        chooses the font, the size, line numbers, the current-line highlight, the margin
+        guide and the evaluation port (0 turns it off), and remembers them.
   \item \textbf{Console} (bottom left): everything printed, and a line to type Musil into:
         Enter runs it, Up/Down recall history, Tab completes a name. Esc or Cmd-. stops a
         running program (the interpreter checks at safe points, so the session survives).
@@ -615,7 +615,11 @@ function drums (cycle) ...          # redefine: next cycle it changes
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
 parameters follow it, \musil{set-control} and \musil{control-value} read and write it from
 code, \musil{(controls)} opens the window of sliders and check boxes and returns. \musil{osc-listen} and
-\musil{osc-map} let an incoming OSC message move a control; \musil{osc-send} sends one.
+\musil{osc-map} let an incoming OSC message move a control; \musil{osc-send} sends one;
+\musil{osc-encode} and \musil{osc-decode} are OSC in the language, over \musil{udp-send}
+and \musil{udp-receive}, for anything the conveniences do not cover. None of this is the
+evaluation port below: OSC carries numbers to controls over UDP, the port carries code
+over TCP.
 
 \textbf{Editors.} \musil{(serve 7770)} (the IDE does it at start-up; the command line
 with \texttt{--serve 7770 -i}) opens a local port that evaluates the text it receives, in
