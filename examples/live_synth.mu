@@ -42,7 +42,7 @@ free b
 
 # --- 3. a physical string: a noise burst into a tuned comb, filtered -------------------------
 function string (gate freq bright) \
-    (pan (lowpass (comb (* (noise 0) (adsr sr gate 0 0.005 0 0.005)) (floor (/ sr 220)) 0.995) sr bright 0.7) 0)
+    (pan (lowpass (comb (* (noise gate) (adsr sr gate 0 0.005 0 0.005)) (floor (/ sr 220)) 0.995) sr bright 0.7) 0)
 var c (synth string)
 set-params c (list (list 'freq 220) (list 'bright 2000))
 each (range 6) (function (k) { note c 0.01
@@ -51,7 +51,7 @@ free c
 
 # --- 4. effects are synths too: noise through a delay with feedback into a stereo pan --------
 function echoes (gate time fb) \
-    (pan (+ (* (adsr sr gate 0.001 0.05 0 0.05) (noise 0)) (* fb (delay (lag (noise 0) sr 0.5) time))) 0)
+    (pan (+ (* (adsr sr gate 0.001 0.05 0 0.05) (noise gate)) (* fb (delay (lag (noise gate) sr 0.5) time))) 0)
 var d (synth echoes)
 set-params d (list (list 'time (* sr 0.25)) (list 'fb 0.5))
 each (range 4) (function (k) { note d 0.02

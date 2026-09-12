@@ -746,12 +746,13 @@ inline vptr fn_ne(vlist& a, Interp& i) {
 inline vptr fn_equalp(vlist& a, Interp&) { return v_bool(equal(a[0], a[1])); }
 // (sin x) (cos x) (tan x) (asin x) (acos x) (atan x) (sqrt x) (exp x) (log x) (log2 x) (log10 x) trigonometry and logs, elementwise
 // (abs x) (floor x) (ceil x) (round x) rounding and magnitude, elementwise
+// (tanh x) hyperbolic tangent, elementwise (a soft clip for signals)
 // (mod a b) (pow a b) (atan2 y x) remainder (sign follows fmod), power, two-argument arctangent; elementwise
 #define UN(name, f)  inline vptr name(vlist& a, Interp& i) { varr r=i.num(a[0]); for (size_t k=0; k<r.size(); k++) r[k]=f(r[k]); return v_arr(std::move(r)); }
 #define BIN(name, f) inline vptr name(vlist& a, Interp& i) { return v_arr(bcast(i.num(a[0]), i.num(a[1]), [](double x, double y){ return f(x, y); }, i)); }
 UN(fn_sin, std::sin) UN(fn_cos, std::cos) UN(fn_tan, std::tan) UN(fn_asin, std::asin) UN(fn_acos, std::acos) UN(fn_atan, std::atan)
 UN(fn_sqrt, std::sqrt) UN(fn_exp, std::exp) UN(fn_log, std::log) UN(fn_log2, std::log2) UN(fn_log10, std::log10)
-UN(fn_abs, std::fabs) UN(fn_flr, std::floor) UN(fn_cei, std::ceil) UN(fn_rnd, std::round)
+UN(fn_abs, std::fabs) UN(fn_flr, std::floor) UN(fn_cei, std::ceil) UN(fn_rnd, std::round) UN(fn_tanh, std::tanh)
 BIN(fn_mod, std::fmod) BIN(fn_pow, std::pow) BIN(fn_atan2, std::atan2)
 // (not x) (and a b ...) (or a b ...) logic on truth values; and/or return 1 or 0 and evaluate every argument
 inline vptr fn_not(vlist& a, Interp& i) { return v_bool(!truthy(a[0])); }
@@ -933,7 +934,7 @@ inline Interp::Interp() {
     a("<", fn_lt, 2, 2); a(">", fn_gt, 2, 2); a("<=", fn_le, 2, 2); a(">=", fn_ge, 2, 2);
     a("==", fn_eq, 2, 2); a("!=", fn_ne, 2, 2); a("equal?", fn_equalp, 2, 2);
     for (auto& u : { std::pair<const char*, op_t>{"sin", fn_sin}, {"cos", fn_cos}, {"tan", fn_tan}, {"asin", fn_asin}, {"acos", fn_acos}, {"atan", fn_atan},
-                     {"sqrt", fn_sqrt}, {"exp", fn_exp}, {"log", fn_log}, {"log2", fn_log2}, {"log10", fn_log10},
+                     {"sqrt", fn_sqrt}, {"exp", fn_exp}, {"log", fn_log}, {"log2", fn_log2}, {"log10", fn_log10}, {"tanh", fn_tanh},
                      {"abs", fn_abs}, {"floor", fn_flr}, {"ceil", fn_cei}, {"round", fn_rnd}, {"not", fn_not} })
         a(u.first, u.second, 1, 1);
     a("atan2", fn_atan2, 2, 2); a("pow", fn_pow, 2, 2); a("mod", fn_mod, 2, 2);

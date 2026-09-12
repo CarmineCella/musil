@@ -611,6 +611,18 @@ live-loop 'drums 4
 function drums (cycle) ...          # redefine: next cycle it changes
 \end{lstlisting}
 
+\textbf{Notes, patterns, a kit.} \musil{hz}, \musil{note->midi}, \musil{midi->hz},
+\musil{chord} for pitch names and chords; \musil{pat} is a compact notation for steps,
+one string per cycle (\musil{"bd ~ sn ~"}: spaces are steps, \texttt{\textasciitilde} a rest,
+\texttt{[a b]} a subdivision, \texttt{a*n} a repeat), turned into events by
+\musil{pat-events}, \musil{drums} (a kit) and \musil{melody} (a synth); \musil{euclid},
+\musil{swing}, \musil{humanize}, \musil{sometimes}, \musil{chance} shape rhythms;
+\musil{poly} and \musil{chord-ev} play chords on several instances. \musil{kick},
+\musil{snare}, \musil{clap}, \musil{hat}, \musil{ohat}, \musil{acid}, \musil{stab},
+\musil{pad} are ordinary instrument functions (\musil{house-kit} makes the drums), so
+they render offline too. \texttt{examples/live\_house.mu} is a house track meant to be
+edited while it plays.
+
 \textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
 parameters follow it, \musil{set-control} and \musil{control-value} read and write it from
@@ -709,6 +721,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
+\texttt{live\_house.mu} & a house track from the kit, the step notation and loops, to live-code in the IDE \\
 \bottomrule
 \end{tabular}
 \end{center}

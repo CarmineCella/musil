@@ -83,7 +83,7 @@ Configure options:
 
 Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--ide`, `--docs`,
 `--no-fltk`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
-`dist/Musil.app`, `dist/musil`, `dist/musil-ide`, `dist/lib`, the manual, a zip),
+`dist/Musil.app`, `dist/musil`, `dist/musil-ide`, `dist/lib`, the examples, the manual, a zip),
 `./deploy_linux.sh` (a folder with the same plus `run.sh`, and a tar.gz).
 
 A complete release, from a clean tree (this is what the release assets are made of):
@@ -92,7 +92,7 @@ A complete release, from a clean tree (this is what the release assets are made 
 ./clean.sh                    # fresh-clone state: no build directories, no generated documentation
 ./build.sh --test             # configure (regenerates help.txt and the VS Code grammar), build, run every test
 ./build.sh --docs             # the manual: docs/musil_manual.pdf (needs pdflatex)
-./deploy_macos.sh --clean     # macOS: dist/Musil.app, dist/musil, dist/musil-ide, dist/lib, dist/musil_manual.pdf,
+./deploy_macos.sh --clean     # macOS: dist/Musil.app, dist/musil, dist/musil-ide, dist/lib, dist/examples, dist/musil_manual.pdf,
                               #        dist/musil-<version>.vsix (when npx is present), dist/Musil-<version>-macos.zip
 ./deploy_linux.sh --clean     # Linux: dist/musil-<version>-linux/ and its tar.gz, on a Linux machine
 git tag -a v<version> -m "Musil <version>" && git push --tags   # then attach the zip, the tarball and the PDF to the GitHub release

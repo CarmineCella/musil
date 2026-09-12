@@ -195,6 +195,45 @@ var pe (play-ev 1 tone sr)
 check (== (ev-beat pe) 1) "play-ev"
 check (equal? (type (ev-thunk pe)) "function") "an event's thunk is a function"
 
+# --- pitch names, chords, the step notation, rhythm tools, the kit ---
+check (== (hz "A4") 440) "hz: A4"
+check (near? (hz "C4") 261.63 0.01) "hz: C4"
+check (near? (hz "Bb3") 233.08 0.01) "hz: flats"
+check (== (note->midi "F#5") 78) "note->midi: sharps"
+check (== (hz->midi 440) 69) "hz->midi"
+check (equal? (chord "A3" 'min7) (list 57 60 64 67)) "chord: minor seventh"
+check (contains? (error-of (function () (chord "C4" 'nope))) "unknown kind") "chord: unknown kind"
+check (equal? (pat "bd ~ sn ~" 4) (list (list 0 1 "bd") (list 2 1 "sn"))) "pat: steps and rests"
+check (equal? (map (pat "bd [hh hh] sn" 3) head) (list 0 1 1.5 2)) "pat: a subdivision"
+check (equal? (map (pat "hh*4" 2) head) (list 0 0.5 1 1.5)) "pat: a repeat"
+check (equal? (pat "" 4) (list)) "pat: empty"
+check (equal? (map (pat-events (pat "x ~ x" 3) (function (tok) print)) ev-beat) (list 0 2)) "pat-events"
+check (equal? (euclid 3 8) (list 1 nil nil 1 nil nil 1 nil)) "euclid 3 8"
+check (equal? (euclid 5 8) (list 1 nil 1 nil 1 1 nil 1)) "euclid 5 8"
+check (equal? (map (swing (list (ev 0 0.5 print) (ev 0.5 0.5 print) (ev 1 0.5 print)) 0.3) ev-beat) (list 0 0.65 1)) "swing: off-beat eighths move"
+check (== (length (humanize e 0.05)) 2) "humanize: same count"
+check (all? (map (humanize e 0.05) (function (x) (>= (ev-beat x) 0))) identity) "humanize: never before zero"
+check (== (length (sometimes 0 (function (x) (list)) e)) 2) "sometimes: p = 0 never applies"
+check (== (length (sometimes 1 (function (x) (list)) e)) 0) "sometimes: p = 1 always applies"
+var g (vec (ones 200) (zeros 8000))
+check (> (rms (kick g)) 0.05) "kick: renders offline"
+check (> (rms (snare g)) 0.02) "snare: renders offline"
+check (> (rms (clap g)) 0.01) "clap: renders offline (noise as long as the gate)"
+check (> (rms (hat g)) 0.01) "hat"
+check (> (rms (ohat g)) 0.01) "ohat"
+check (contains? (error-of (function () (acid g (+ (zeros 8200) 55) 800 4))) "streaming feature") "acid: its cutoff envelope is a streaming feature (offline says so)"
+check (> (rms (synth-render acid (list (list 'gate g) (list 'freq 55) (list 'cutoff 800) (list 'res 4)) 0.18)) 0.05) "acid: renders through the graph"
+check (== (length (noise g)) (length g)) "noise: as long as a signal"
+var kit (house-kit)
+check (== (length kit) 5) "house-kit: five synths"
+check (equal? (type (kit-get kit 'kick)) "scalar") "kit-get"
+check (== (length (drums kit "bd ~ sn ~ bd bd sn ~" 4)) 5) "drums: events from a pattern"
+check (== (length (melody (synth acid) "a1 ~ a1 c2" 4 (list))) 3) "melody: notes from a pattern"
+var voices3 (poly stab 3)
+check (== (length voices3) 3) "poly"
+check (== (ev-beat (chord-ev 1 0.5 voices3 (chord "A3" 'min) (list))) 1) "chord-ev"
+free-all
+
 # --- controls ---
 clear-controls
 control 'cutoff 100 5000 1200

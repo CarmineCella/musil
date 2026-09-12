@@ -121,6 +121,19 @@ print "steps            :" (map (steps 0.5 (list 60 nil 62 64) (function (n) (fu
 print "synth-ev, play-ev: events on a synth (parameters + gate) or a buffer"
 free p
 
+# --- 6b. Notes, patterns, the house kit -----------------------------------------------------
+print ""
+print "--- notes, patterns, the kit ---"
+print "hz, note->midi   :" (hz "A4") (fixed (hz "C4") 2) (note->midi "F#5") "; chord A3 min7:" (chord "A3" 'min7)
+print "pat              :" (pat "bd ~ sn ~" 4) "  bd [hh hh] sn:" (map (pat "bd [hh hh] sn" 3) head) "  hh*4:" (map (pat "hh*4" 2) head)
+print "euclid 3 8       :" (euclid 3 8)
+print "swing 0.3        :" (map (swing (list (ev 0 0.5 print) (ev 0.5 0.5 print)) 0.3) ev-beat) "(off-beat eighths later)"
+print "kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums"
+var kit (house-kit)
+print "drums, melody    :" (length (drums kit "bd ~ sn ~ bd bd sn ~" 4)) "drum events;" (length (melody (synth acid) "a1 ~ a1 c2" 4 (list))) "notes"
+print "poly, chord-ev   :" (length (poly stab 3)) "voices for chords"
+free-all
+
 # --- 7. Controls and OSC ------------------------------------------------------------------
 print ""
 print "--- controls and osc ---"

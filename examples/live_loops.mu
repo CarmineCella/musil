@@ -12,7 +12,7 @@ tempo 110
 
 # instruments
 function kick (gate) (* (adsr sr gate 0.001 0.15 0 0.05) (osc sr (+ 50 (* 80 (adsr sr gate 0 0.05 0 0.01))) sine-table))
-function hat (gate) (* 0.3 (adsr sr gate 0.001 0.04 0 0.02) (highpass (noise 0) sr 6000 1))
+function hat (gate) (* 0.3 (adsr sr gate 0.001 0.04 0 0.02) (highpass (noise gate) sr 6000 1))
 function bass (gate freq cutoff) (* 0.6 (adsr sr gate 0.005 0.1 0.6 0.1) (lowpass (osc sr freq saw-table) sr cutoff 3))
 var k (synth kick)
 var h (synth hat)

@@ -490,7 +490,7 @@ struct ugen_spec { std::vector<char> args; };            // 's' signal/control i
 inline const std::map<std::string, ugen_spec>& ugen_table() {
     static const std::map<std::string, ugen_spec> t = {
         { "osc",      { { 'r', 's', 'c' } } },           // (osc sr freq table)
-        { "noise",    { { 'c' } } },                     // (noise n): n ignored when streaming
+        { "noise",    { { 's' } } },                     // (noise n): n (a number or a signal) is ignored when streaming
         { "adsr",     { { 'r', 's', 's', 's', 's', 's' } } },   // (adsr sr gate a d s r)
         { "lag",      { { 's', 'r', 's' } } },           // (lag x sr seconds)
         { "iir",      { { 's', 'c', 'c' } } },           // (iir x b a)
@@ -539,7 +539,7 @@ struct synth_compiler {
         if (h == "+" || h == "-" || h == "*" || h == "/") { std::vector<int> ins; for (auto& a : args) ins.push_back(compile(a)); arith_node* n = new arith_node(h[0]); n->in = ins; return add(n); }
         if (h == "list") { std::vector<int> ins; for (auto& a : args) ins.push_back(compile(a)); list_node* n = new list_node(); n->in = ins; return add(n); }
         const ugen_spec& spec = it->second;
-        if (args.size() < spec.args.size() && !(h == "noise")) fail(h + ": expected " + std::to_string(spec.args.size()) + " arguments");
+        if (args.size() < spec.args.size()) fail(h + ": expected " + std::to_string(spec.args.size()) + " arguments");
         std::vector<int> sigs; std::vector<vptr> consts;
         for (size_t k = 0; k < spec.args.size() && k < args.size(); k++) {
             if (spec.args[k] == 's') sigs.push_back(compile(args[k]));
@@ -547,7 +547,7 @@ struct synth_compiler {
         }
         gnode* n = nullptr;
         if (h == "osc") { auto t = vec_of(consts[0], "osc table"); if (t.size() < 2) fail("osc: table too short"); n = new osc_node(t, sr); }
-        else if (h == "noise") n = new noise_node();
+        else if (h == "noise") { n = new noise_node(); sigs.clear(); }
         else if (h == "adsr") n = new adsr_node(sr);
         else if (h == "lag") n = new lag_node(sr);
         else if (h == "iir") n = new iir_node(vec_of(consts[0], "iir b"), vec_of(consts[1], "iir a"));

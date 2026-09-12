@@ -12,8 +12,9 @@ load "scientific.mu"
 # --- generators -------------------------------------------------------------
 # (sine sr freq dur)       a sine of freq Hz lasting dur seconds
 function sine (sr freq dur) (sin (* tau freq (/ (range (floor (* sr dur))) sr)))
-# (noise n)                white noise in [-1, 1]
-function noise (n) (- (* 2 (rand n)) 1)
+# (noise n)                white noise in [-1, 1]; n may also be a signal, giving noise of its length
+#                          (so an instrument can write (noise gate): offline as long as the gate, streamed forever)
+function noise (n) (- (* 2 (rand (if (> (length n) 1) (length n) n))) 1)
 # (impulse n)              a 1 followed by n-1 zeros
 function impulse (n) (vec 1 (zeros (- n 1)))
 # (gen n amps)             one period of a wavetable with the given harmonic amplitudes, plus a
@@ -309,6 +310,7 @@ function acf-f0 (x sr) {
 # (biquad type sr f0 q gain-db) => (list b a) of an RBJ biquad; type is one of
 #   "lowpass" "highpass" "bandpass" "notch" "peak" "lowshelf" "highshelf"
 function biquad (type sr f0 q gain-db) {
+    if (or (> (length f0) 1) (> (length q) 1) (> (length gain-db) 1)) { error "biquad: a moving cutoff, q or gain is a streaming feature (a synth); offline they are single numbers" }
     var w0 (/ (* tau f0) sr)
     var c (cos w0)
     var s (sin w0)

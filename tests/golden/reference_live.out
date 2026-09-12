@@ -52,6 +52,15 @@ cat, stack       : (0 2 4 6) 4
 steps            : (0 1 1.5) (nil is a rest)
 synth-ev, play-ev: events on a synth (parameters + gate) or a buffer
 
+--- notes, patterns, the kit ---
+hz, note->midi   : 440 261.63 78 ; chord A3 min7: (57 60 64 67)
+pat              : ((0 1 bd) (2 1 sn))   bd [hh hh] sn: (0 1 1.5 2)   hh*4: (0 0.5 1 1.5)
+euclid 3 8       : (1 nil nil 1 nil nil 1 nil)
+swing 0.3        : (0 0.65) (off-beat eighths later)
+kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums
+drums, melody    : 5 drum events; 3 notes
+poly, chord-ev   : 3 voices for chords
+
 --- controls and osc ---
 control, toggle  : ((cutoff 100 5000 1200 0) (on 0 1 0 1))
 set-control      : cutoff now 300 (the bound synth followed, ramped)

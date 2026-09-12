@@ -178,3 +178,147 @@ function steps (beats-per-step items thunk-of-item) {
     })
     return out
 }
+
+# --- pitch names --------------------------------------------------------------------
+var note-names (list "C" "C#" "D" "D#" "E" "F" "F#" "G" "G#" "A" "A#" "B")
+# (midi->hz n) (hz->midi f)   MIDI note numbers and Hz (69 = A4 = 440)
+function midi->hz (n) (* 440 (pow 2 (/ (- n 69) 12)))
+function hz->midi (f) (+ 69 (* 12 (log2 (/ f 440))))
+# (note->midi "C#4")       a note name with octave (# or b) to a MIDI number; (hz "A4") straight to Hz
+function note->midi (name) {
+    var s (str name)
+    var letter (upper (getidx s 0))
+    var acc (if (> (length s) 2) (getidx s 1) "")
+    var sharp (equal? acc "#")
+    var flat (equal? acc "b")
+    var octave (num (slice s (if (or sharp flat) 2 1) 4))
+    return (+ (find note-names letter) (if sharp 1 0) (if flat -1 0) (* 12 (+ octave 1)))
+}
+function hz (name) (midi->hz (note->midi name))
+# (chord root kind)        the MIDI numbers of a chord: kind is 'maj 'min 'dom7 'min7 'maj7 'sus4 'dim; root a note name
+function chord (root kind) {
+    var r (note->midi root)
+    var iv (opt (list (list "maj" (list 0 4 7)) (list "min" (list 0 3 7)) (list "dom7" (list 0 4 7 10)) (list "min7" (list 0 3 7 10))
+                      (list "maj7" (list 0 4 7 11)) (list "sus4" (list 0 5 7)) (list "dim" (list 0 3 6)) (list "min9" (list 0 3 7 10 14))) (str kind) nil)
+    if (equal? (type iv) "nil") { error "chord: unknown kind " kind }
+    return (map iv (function (i) (+ r i)))
+}
+
+# --- a compact notation for steps -------------------------------------------------------
+# (pat "bd ~ sn ~" beats)   one string per cycle: tokens separated by spaces are steps of equal
+#                          length, ~ is a rest, [a b] subdivides a step, a*n repeats a token n times;
+#                          => (list (list beat dur token) ...) spread over `beats`. It is a notation
+#                          for steps, nothing more: (pat "x ~ x ~" 4) equals (steps 1 (list "x" nil "x" nil) ...)
+function pat-tokens (s) {
+    var out (list)
+    var cur ""
+    var depth 0
+    each (split s "") (function (c) {
+        if (equal? c "[") { set depth (+ depth 1) }
+        if (equal? c "]") { set depth (- depth 1) }
+        if (and (equal? c " ") (== depth 0)) {
+            if (> (length cur) 0) { push out cur }
+            set cur ""
+        } {
+            set cur (concat cur c)
+        }
+    })
+    if (> (length cur) 0) { push out cur }
+    return out
+}
+function pat-expand (tokens start span) {
+    var out (list)
+    if (== (length tokens) 0) { return out }
+    var step (/ span (length tokens))
+    var k 0
+    each tokens (function (tok) {
+        var t (+ start (* k step))
+        if (and (starts-with? tok "[") (ends-with? tok "]")) {
+            each (pat-expand (pat-tokens (slice tok 1 (- (length tok) 2))) t step) (function (e) (push out e))
+        } {
+            var star (find tok "*")
+            if (>= star 0) {
+                var n (num (slice tok (+ star 1) 8))
+                var name (slice tok 0 star)
+                each (range n) (function (j) (if (not (equal? name "~")) { push out (list (+ t (* j (/ step n))) (/ step n) name) }))
+            } {
+                if (not (equal? tok "~")) { push out (list t step tok) }
+            }
+        }
+        set k (+ k 1)
+    })
+    return out
+}
+function pat (s beats) (pat-expand (pat-tokens s) 0 beats)
+# (pat-events pattern maker)   events from a pattern: maker gets the token and returns a thunk (t d)
+function pat-events (pattern maker) (map pattern (function (p) (ev (head p) (getidx p 1) (maker (last p)))))
+
+# --- rhythm tools --------------------------------------------------------------------------
+# (euclid hits steps)      the Euclidean rhythm as a list of 1 / nil, for steps: (euclid 3 8) = x ~ ~ x ~ ~ x ~
+function euclid (hits steps) {
+    var out (list)
+    var bucket (- steps hits)
+    each (range steps) (function (k) {
+        set bucket (+ bucket hits)
+        if (>= bucket steps) { set bucket (- bucket steps)
+                               push out 1 } { push out nil }
+    })
+    return out
+}
+# (swing events amount)    push the off-beat eighths later by amount (0 none, 0.33 heavy), in beats
+function swing (events amount) (map events (function (e) {
+    var b (ev-beat e)
+    var off (mod (* b 2) 2)
+    return (ev (if (near? off 1 0.01) (+ b (* amount 0.5)) b) (ev-dur e) (ev-thunk e))
+}))
+function near? (a b eps) (< (abs (- a b)) eps)
+# (humanize events beats)  move every event by a random amount up to +/- beats
+function humanize (events beats) (map events (function (e) (ev (max 0 (+ (ev-beat e) (* beats (- (* 2 (rand)) 1)))) (ev-dur e) (ev-thunk e))))
+# (sometimes p f events)   apply f to the events with probability p, per cycle
+function sometimes (p f events) (if (< (rand) p) (f events) events)
+# (chance p events)        keep each event with probability p (an alias of degrade with the argument order of sometimes)
+function chance (p events) (degrade events p)
+
+# --- polyphony: several instances of one function, and chords on them ----------------------
+# (poly f n)               n instances of the synth function f; => (list id ...)
+function poly (f n) (map (range n) (function (k) (synth f)))
+# (chord-ev beat dur ids midis pairs)   a chord: each instance gets a pitch (as freq) and the pairs, and is gated for dur
+function chord-ev (beat dur ids midis pairs) (ev beat dur (function (t d) {
+    each (zip ids midis) (function (p) {
+        set-param (head p) 'freq (midi->hz (last p)) 0 t
+        each pairs (function (q) (set-param (head p) (head q) (last q) 0 t))
+        note-at t (head p) d
+    })
+}))
+
+# --- a house kit: instruments as functions (call them for a buffer, synth them to play) -------------
+# (kick gate)              a sine with a pitch drop and a click, saturated
+function kick (gate) (tanh (* 1.5 (adsr sr gate 0.001 0.28 0 0.05) (osc sr (+ 48 (* 140 (adsr sr gate 0 0.045 0 0.01))) sine-table)))
+# (snare gate)             bright noise and a short 190 Hz tone
+function snare (gate) (+ (* 0.6 (adsr sr gate 0.001 0.13 0 0.05) (highpass (noise gate) sr 1800 1)) (* 0.5 (adsr sr gate 0.001 0.07 0 0.03) (osc sr 190 sine-table)))
+# (clap gate)              band-limited noise with a spread attack
+function clap (gate) (* 0.8 (+ (adsr sr gate 0.001 0.02 0 0.01) (adsr sr gate 0.012 0.15 0 0.08)) (bandpass (noise gate) sr 1400 1.2))
+# (hat gate) (ohat gate)   closed and open hi-hats: highpassed noise, short and long
+function hat (gate) (* 0.35 (adsr sr gate 0.001 0.035 0 0.02) (highpass (noise gate) sr 8000 0.8))
+function ohat (gate) (* 0.3 (adsr sr gate 0.001 0.25 0 0.1) (highpass (noise gate) sr 7000 0.8))
+# (acid gate freq cutoff res)   a sawtooth into a resonant lowpass whose cutoff follows an envelope, then drive
+#                          (a moving cutoff is a streaming feature: use synth-render for a buffer of it)
+function acid (gate freq cutoff res) (tanh (* 1.8 (adsr sr gate 0.004 0.18 0.35 0.1) (lowpass (osc sr freq saw-table) sr (* cutoff (+ 0.25 (adsr sr gate 0.003 0.14 0.15 0.1))) res)))
+# (stab gate freq cutoff)  the chord voice: two detuned saws and a sub octave, lowpassed
+function stab (gate freq cutoff) (* 0.3 (adsr sr gate 0.004 0.14 0.25 0.12) (lowpass (+ (osc sr freq saw-table) (osc sr (* freq 1.006) saw-table) (* 0.6 (osc sr (* 0.5 freq) square-table))) sr cutoff 1.5))
+# (pad gate freq cutoff)   slow detuned saws for the breakdown
+function pad (gate freq cutoff) (* 0.22 (adsr sr gate 0.9 0.5 0.8 1.5) (lowpass (+ (osc sr freq saw-table) (osc sr (* freq 1.004) saw-table) (osc sr (* freq 0.996) saw-table)) sr cutoff 0.9))
+# (house-kit)              synths for kick snare clap hat ohat as (list (list 'kick id) ...); (kit-get kit 'name)
+function house-kit () (list (list "kick" (synth kick)) (list "snare" (synth snare)) (list "clap" (synth clap)) (list "hat" (synth hat)) (list "ohat" (synth ohat)))
+function kit-get (kit name) (opt kit (str name) nil)
+# (drums kit pattern-string beats)   events for a kit from a pattern whose tokens are bd sn cp hh oh
+function drums (kit s beats) (pat-events (pat s beats) (function (tok) {
+    var id (kit-get kit (opt (list (list "bd" "kick") (list "sn" "snare") (list "cp" "clap") (list "hh" "hat") (list "oh" "ohat")) tok tok))
+    return (function (t d) (if (not (equal? (type id) "nil")) { note-at t id 0.05 }))
+}))
+# (melody id pattern-string beats pairs)   notes for a synth from a pattern of note names (a2 c3 ...) and rests
+function melody (id s beats pairs) (pat-events (pat s beats) (function (tok) (function (t d) {
+    set-param id 'freq (hz tok) 0 t
+    each pairs (function (q) (set-param id (head q) (last q) 0 t))
+    note-at t id (* d 0.8)
+})))
