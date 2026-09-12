@@ -449,6 +449,10 @@ static void settings_cb(Fl_Widget*, void*) {
     dlg->numbers->value(show_line_numbers); dlg->curline->value(highlight_current_line); dlg->margin->value(margin_col); dlg->port->value(serve_port);
     dlg->win->show();
 }
+static const int BANNER_H = 20;
+static Fl_Box* banner(int x, int y, int w, const char* text) {
+    Fl_Box* b = new Fl_Box(x, y, w, BANNER_H, text); b->box(FL_FLAT_BOX); b->color(fl_rgb_color(228, 228, 226)); b->labelsize(11); b->labelcolor(fl_rgb_color(100, 100, 100)); b->labelfont(FL_HELVETICA_BOLD); b->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE); return b;
+}
 static Fl_Button* tool_button(int& x, int y, int w, const char* label, const char* tip, Fl_Callback* cb, void* d = nullptr, Fl_Color col = FL_BLACK) {
     Fl_Button* b = new Fl_Button(x, y, w, 24, label); b->box(FL_FLAT_BOX); b->down_box(FL_FLAT_BOX); b->labelsize(14); b->labelcolor(col); b->color(fl_rgb_color(236, 236, 234)); b->selection_color(fl_rgb_color(205, 215, 235)); b->tooltip(tip); b->callback(cb, d); b->clear_visible_focus(); x += w + 2; return b;
 }
@@ -525,19 +529,27 @@ int main(int argc, char** argv) {
     int tile_h = H - top - STATUS_H, left_w = 900, right_w = W - left_w, ed_h = (int)(tile_h * 0.58), cons_h = tile_h - ed_h - INPUT_H, vars_h = (int)(tile_h * 0.5);
     Fl_Tile* tile = new Fl_Tile(0, top, W, tile_h); ((ide_window*)win)->tile = tile;
     text_buf = new Fl_Text_Buffer(); style_buf = new Fl_Text_Buffer(); text_buf->tab_distance(4);
-    editor = new musil_editor(0, top, left_w, ed_h); editor->buffer(text_buf); editor->textfont((Fl_Font)editor_font); editor->textsize(font_size);
+    Fl_Group* edg = new Fl_Group(0, top, left_w, ed_h);
+    banner(0, top, left_w, "  Editor");
+    editor = new musil_editor(0, top + BANNER_H, left_w, ed_h - BANNER_H); editor->buffer(text_buf); editor->textfont((Fl_Font)editor_font); editor->textsize(font_size);
     editor->highlight_data(style_buf, styles, 14, 'A', nullptr, nullptr);
     editor->linenumber_width(show_line_numbers ? 40 : 0); editor->linenumber_size(font_size - 2); editor->linenumber_bgcolor(fl_rgb_color(246, 246, 244)); editor->linenumber_fgcolor(fl_rgb_color(150, 150, 150));
     text_buf->add_modify_callback(style_update, nullptr); text_buf->add_modify_callback(text_changed, nullptr);
+    edg->resizable(editor); edg->end();
     Fl_Group* consg = new Fl_Group(0, top + ed_h, left_w, cons_h + INPUT_H);
-    console_buf = new Fl_Text_Buffer(); console = new Fl_Text_Display(0, top + ed_h, left_w, cons_h); console->buffer(console_buf); console->textfont(FL_COURIER); console->textsize(font_size); console->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 0);
+    banner(0, top + ed_h, left_w, "  Console");
+    console_buf = new Fl_Text_Buffer(); console = new Fl_Text_Display(0, top + ed_h + BANNER_H, left_w, cons_h - BANNER_H); console->buffer(console_buf); console->textfont(FL_COURIER); console->textsize(font_size); console->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 0);
     input = new console_input(0, top + ed_h + cons_h, left_w, INPUT_H); input->textfont(FL_COURIER); input->textsize(font_size); input->tooltip("type Musil and press Enter; Up/Down history; Tab completes; Esc stops");
     consg->resizable(console); consg->end();
-    vars = new Fl_Hold_Browser(left_w, top, right_w, vars_h); vars->textfont(FL_COURIER); vars->textsize(font_size - 1); vars->callback(vars_cb); vars->tooltip("variables: green numbers, orange strings, purple lists, blue functions; double-click prints one");
+    Fl_Group* varsg = new Fl_Group(left_w, top, right_w, vars_h);
+    banner(left_w, top, right_w, "  Environment");
+    vars = new Fl_Hold_Browser(left_w, top + BANNER_H, right_w, vars_h - BANNER_H); vars->textfont(FL_COURIER); vars->textsize(font_size - 1); vars->callback(vars_cb); vars->tooltip("variables: green numbers, orange strings, purple lists, blue functions; double-click prints one");
     { static int widths[] = { 160, 0 }; vars->column_widths(widths); vars->column_char('\t'); }
+    varsg->resizable(vars); varsg->end();
     Fl_Group* helpg = new Fl_Group(left_w, top + vars_h, right_w, tile_h - vars_h);
-    help_query = new Fl_Input(left_w, top + vars_h, right_w, 26); help_query->textfont(FL_COURIER); help_query->textsize(font_size); help_query->when(FL_WHEN_CHANGED); help_query->callback(help_search_cb); help_query->tooltip("help: search the documentation of every function");
-    help_buf = new Fl_Text_Buffer(); help_view = new Fl_Text_Display(left_w, top + vars_h + 26, right_w, tile_h - vars_h - 26); help_view->buffer(help_buf); help_view->textfont(FL_COURIER); help_view->textsize(font_size - 1); help_view->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 0);
+    banner(left_w, top + vars_h, right_w, "  Help");
+    help_query = new Fl_Input(left_w, top + vars_h + BANNER_H, right_w, 26); help_query->textfont(FL_COURIER); help_query->textsize(font_size); help_query->when(FL_WHEN_CHANGED); help_query->callback(help_search_cb); help_query->tooltip("help: search the documentation of every function");
+    help_buf = new Fl_Text_Buffer(); help_view = new Fl_Text_Display(left_w, top + vars_h + BANNER_H + 26, right_w, tile_h - vars_h - BANNER_H - 26); help_view->buffer(help_buf); help_view->textfont(FL_COURIER); help_view->textsize(font_size - 1); help_view->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 0);
     helpg->resizable(help_view); helpg->end();
     tile->end();
     status = new Fl_Box(0, H - STATUS_H, W, STATUS_H, ""); status->align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE); status->labelsize(11); status->labelcolor(fl_rgb_color(120, 120, 120)); status->box(FL_FLAT_BOX);
