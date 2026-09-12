@@ -56,8 +56,8 @@ var s (play-at (+ t0 0.2) tone sr)
 print "play-at t+0.2    : voice" s "waits for its time"
 wait-until (+ t0 0.25)
 print "wait-until       : now" (>= (audio-time) (+ t0 0.25))
-var steps (sequence (list (list (+ (audio-time) 0.05) tone sr) (list (+ (audio-time) 0.15) tone sr)))
-print "sequence         :" (length steps) "voices scheduled at once"
+var scheduled (sequence (list (list (+ (audio-time) 0.05) tone sr) (list (+ (audio-time) 0.15) tone sr)))
+print "sequence         :" (length scheduled) "voices scheduled at once"
 stop-all
 
 # --- 4. Files ---------------------------------------------------------------------------
@@ -99,7 +99,51 @@ print "synth-render     : the graph offline; equals the call within" (< (max (ab
 print "not streamable   :" (try (synth (function (freq) (pvoc-stretch (osc sr freq sine-table) 2))) catch e e)
 print "tables           : sine-table saw-table square-table triangle-table, for osc"
 
-# --- 6. Closing --------------------------------------------------------------------------
+# --- 6. Loops: patterns on the clock ---------------------------------------------------
+print ""
+print "--- loops ---"
+tempo 120
+print "tempo, bpm, beat :" (bpm) "bpm; beat" (>= (beat) 0) "; beat-time of beat 2 minus beat 0:" (fixed (- (beat-time 2) (beat-time 0)) 3) "s"
+var p (synth beep)
+function bassline (cycle) (list (synth-ev 0 0.5 p (list (list 'freq 55) (list 'cutoff 900))) (synth-ev 1 0.5 p (list (list 'freq 82) (list 'cutoff 900))))
+live-loop 'bassline 2
+print "live-loop        : loops" (loops) "; the function named bassline runs every 2 beats"
+sleep 1.2
+print "redefine         : function bassline ... again; the next cycle uses the new one"
+stop-loop 'bassline
+print "stop-loop        : loops" (loops)
+var e (list (ev 0 1 print) (ev 2 1 print))
+print "ev, ev-beat      :" (map e ev-beat) "(an event is (list beat dur thunk); the thunk gets the time and duration)"
+print "fast, slow, shift:" (map (fast e 2) ev-beat) (map (slow e 2) ev-beat) (map (shift e 1) ev-beat)
+print "rev, every       :" (map (rev e 4) ev-beat) (map (every 2 0 (function (x) (fast x 2)) e) ev-beat)
+print "cat, stack       :" (map (cat (list e e) 4) ev-beat) (length (stack (list e e)))
+print "steps            :" (map (steps 0.5 (list 60 nil 62 64) (function (n) (function (t d) t))) ev-beat) "(nil is a rest)"
+print "synth-ev, play-ev: events on a synth (parameters + gate) or a buffer"
+free p
+
+# --- 7. Controls and OSC ------------------------------------------------------------------
+print ""
+print "--- controls and osc ---"
+var q (synth beep)
+control 'cutoff 100 5000 1200
+toggle 'on 0
+bind-control 'cutoff q 'cutoff
+bind-control 'on q 'gate
+print "control, toggle  :" (controls-list)
+set-control 'cutoff 300
+print "set-control      : cutoff now" (control-value 'cutoff) "(the bound synth followed, ramped)"
+print "controls         : the window (CLI) or the panel (Listener): arrows, Space, Esc"
+osc-listen 47131
+osc-map "/cutoff" 'cutoff
+osc-send "127.0.0.1" 47131 "/cutoff" 2000
+sleep 0.1
+print "osc-send/listen  : after a message to /cutoff, the control is" (control-value 'cutoff)
+osc-stop
+clear-controls
+free q
+print "serve            : (serve 7770) opens the evaluation port editors send code to; (serving) tells which"
+
+# --- 8. Closing --------------------------------------------------------------------------
 print ""
 print "--- closing ---"
 master-gain 0.8

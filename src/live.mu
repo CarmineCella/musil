@@ -122,3 +122,57 @@ var sine-table (gen 1024 (vec 1))
 var saw-table (gen 1024 (/ 1 (range 1 40)))
 var square-table (gen 1024 (* (/ 1 (range 1 40)) (mod (range 1 40) 2)))
 var triangle-table (gen 1024 (* (/ 1 (* (range 1 40) (range 1 40))) (mod (range 1 40) 2)))
+
+# --- patterns and loops ----------------------------------------------------------------
+# A loop is a function of the cycle number returning events; an event is (list beat dur thunk)
+# where thunk is called with the absolute time (seconds on the clock) and the duration, and
+# schedules what it wants. (live-loop 'bass 4) calls the function named bass every 4 beats;
+# redefine bass while it runs and the next cycle uses the new one: that is the live coding.
+# (ev beat dur thunk)      an event
+function ev (beat dur thunk) (list beat dur thunk)
+# (synth-ev beat dur id pairs)   a note on a synth: sets the parameters and gates it for dur
+function synth-ev (beat dur id pairs) (ev beat dur (function (t d) {
+    each pairs (function (p) (set-param id (head p) (last p) 0 t))
+    note-at t id d
+}))
+# (play-ev beat buffer sr)     a buffer at a beat; (play-ev-with beat buffer sr opts) with play-with's options
+function play-ev (beat buffer sr) (ev beat 0 (function (t d) (play-at t buffer sr)))
+function play-ev-with (beat buffer sr opts) (ev beat 0 (function (t d) (play-buffer buffer sr (opt opts "amp" 1) (opt opts "pan" 0) (opt opts "rate" 1) (opt opts "loop" 0) t)))
+# (ev-beat e) (ev-dur e) (ev-thunk e)
+function ev-beat (e) (head e)
+function ev-dur (e) (getidx e 1)
+function ev-thunk (e) (last e)
+# --- transformations of event lists (they return new lists) ---
+# (shift events beats)     move every event later by beats
+function shift (events beats) (map events (function (e) (ev (+ (ev-beat e) beats) (ev-dur e) (ev-thunk e))))
+# (fast events factor)     squeeze the events in time by factor (2 = twice as fast); (slow events factor)
+function fast (events factor) (map events (function (e) (ev (/ (ev-beat e) factor) (/ (ev-dur e) factor) (ev-thunk e))))
+function slow (events factor) (fast events (/ 1 factor))
+# (rev events length)      play the cycle backwards (length = the loop's beats)
+function rev (events length) (map events (function (e) (ev (- length (ev-beat e) (ev-dur e)) (ev-dur e) (ev-thunk e))))
+# (every n cycle f events)    apply f to the events on every n-th cycle (cycle is the loop's cycle number)
+function every (n cycle f events) (if (== (mod cycle n) 0) (f events) events)
+# (degrade events p)       keep each event with probability p
+function degrade (events p) (filter events (function (e) (< (rand) p)))
+# (cat lists length)       several cycles' worth of events one after another, each of length beats
+function cat (lists length) {
+    var out (list)
+    var offset 0
+    each lists (function (l) {
+        each (shift l offset) (function (e) (push out e))
+        set offset (+ offset length)
+    })
+    return out
+}
+# (stack lists)            several event lists at once
+function stack (lists) (flatten lists)
+# (steps beats-per-step items thunk-of-item)   one event per item, evenly spaced; nil items are rests
+function steps (beats-per-step items thunk-of-item) {
+    var out (list)
+    var k 0
+    each items (function (item) {
+        if (not (equal? (type item) "nil")) { push out (ev (* k beats-per-step) beats-per-step (thunk-of-item item)) }
+        set k (+ k 1)
+    })
+    return out
+}

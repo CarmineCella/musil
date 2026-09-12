@@ -148,6 +148,96 @@ function verb (amp) (* amp (conv (noise 0) (vec 1 (zeros 300) 0.5)))
 check (> (rms (synth-render verb (list (list 'amp 0.5)) 0.2)) 0.1) "synth-render: partitioned conv streams"
 check (contains? (error-of (function () (synth-render beep (list (list 'nope 1)) 0.1))) "no parameter") "synth-render: unknown parameter"
 
+# --- the scheduler: loops in beats, redefined while running ---
+tempo 120
+check (== (bpm) 120) "tempo, bpm"
+check (>= (beat) 0) "beat: counts from tempo"
+check (near? (- (beat-time 2) (beat-time 0)) 1 1e-6) "beat-time: two beats at 120 bpm are one second"
+var hits (list)
+var p (synth (function (gate freq) (* (adsr sr gate 0.005 0.1 0.3 0.2) (osc sr freq saw-table))))
+function bass (cycle) {
+    push hits cycle
+    return (list (synth-ev 0 0.5 p (list (list 'freq 55))) (synth-ev 1 0.5 p (list (list 'freq 82))))
+}
+live-loop 'bass 2
+check (equal? (loops) (list "bass")) "live-loop: registered"
+sleep 2.3
+check (>= (length hits) 2) "live-loop: the function runs every cycle (from sleep's idle)"
+check (equal? (take hits 2) (list 0 1)) "live-loop: cycle numbers"
+function bass (cycle) (list (synth-ev 0 0.25 p (list (list 'freq 220))))
+var before (length hits)
+sleep 1.1
+check (== (length hits) before) "redefining the function: the old one no longer runs"
+stop-loop 'bass
+sleep 0.1
+check (equal? (loops) (list)) "stop-loop"
+check (contains? (error-of (function () (live-loop 'nothing 4))) "no function named") "live-loop: needs a function of that name"
+check (contains? (error-of (function () (live-loop 'bass 0))) "> 0") "live-loop: beats"
+lookahead 0.5
+check (contains? (error-of (function () (lookahead 0))) ">= 0.01") "lookahead: bounds"
+lookahead 0.25
+# event lists and their transformations
+var e (list (ev 0 1 print) (ev 2 1 print))
+check (equal? (map (fast e 2) ev-beat) (list 0 1)) "fast"
+check (equal? (map (slow e 2) ev-beat) (list 0 4)) "slow"
+check (equal? (map (shift e 1) ev-beat) (list 1 3)) "shift"
+check (equal? (map (rev e 4) ev-beat) (list 3 1)) "rev"
+check (equal? (map (every 2 0 (function (x) (fast x 2)) e) ev-beat) (list 0 1)) "every: applies on the cycle"
+check (equal? (map (every 2 1 (function (x) (fast x 2)) e) ev-beat) (list 0 2)) "every: leaves the others"
+check (== (length (degrade e 0)) 0) "degrade: p = 0 drops all"
+check (== (length (degrade e 1)) 2) "degrade: p = 1 keeps all"
+check (equal? (map (cat (list e e) 4) ev-beat) (list 0 2 4 6)) "cat"
+check (== (length (stack (list e e))) 4) "stack"
+check (equal? (map (steps 0.5 (list 60 nil 62) (function (n) (function (t d) t))) ev-beat) (list 0 1)) "steps: rests are nil"
+check (== (ev-dur (head (steps 0.5 (list 1) (function (n) print)))) 0.5) "steps: duration"
+var pe (play-ev 1 tone sr)
+check (== (ev-beat pe) 1) "play-ev"
+check (equal? (type (ev-thunk pe)) "function") "an event's thunk is a function"
+
+# --- controls ---
+clear-controls
+control 'cutoff 100 5000 1200
+toggle 'on 1
+check (== (control-value 'cutoff) 1200) "control, control-value"
+check (== (control-value 'on) 1) "toggle"
+check (== (length (controls-list)) 2) "controls-list"
+check (equal? (head (controls-list)) (list "cutoff" 100 5000 1200 0)) "controls-list: shape"
+set-control 'cutoff 9999
+check (== (control-value 'cutoff) 5000) "set-control: clamped to the range"
+bind-control 'cutoff p 'freq
+set-control 'cutoff 440
+check (contains? (error-of (function () (bind-control 'nope p 'freq))) "no control") "bind-control: unknown control"
+check (contains? (error-of (function () (control 'bad 1 1 1))) "hi must be > lo") "control: range"
+unbind-control 'cutoff
+clear-controls
+check (equal? (controls-list) (list)) "clear-controls"
+
+# --- OSC ---
+control 'level 0 1 0.5
+osc-listen 47131
+osc-map "/level" 'level
+check (== (osc-send "127.0.0.1" 47131 "/level" 0.25) 1) "osc-send"
+sleep 0.1
+check (near? (control-value 'level) 0.25 1e-6) "osc-map: an incoming message sets the control"
+osc-send "127.0.0.1" 47131 "/level" 3
+sleep 0.1
+check (== (control-value 'level) 1) "osc-map: clamped"
+check (contains? (error-of (function () (osc-map "/x" 'nope))) "no control") "osc-map: unknown control"
+osc-stop
+clear-controls
+free-all
+
+# --- the evaluation port ---
+serve 47770
+check (== (serving) 47770) "serve, serving"
+# the client runs in the background: the port is served from this thread's idle time (sleep idles)
+exec "(printf 'var from-editor 41\\n(+ from-editor 1)\\n\\004' | nc 127.0.0.1 47770 > /tmp/musil_port_reply.txt 2>/dev/null &)"
+sleep 0.5
+check (equal? (trim (read "/tmp/musil_port_reply.txt")) "42") "the port evaluates what it receives and replies with the value"
+check (== from-editor 41) "...in the global environment"
+serve-stop
+check (== (serving) 0) "serve-stop"
+
 # --- stopping and closing ---
 master-gain 0.5
 audio-stop

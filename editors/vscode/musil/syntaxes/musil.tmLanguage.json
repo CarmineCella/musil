@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Musil",
+  "scopeName": "source.musil",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.musil",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.musil",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.musil",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "constant.numeric.musil",
+      "match": "(?<![A-Za-z0-9\\-])-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?(?![A-Za-z0-9\\-])"
+    },
+    {
+      "name": "constant.language.musil",
+      "match": "(?<![A-Za-z0-9\\-])(nil|true|false|pi|inf|tau|euler|version)(?![A-Za-z0-9\\-?!>])"
+    },
+    {
+      "name": "keyword.control.musil",
+      "match": "(?<![A-Za-z0-9\\-])(var|set|function|return|if|while|for|break|continue|try|catch|do|quote|expr|eval|apply|load|help|and|or|not)(?![A-Za-z0-9\\-?!>])"
+    },
+    {
+      "name": "entity.name.function.musil",
+      "match": "(?<=function\\s)[A-Za-z][A-Za-z0-9\\-?!>]*"
+    },
+    {
+      "name": "variable.other.constant.musil",
+      "match": "'[A-Za-z][A-Za-z0-9\\-?!>]*"
+    },
+    {
+      "name": "support.function.musil",
+      "match": "(?<![A-Za-z0-9\\-?!>])(spectral\\-irregularity|envelope\\-from\\-values|magnitude\\-spectrum|pvoc\\-pitch\\-formant|spectral\\-flatness|spectral\\-skewness|spectral\\-envelope|spectral\\-decrease|spectral\\-centroid|spectral\\-kurtosis|synth\\-render\\-file|train\\-test\\-split|kmeans\\-centroids|scatter\\-clusters|linreg\\-residuals|schroeder\\-reverb|flatten\\-spectrum|spectral\\-rolloff|histogram\\-figure|impose\\-envelope|spectral\\-spread|pca\\-eigenvalues|audio\\-init\\-with|envelope\\-follow|knn\\-predict\\-one|stft\\-magnitudes|spectral\\-moment|audio\\-running\\?|spectrum\\-freqs|normalize\\-peak|spectral\\-morph|pca\\-directions|clear\\-controls|play\\-file\\-with|linreg\\-predict|audio\\-channels|mat\\-print\\-with|gate\\-spectrum|spectral\\-flux|pca\\-explained|controls\\-list|kmeans\\-labels|normalize\\-rms|median\\-filter|control\\-value|audio\\-devices|add\\-intercept|cluster\\-sizes|pvoc\\-formants|count\\-substr|local\\-maxima|bind\\-control|audio\\-report|synth\\-params|deinterleave|audio\\-status|starts\\-with\\?|pvoc\\-stretch|assert\\-equal|synth\\-render|apply\\-filter|wav\\-duration|udp\\-receive|play\\-buffer|append\\-file|knn\\-predict|add\\-surface|set\\-control|dist\\-matrix|master\\-gain|concat\\-list|spectrogram|add\\-scatter|loop\\-buffer|resample\\-to|complex\\-mul|fig\\-options|standardize|audio\\-close|audio\\-start|assert\\-near|add\\-subplot|write\\-lines|csv\\-escape|set\\-option|whisperize|audio\\-stop|pvoc\\-pitch|file\\-lines|magnitudes|x\\-or\\-index|interleave|audio\\-time|set\\-labels|linreg\\-fit|pca\\-scores|play\\-synth|audio\\-open|pvoc\\-cross|dc\\-block\\-r|ends\\-with\\?|set\\-xrange|wait\\-until|streamable|set\\-params|set\\-yrange|plot\\-lines|audio\\-quit|fig\\-layers|osc\\-listen|audio\\-init|mat\\-shape|contains\\?|add\\-image|play\\-file|fig\\-title|live\\-loop|knn\\-model|extension|mat\\-zeros|mat\\-scale|write\\-csv|lookahead|list\\->mat|map\\-range|write\\-wav|find\\-file|histogram|add\\-layer|normalize|voice\\-set|mat\\-round|play\\-with|set\\-param|next\\-pow2|transpose|pad\\-right|fmt\\-fixed|sort\\-list|mat\\-print|col\\-stack|vec\\->list|mat\\-shift|highshelf|file\\-size|identity|osc\\-send|free\\-all|accuracy|robotize|cepstrum|fftshift|set\\-rate|pol\\->car|defined\\?|add\\-line|save\\-png|hadamard|dc\\-block|deg\\->rad|lowshelf|rad\\->deg|note\\-off|car\\->pol|pad\\-left|linspace|quantile|synth\\-ev|subplots|fade\\-out|bandpass|read\\-csv|wait\\-for|audio\\-sr|spectrum|read\\-wav|basename|ev\\-thunk|get\\-rows|blackman|mat\\-fill|udp\\-send|get\\-cols|mat\\-rand|waveform|between\\?|mat\\-diag|sequence|princarg|knn\\-test|highpass|mat\\-mean|add\\-bars|autocorr|resample|mat\\-ones|hamming|fade\\-in|replace|mat\\-add|mat\\-mul|denoise|mat\\-sum|reverse|plot\\-xy|exists\\?|degrade|linefit|shuffle|mat\\-get|vec\\-mat|note\\-at|mat\\-map|lp\\-norm|dirname|peak\\-eq|ev\\-beat|mat\\-str|play\\-at|mat\\-std|elapsed|nearest|set\\-pan|set\\-amp|mat\\-vec|mat\\-row|mat\\-set|impulse|eig\\-sym|control|fmt\\-pct|scatter|mat\\-col|note\\-on|mat\\-sub|flatten|compose|oscbank|add\\-at!|surface|lowpass|play\\-ev|interp1|getidx|length|append|getenv|argmax|window|repeat|remove|biquad|voices|ev\\-dur|min\\-of|dist\\-p|argmin|assert|gather|reduce|figure|cumsum|empty\\?|kmeans|max\\-of|hstack|format|vstack|center|synths|filter|phases|unique|equal\\?|concat|add\\-at|median|setidx|acf\\-f0|zscore|solve|stack|notch|shift|fixed|log10|noise|steps|print|floor|stdev|image|ncols|synth|split|delay|every|write|outer|reson|file\\?|hypot|count|times|zeros|input|even\\?|trace|atan2|error|round|tempo|istft|lower|mkdir|nrows|upper|range|slice|clock|sleep|dist|log2|asin|plot|ceil|find|sign|show|copy|conv|lerp|ramp|each|free|note|sqrt|sort|prod|pvoc|ones|atan|seed|comb|stat|mean|vars|type|hann|diff|bars|list|head|fast|odd\\?|stop|take|play|rank|corr|trim|read|join|cons|adsr|all\\?|stft|push|drop|exec|undb|norm|any\\?|rand|ifft|sine|diag|acos|exit|dir\\?|clip|last|tail|beat|inv|num|rms|bpf|now|knn|ord|sum|hfc|lcm|sym|max|vec|mix|rev|zcr|opt|cat|pan|abs|osc|det|cwd|map|dot|gcd|mod|cos|gen|exp|sin|chr|tan|eye|lag|fft|min|iir|zip|cov|log|pca|pow|str|pop|db|ls|ev)(?![A-Za-z0-9\\-?!>])"
+    },
+    {
+      "name": "keyword.operator.musil",
+      "match": "(?<=[\\s(])([-+*/]|<=|>=|==|!=|<|>|&&|\\|\\|)(?=[\\s)])"
+    }
+  ]
+}

@@ -30,7 +30,16 @@ inline vptr sys_exec(vlist& a, Interp& i) {
 // (getenv "NAME") => value or nil
 inline vptr sys_getenv(vlist& a, Interp& i) { const char* v = std::getenv(i.str(a[0]).c_str()); return v ? v_str(v) : v_nil(); }
 // (sleep seconds)
-inline vptr sys_sleep(vlist& a, Interp& i) { std::this_thread::sleep_for(std::chrono::duration<double>(i.scalar(a[0]))); return v_nil(); }
+inline vptr sys_sleep(vlist& a, Interp& i) {   // in slices, so a stop request and background work (live loops) get through
+    double secs = i.scalar(a[0]); auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(secs);
+    while (true) {
+        auto now = std::chrono::steady_clock::now(); if (now >= end) break;
+        std::this_thread::sleep_for(std::min(std::chrono::duration<double>(0.005), std::chrono::duration<double>(end - now)));
+        if (i.yield_fn) i.yield_fn();
+        i.idle();
+    }
+    return v_nil();
+}
 // (now) => seconds since the Unix epoch (wall clock; clock is the monotonic one)
 inline vptr sys_now(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count()); }
 

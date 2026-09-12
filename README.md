@@ -105,7 +105,10 @@ or the operating system and a `.mu` file for what is better written in Musil its
 - **live**: real-time sound: an audio device, a sample-accurate clock, voices that play
   buffers and files scheduled ahead of time, and synths: an instrument is an ordinary
   function of its parameters (oscillators, envelopes, filters, delays, convolution, pan),
-  called for a buffer or compiled into the audio thread with hot parameters;
+  called for a buffer or compiled into the audio thread with hot parameters; loops in beats
+  that re-read their pattern function every cycle (redefine it: the music changes), controls
+  with sliders and OSC, and an evaluation port editors send code to (a VS Code extension is
+  in `editors/vscode/musil`);
 - **plot**: figures of lines, points, bars, images and 3D surfaces, grids of subplots, shown in a window or saved as PNG.
 
 Every library has a test and a runnable reference (`examples/reference_<name>.mu`);

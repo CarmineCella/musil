@@ -392,6 +392,10 @@ Tab moves the focus between its panels (the focused one has a blue frame).
         a coloured dot per kind, and your functions below. Up/Down select, Enter prints.
   \item \textbf{Help} (bottom right): type a name or a word to search the documentation
         of every function; Enter prints the first match. \musil{(manual)} opens this PDF.
+  \item \textbf{Controls} (bottom right, when some are declared): sliders and toggles for
+        the hot parameters; arrows change the selected one.
+  \item \textbf{From the editor}: the Listener listens on port 7770; a block sent from VS
+        Code (Cmd-Enter) is evaluated and shown above the console. Ctrl-V pastes.
   \item \textbf{Plots}: \musil{(show fig)} turns the window into the figure, as the
         command line's window does; Esc returns to the console. The figures of a session
         stay in a gallery: \texttt{,} and \texttt{.} page through them. In a figure,
@@ -590,8 +594,40 @@ set-param a 'cutoff 300 1.5                      # ramp while it plays
 var y (lead gate-vector freq-vector 1200)        # the same function, offline: a buffer
 \end{lstlisting}
 
-The scheduler's patterns and the controls window come next, on the same queue, clock,
-voices and synths.
+\textbf{Loops.} A loop is a function of the cycle number returning events, each
+\musil{(list beat dur thunk)}; \musil{(live-loop 'bass 4)} calls the function \emph{named}
+\musil{bass} every four beats, slightly ahead of the clock (\musil{lookahead}), and the
+thunks schedule sounds sample-accurately (\musil{synth-ev}, \musil{play-ev}, or your own
+\musil{note-at}/\musil{play-at}). Because the function is looked up by name at each cycle,
+redefining it while the loop runs is the live coding: the next cycle plays the new
+definition. \musil{tempo}, \musil{beat}, \musil{stop-loop}; and the transformations of
+event lists, \musil{fast}, \musil{slow}, \musil{shift}, \musil{rev}, \musil{every},
+\musil{degrade}, \musil{cat}, \musil{stack}, \musil{steps}, are plain list functions.
+The scheduler runs in the interpreter's idle time (while the REPL or the Listener waits,
+and inside \musil{sleep}), on one thread with everything else.
+
+\begin{lstlisting}
+tempo 110
+function drums (cycle) (stack (list
+    (steps 1 (list 1 nil 1 nil) (function (x) (function (t d) (note-at t k 0.1))))
+    (every 4 cycle (function (e) (fast e 2)) (steps 0.5 (list nil 1) (function (x) (function (t d) (note-at t h 0.05)))))))
+live-loop 'drums 4
+function drums (cycle) ...          # redefine: next cycle it changes
+\end{lstlisting}
+
+\textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
+with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
+parameters follow it, \musil{set-control} and \musil{control-value} read and write it from
+code, \musil{(controls)} opens the window (the command line) or points to the panel (the
+Listener), where arrows change the selected control. \musil{osc-listen} and
+\musil{osc-map} let an incoming OSC message move a control; \musil{osc-send} sends one.
+
+\textbf{Editors.} \musil{(serve 7770)} (the Listener does it at start-up; the command line
+with \texttt{--serve 7770 -i}) opens a local port that evaluates the text it receives, in
+the session, as if typed. The VS Code extension in \texttt{editors/vscode/musil} sends the
+block around the cursor with Cmd-Enter (the file with Cmd-Shift-Enter) and gives
+\texttt{.mu} files syntax colouring, from a grammar generated with \texttt{help}. Any editor
+that can run \texttt{nc localhost 7770 < block.mu} can do the same.
 
 \input{generated/live.tex}
 
@@ -667,6 +703,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
 \texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
+\texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to drop on the Listener and play with \\
 \bottomrule
 \end{tabular}
 \end{center}

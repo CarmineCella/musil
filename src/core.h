@@ -41,6 +41,8 @@
 #endif
 #ifndef _WIN32
 #include <sys/resource.h>
+#include <sys/select.h>
+#include <unistd.h>
 #endif
 
 #define MUSIL_VERSION "0.6"
@@ -273,6 +275,10 @@ struct Interp {
     int function_depth = 0, loop_depth = 0;
     unsigned long eval_count = 0;
     std::function<void()> yield_fn;         // called every 1024 evals, for hosts that need to breathe
+    std::function<void()> idle_fn;          // background work (schedulers, servers): called with yield_fn, from sleep,
+                                            // and by hosts while they wait for input; never re-entered
+    bool in_idle = false;
+    void idle() { if (idle_fn && !in_idle) { in_idle = true; try { idle_fn(); } catch (...) { in_idle = false; throw; } in_idle = false; } }
     std::vector<std::weak_ptr<Env>> tracked_envs;
     std::unordered_set<std::string> loaded_files;   // ran to completion; a second load is a no-op
     std::unordered_set<std::string> loading_files;  // currently running; a load from inside is a cycle and is skipped
@@ -294,7 +300,7 @@ struct Interp {
         return e;
     }
     [[noreturn]] void err(const std::string& m) { throw Error(current_file?*current_file:"<input>", current_line, m); }
-    void yield_check() { if (yield_fn && (++eval_count & 1023) == 0) yield_fn(); }
+    void yield_check() { if ((++eval_count & 1023) == 0) { if (yield_fn) yield_fn(); idle(); } }
     void def(const std::string& name, op_t f, int amin, int amax) { global->vars[name] = v_op(f, name, amin, amax); }
     void def(const std::string& name, op_t f, int arity = 0) { def(name, f, arity, arity); }
     void def(const std::string& name, vptr v) { global->vars[name] = std::move(v); }
@@ -988,16 +994,45 @@ inline vptr Interp::run(const std::string& src, const std::string& filename) {
     if (stack_depth == 0) stack_base = reinterpret_cast<std::uintptr_t>(&here);   // outermost run on this thread
     return eval(prog, global);
 }
+inline Interp*& repl_interp() { static Interp* p = nullptr; return p; }
 inline void Interp::repl() {
     std::string buffer; int depth = 0;
+    repl_interp() = this;
+#ifdef HAVE_READLINE
+    // background work (live loops, servers) while readline waits for a key: a getc that polls stdin in
+    // slices and idles in between. rl_getc_function exists in GNU readline and in libedit (macOS);
+    // rl_event_hook, the usual way, does not exist in libedit.
+    rl_getc_function = [](FILE* f) -> int {
+        int fd = fileno(f);
+        while (true) {
+            fd_set fds; FD_ZERO(&fds); FD_SET(fd, &fds); timeval tv{ 0, 20000 };
+            int r = select(fd + 1, &fds, nullptr, nullptr, &tv);
+            if (r > 0) break;
+            if (repl_interp()) { try { repl_interp()->idle(); } catch (...) {} }
+        }
+        unsigned char c; long n = read(fd, &c, 1);
+        return n == 1 ? (int)c : EOF;
+    };
+#endif
     while (true) {
         const char* prompt = buffer.empty() ? "> " : "  ";
         std::string line;
 #ifdef HAVE_READLINE
-        char* rp = readline(prompt); if (!rp) break;
-        if (*rp) add_history(rp); line = rp; free(rp);
+        char* rp = readline(prompt);
+        if (!rp) break;
+        if (*rp) add_history(rp);
+        line = rp; free(rp);
 #else
         *out << prompt << std::flush;
+#ifndef _WIN32
+        // without readline: wait for input in slices, so background work (live loops, servers) runs meanwhile
+        while (true) {
+            fd_set fds; FD_ZERO(&fds); FD_SET(0, &fds); timeval tv{ 0, 20000 };
+            int r = select(1, &fds, nullptr, nullptr, &tv);
+            if (r > 0) break;
+            try { idle(); } catch (...) {}
+        }
+#endif
         if (!std::getline(std::cin, line)) break;
 #endif
         if (line == ":q" && buffer.empty()) break;

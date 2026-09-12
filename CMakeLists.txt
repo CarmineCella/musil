@@ -204,6 +204,8 @@ if(MUSIL_TESTS)
   set(NEEDS_plots "${D}/cage.wav")
   set(NEEDS_phase_vocoder "${D}/Vox.wav")
   set(NEEDS_live_play "${D}/drums.wav")
+  set(NEEDS_live_loops "${D}/skip-in-tests")       # 22 s of music: run it, don't test it
+  set(NEEDS_live_session "${D}/skip-in-tests")     # meant to be dropped on the Listener and left running
   if(NOT MUSIL_RAYLIB)
     set(NEEDS_plots "${D}/no-raylib")
     set(NEEDS_iris_plot "${D}/no-raylib")

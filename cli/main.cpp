@@ -18,6 +18,7 @@ static void usage(std::ostream& o) {
          "  -i           enter the REPL after running the files\n"
          "  -e CODE      evaluate CODE before running the files\n"
          "  --stack N    maximum evaluation depth (default 100000)\n"
+        "  --serve PORT open the evaluation port: editors send code to localhost:PORT (with -i to stay alive)\n"
          "  --version    print version and exit\n"
          "  --help       this text\n"
          "Files are loaded in order into one interpreter. Arguments after -- are\n"
@@ -42,6 +43,7 @@ int main(int argc, char** argv) {
         std::string a = argv[k];
         if (a == "--") { for (++k; k < argc; ++k) rest.push_back(argv[k]); break; }
         if (a == "-i") interactive = true;
+        else if (a == "--serve" && k + 1 < argc) { int port = std::atoi(argv[++k]); try { musil::serve_start(I, port); std::cerr << "evaluation port " << port << " open\n"; } catch (std::exception& e) { std::cerr << e.what() << "\n"; return 1; } }
         else if (a == "-e" && k + 1 < argc) code.push_back(argv[++k]);
         else if (a == "--stack" && k + 1 < argc) I.max_stack = std::atoi(argv[++k]);
         else if (a == "--version") { std::cout << "musil " << MUSIL_VERSION << "\n"; return 0; }

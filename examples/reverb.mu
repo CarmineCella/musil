@@ -3,7 +3,7 @@
 load "system.mu"
 load "signals.mu"
 
-var dry (read-wav (if (> (length args) 0) (getidx args 0) "data/anechoic1.wav"))
+var dry (read-wav (if (> (length args) 0) (getidx args 0) "data/Vox.wav"))
 var ir (read-wav (if (> (length args) 1) (getidx args 1) "data/Concertgebouw-s.wav"))
 var sr (head dry)
 var x (head (getidx dry 1))

@@ -31,8 +31,9 @@
 //   files             Up/Down select, Enter runs the file again
 //   variables         Up/Down select, Enter prints the value
 //   help              type to search, Enter prints the first match
-//   anywhere          Esc or Ctrl-C stops a running program, Ctrl-L clears the console, Ctrl-R runs the
-//                     last file again, Ctrl-+ / Ctrl-- / Ctrl-0 (or Ctrl-wheel) change the text size
+//   controls          Up/Down select, Left/Right change (Shift: bigger steps), Space toggles, 0 resets
+//   anywhere          Esc or Ctrl-C stops a running program, Ctrl-V pastes, Ctrl-L clears the console,
+//                     Ctrl-R runs the last file again, Ctrl-+ / Ctrl-- / Ctrl-0 (or Ctrl-wheel) change the text size
 //   (manual)          a builtin: opens the PDF manual
 
 #include "musil.h"
@@ -60,6 +61,9 @@ struct shared {
     struct save_req { figure f; std::string path; int w, h; bool done = false, ok = false; std::string error; };
     std::deque<save_req*> saves;                      // from save-png; the main thread renders and signals
     std::atomic<bool> stop{false}, busy{false}, quit{false};
+    std::vector<std::tuple<std::string, double, double, double, bool>> ctrls;   // name lo hi value toggle: a snapshot for the panel
+    std::deque<std::pair<std::string, double>> control_edits;                   // from the panel to the interpreter: name, value
+    std::string last_code; int last_code_id = 0;                                // the last block received on the port
     void post_line(const std::string& s) { std::lock_guard<std::mutex> g(m); lines.push_back(s); }
 } S;
 
@@ -95,6 +99,11 @@ static vptr listener_manual(vlist&, Interp& i) {     // (manual): open the PDF m
 }
 
 // --- the interpreter thread ----------------------------------------------------------
+static void snapshot_controls() {
+    std::vector<std::tuple<std::string, double, double, double, bool>> out;
+    for (auto& c : controls()) out.push_back({ c.name, c.lo, c.hi, c.value, c.toggle });
+    std::lock_guard<std::mutex> g(S.m); S.ctrls = std::move(out);
+}
 static std::string preview(const vptr& v) {
     std::string s = str_of(v);
     if (s.size() > 40) s = s.substr(0, 37) + "...";
@@ -121,13 +130,23 @@ static void interpreter_thread(std::vector<std::string> load_paths) {
     I.def("show", listener_show, 1, 3);
     I.def("save-png", listener_save_png, 2, 4);
     I.def("manual", listener_manual, 0, 0);
+    I.def("controls", [](vlist&, Interp& i) -> vptr { *i.out << "the controls are in the panel at the bottom right (Tab to it)\n"; return v_nil(); }, 0, 0);
     I.def("args", v_list({}));
     I.yield_fn = [&]() { if (S.stop) { S.stop = false; I.err("interrupted"); } };
-    S.post_line("musil " MUSIL_VERSION " listener: type Musil below, drop .mu files on the window, Tab moves between panels");
+    server().on_receive = [](const std::string& code) { std::lock_guard<std::mutex> g(S.m); S.last_code = code; S.last_code_id++; };
+    try { serve_start(I, 7770); S.post_line("musil " MUSIL_VERSION " listener: type below, drop .mu files, Tab moves between panels; editors can send code to localhost:7770"); }
+    catch (std::exception&) { S.post_line("musil " MUSIL_VERSION " listener: type below, drop .mu files, Tab moves between panels (port 7770 busy: no editor connection)"); }
     snapshot_vars(I);
     while (!S.quit) {
         std::string cmd;
-        { std::unique_lock<std::mutex> lk(S.m); S.cv.wait(lk, [] { return !S.commands.empty() || S.quit; }); if (S.quit) break; cmd = S.commands.front(); S.commands.pop_front(); }
+        { std::unique_lock<std::mutex> lk(S.m);
+          while (S.commands.empty() && !S.quit) {
+              std::deque<std::pair<std::string, double>> edits; edits.swap(S.control_edits);
+              lk.unlock();
+              for (auto& e : edits) { control* c = find_control(e.first); if (c) { c->value = e.second; apply_control(I, *c); } }
+              try { I.idle(); } catch (std::exception& e) { S.post_line(std::string("error: ") + e.what()); } buf.sync(); snapshot_controls(); lk.lock(); S.cv.wait_for(lk, std::chrono::milliseconds(10)); }
+          if (S.quit) break;
+          cmd = S.commands.front(); S.commands.pop_front(); }
         S.busy = true;
         try {
             if (cmd.rfind("\x02", 0) == 0) {                     // run a file: not through load, so it always re-runs
@@ -250,7 +269,7 @@ int main(int argc, char** argv) {
     std::vector<std::string> rows; size_t rows_from = 0; int rows_w = 0; float rows_fs = 0;   // the console wrapped to the panel width
     std::vector<figure> gallery; int gi = -1; bool figure_mode = false; plot_view view;
     double last_watch = 0; int focus = 0;                                // 0 console, 1 files, 2 variables, 3 help
-    int sel_var = 0;
+    int sel_var = 0, sel_ctrl = 0; int shown_code_id = 0; double code_flash = 0;
     {   static std::string manual = asset_path("musil_manual.pdf");
 #ifdef MUSIL_SOURCE_LIB
         if (manual.empty() && fs::exists(fs::path(MUSIL_SOURCE_LIB) / ".." / "docs" / "musil_manual.pdf")) manual = (fs::path(MUSIL_SOURCE_LIB) / ".." / "docs" / "musil_manual.pdf").string();
@@ -332,10 +351,13 @@ int main(int argc, char** argv) {
             continue;
         }
         // ---- focus and text input ----
-        if (pressed(KEY_TAB)) focus = (focus + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? 3 : 1)) % 4;
+        int npanels = S.ctrls.empty() ? 4 : 5;
+        if (pressed(KEY_TAB)) focus = (focus + (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT) ? npanels - 1 : 1)) % npanels;
+        if (focus == 4 && S.ctrls.empty()) focus = 0;
         if (focus == 0 || focus == 3) {
             std::string& target = focus == 0 ? input : query;
             if (!ctrl) { int ch; while ((ch = GetCharPressed()) > 0) { if (ch >= 32 && ch < 127) target += (char)ch; if (focus == 3) search(); } }
+            if (ctrl && pressed(KEY_V)) { const char* clip = GetClipboardText(); if (clip) { for (const char* c = clip; *c; c++) if ((*c >= 32 && *c < 127) || *c == '\n') target += *c; if (focus == 3) search(); } }
             if (pressed(KEY_BACKSPACE) && !target.empty()) { target.pop_back(); if (focus == 3) search(); }
         }
         if (focus == 0) {
@@ -367,6 +389,21 @@ int main(int argc, char** argv) {
             if (sel_var < var_scroll) var_scroll = sel_var;
             if (pressed(KEY_ENTER)) submit("print " + std::get<0>(vars[sel_var]));
         } else if (focus == 3 && pressed(KEY_ENTER) && !hits.empty()) submit("help " + help[hits[0]].names[0]);
+        else if (focus == 4) {
+            std::vector<std::tuple<std::string, double, double, double, bool>> cs; { std::lock_guard<std::mutex> g(S.m); cs = S.ctrls; }
+            if (!cs.empty()) {
+                sel_ctrl = std::max(0, std::min((int)cs.size() - 1, sel_ctrl));
+                if (pressed(KEY_UP)) sel_ctrl = std::max(0, sel_ctrl - 1);
+                if (pressed(KEY_DOWN)) sel_ctrl = std::min((int)cs.size() - 1, sel_ctrl + 1);
+                auto& [nm, lo, hi, val, tog] = cs[sel_ctrl];
+                double step = (hi - lo) * ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 0.1 : 0.01), nv = val; bool changed = false;
+                if (tog) { if (pressed(KEY_SPACE) || pressed(KEY_LEFT) || pressed(KEY_RIGHT)) { nv = val > 0.5 ? 0 : 1; changed = true; } }
+                else { if (pressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) { nv = std::max(lo, val - step); changed = true; }
+                       if (pressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) { nv = std::min(hi, val + step); changed = true; }
+                       if (pressed(KEY_ZERO)) { nv = lo; changed = true; } }
+                if (changed) { std::lock_guard<std::mutex> g(S.m); S.control_edits.push_back({ nm, nv }); std::get<3>(S.ctrls[sel_ctrl]) = nv; }
+            }
+        }
         // file watcher, twice a second
         if (GetTime() - last_watch > 0.5) {
             last_watch = GetTime();
@@ -395,7 +432,11 @@ int main(int argc, char** argv) {
         int rx = x0 + left_w + 12, avail = H - 2 * y0 - 24;
         Rectangle files_r = { (float)rx, (float)y0, (float)right_w, avail * 0.22f };
         Rectangle vars_r = { (float)rx, files_r.y + files_r.height + 12, (float)right_w, avail * 0.40f };
-        Rectangle help_r = { (float)rx, vars_r.y + vars_r.height + 12, (float)right_w, (float)(H - y0 - (vars_r.y + vars_r.height + 12)) };
+        std::vector<std::tuple<std::string, double, double, double, bool>> ctrls; std::string last_code; int code_id; { std::lock_guard<std::mutex> g(S.m); ctrls = S.ctrls; last_code = S.last_code; code_id = S.last_code_id; }
+        bool has_controls = !ctrls.empty();
+        float ctrl_h = has_controls ? std::min(avail * 0.30f, 34.0f + (float)ctrls.size() * line_h) : 0;
+        Rectangle help_r = { (float)rx, vars_r.y + vars_r.height + 12, (float)right_w, (float)(H - y0 - (vars_r.y + vars_r.height + 12)) - (has_controls ? ctrl_h + 12 : 0) };
+        Rectangle ctrl_r = { (float)rx, help_r.y + help_r.height + 12, (float)right_w, ctrl_h };
         Vector2 mouse = GetMousePosition();
 
         BeginDrawing();
@@ -416,13 +457,15 @@ int main(int argc, char** argv) {
             }
         }
         if (!ctrl && CheckCollisionPointRec(mouse, cons_r)) scroll = std::max(0, std::min((int)rows.size(), scroll - (int)GetMouseWheelMove() * 3));
-        int visible = (int)((cons_r.height - 8) / line_h);
+        int pane_lines = last_code.empty() ? 0 : std::min(12, 1 + (int)std::count(last_code.begin(), last_code.end(), '\n'));
+        float pane_h = pane_lines ? 30 + pane_lines * (FS - 1 + 3) + 10 : 0;
+        int visible = (int)((cons_r.height - 8 - pane_h) / line_h);
         int end = (int)rows.size() - scroll, start = std::max(0, end - visible);
-        BeginScissorMode((int)cons_r.x, (int)cons_r.y, (int)cons_r.width, (int)cons_r.height);
+        BeginScissorMode((int)cons_r.x, (int)(cons_r.y + pane_h), (int)cons_r.width, (int)(cons_r.height - pane_h));
         for (int k = start; k < end; k++) {
             const std::string& l = rows[k];
             Color c = l.rfind("error:", 0) == 0 ? ERR : l.rfind("> ", 0) == 0 ? ACCENT : INK;
-            text(l, cons_r.x + 8, cons_r.y + 6 + (k - start) * line_h, c, FS);
+            text(l, cons_r.x + 8, cons_r.y + pane_h + 6 + (k - start) * line_h, c, FS);
         }
         EndScissorMode();
         // input line(s)
@@ -495,6 +538,37 @@ int main(int argc, char** argv) {
             hy += line_h / 2;
         }
         EndScissorMode();
+        // controls: sliders and toggles for the hot parameters, driven by keys
+        if (has_controls) {
+            DrawRectangleRec(ctrl_r, PANEL); DrawRectangleLinesEx(ctrl_r, 1, focus == 4 ? FOCUS : LINE);
+            text("controls  (Left/Right change, Space toggles, Shift for big steps)", ctrl_r.x + 8, ctrl_r.y + 6, DIM, FS - 2);
+            BeginScissorMode((int)ctrl_r.x, (int)ctrl_r.y + 26, (int)ctrl_r.width, (int)ctrl_r.height - 28);
+            for (size_t k = 0; k < ctrls.size(); k++) {
+                auto& [nm, lo, hi, val, tog] = ctrls[k];
+                float y = ctrl_r.y + 30 + k * line_h; if (y + line_h > ctrl_r.y + ctrl_r.height) break;
+                bool selected = focus == 4 && (int)k == sel_ctrl;
+                if (selected) DrawRectangle((int)ctrl_r.x + 2, (int)y, (int)ctrl_r.width - 4, line_h, SEL);
+                float nx = ctrl_r.x + 8, vw = width(nm, FS - 1); text(nm, nx, y + 2, selected ? ACCENT : INK, FS - 1);
+                float bx = ctrl_r.x + 8 + std::max(90.0f, vw + 14), bw = ctrl_r.width - (bx - ctrl_r.x) - 70;
+                if (tog) { DrawRectangleLines((int)bx, (int)y + 4, 16, 16, DIM); if (val > 0.5) DrawRectangle((int)bx + 3, (int)y + 7, 10, 10, C_FN); }
+                else { DrawRectangle((int)bx, (int)y + line_h / 2 - 2, (int)bw, 4, LINE); float px = bx + (float)((val - lo) / (hi - lo)) * bw; DrawCircle((int)px, (int)y + line_h / 2, 6, selected ? ACCENT : C_FN); }
+                std::string vs = tog ? (val > 0.5 ? "on" : "off") : tick_label(val); text(vs, ctrl_r.x + ctrl_r.width - 8 - width(vs, FS - 2), y + 2, DIM, FS - 2);
+            }
+            EndScissorMode();
+        }
+        // the code pane: the last block an editor sent, flashed when it arrives
+        if (!last_code.empty()) {
+            if (code_id != shown_code_id) { shown_code_id = code_id; code_flash = GetTime(); }
+            std::vector<std::string> lines; { size_t p = 0; while (p <= last_code.size()) { size_t nl = last_code.find('\n', p); lines.push_back(last_code.substr(p, nl == std::string::npos ? std::string::npos : nl - p)); if (nl == std::string::npos) break; p = nl + 1; } }
+            int nshow = std::min((int)lines.size(), 12); float ph = 30 + nshow * (FS - 1 + 3);
+            Rectangle code_r = { cons_r.x + 8, cons_r.y + 8, cons_r.width - 16, ph };
+            float flash = std::max(0.0, 1.0 - (GetTime() - code_flash) / 0.6);
+            Color bg = { 246, 248, 252, 255 }; bg.r = (unsigned char)(bg.r - 40 * flash); bg.g = (unsigned char)(bg.g - 20 * flash);
+            DrawRectangleRec(code_r, bg); DrawRectangleLinesEx(code_r, 1, flash > 0 ? FOCUS : LINE);
+            text("from the editor", code_r.x + 6, code_r.y + 4, DIM, FS - 3);
+            for (int k = 0; k < nshow; k++) text(lines[k], code_r.x + 8, code_r.y + 22 + k * (FS - 1 + 3), INK, FS - 1);
+            if ((int)lines.size() > nshow) text("...", code_r.x + 8, code_r.y + ph - 4, DIM, FS - 3);
+        }
         EndDrawing();
         if (const char* shot = std::getenv("MUSIL_LISTENER_SHOT")) if (GetTime() > 2.0) { TakeScreenshot(shot); break; }
     }

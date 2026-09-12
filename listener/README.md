@@ -21,6 +21,13 @@ focus through the four panels; the focused one has a blue frame.
 - **Help** (bottom right): type a name or a word to search the documentation of every
   builtin and library function (the same text `help` prints); Enter prints the first
   match. `(manual)` in the console opens the PDF manual.
+- **Controls** (bottom right, once a program declares some with `control`/`toggle`):
+  sliders and toggles for the hot parameters; Up/Down select, Left/Right change (Shift
+  for bigger steps), Space toggles.
+- **From the editor**: the Listener opens the evaluation port 7770 at start-up. Code sent
+  there (VS Code with the extension in `editors/vscode/musil`: Cmd-Enter sends the block
+  around the cursor; or `nc localhost 7770 < block.mu`) is evaluated in the session and
+  shown in a pane above the console. Ctrl-V pastes into the input.
 - **Plots**: `(show fig)` puts the figure in place of the console, with the session's
   figures listed on the right; Esc, `q` or the window's close button return to the
   console (the close button never quits the Listener while a figure is up). `,` and `.`

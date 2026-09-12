@@ -48,6 +48,11 @@
 #include <mutex>
 #include <map>
 #include <random>
+#ifndef _WIN32
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 namespace musil {
 
@@ -376,6 +381,9 @@ struct audio_engine {
 };
 inline audio_engine& engine() { static audio_engine e; return e; }
 
+struct scheduler_state;
+inline scheduler_state& sched();
+inline void sched_reset();
 // --- builtins ---
 inline audio_engine& need_open(Interp& i) { if (!engine().open) i.bad("no audio device open: (audio-open sr block channels) first"); return engine(); }
 
@@ -408,7 +416,8 @@ inline vptr live_open(vlist& a, Interp& i) {
 // (audio-close) stop and close the device
 inline vptr live_close(vlist&, Interp&) {
     audio_engine& e = engine(); if (!e.open) return v_nil();
-    ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear(); return v_nil();
+    ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear();
+    sched_reset(); return v_nil();
 }
 // (audio-start) (audio-stop) run or pause the callback; the clock advances only while running
 inline vptr live_start(vlist&, Interp& i) { audio_engine& e = need_open(i); if (!e.running) { if (ma_device_start(&e.device) != MA_SUCCESS) i.bad("cannot start the device"); e.running = true; } return v_nil(); }
@@ -591,7 +600,8 @@ inline vptr live_synth_render(vlist& a, Interp& i) {
     for (auto& p : f->params) if (!c.param_nodes.count(p)) { int k = c.add(new param_node(p, 0)); c.param_nodes[p] = k; inst.params.push_back(k); }
     std::map<std::string, std::vector<double>> curves;
     for (auto& e : ps) { vlist& kv = i.list(e); if (kv.size() != 2) i.bad("params are (list name value)"); std::string nm = kv[0]->t == Value::SYM || kv[0]->t == Value::STR ? kv[0]->s : str_of(kv[0]);
-        if (!c.param_nodes.count(nm)) i.bad("no parameter " + nm); const varr& v = i.num(kv[1]); curves[nm] = std::vector<double>(std::begin(v), std::end(v)); }
+        if (!c.param_nodes.count(nm)) i.bad("no parameter " + nm);
+        const varr& v = i.num(kv[1]); curves[nm] = std::vector<double>(std::begin(v), std::end(v)); }
     size_t total = (size_t)(secs * sr); gnode& o = *inst.nodes[inst.output];
     std::vector<std::vector<double>> out;
     for (size_t pos = 0; pos < total; pos += block) {
@@ -622,6 +632,192 @@ inline vptr live_synths(vlist&, Interp& i) { audio_engine& e = need_open(i); vli
 // (streamable) => the names of the builtins a synth function may use
 inline vptr live_streamable(vlist&, Interp&) { vlist out; for (auto& kv : ugen_table()) out.push_back(v_str(kv.first)); return v_list(std::move(out)); }
 
+// --- the scheduler: loops in beats, run ahead of the clock ---------------------------------
+// A loop is a name and a length in beats. Each cycle, the function bound to that name (looked
+// up every time, so redefining it is the live coding) is called with the cycle number and
+// returns events: (list beat dur thunk), thunk a function of the absolute time in seconds that
+// schedules whatever it wants (note-at, play-at, set-param with a time). The scheduler runs
+// from the interpreter's idle hook, a little ahead of the audio clock, so late calls still
+// land on time.
+struct live_loop { std::string name; double beats; long cycle = 0; double next_start = 0; bool active = true; };
+struct scheduler_state { double bpm = 120; double beat0_time = 0; double beat0 = 0; double lookahead = 0.25; std::vector<live_loop> loops; bool running = false; };
+inline scheduler_state& sched() { static scheduler_state s; return s; }
+inline void sched_reset() { sched().loops.clear(); sched().running = false; }
+inline double live_now() { return engine().open ? (double)engine().clock.load() / engine().sr : 0; }
+inline double live_beat_at(double t) { scheduler_state& s = sched(); return s.beat0 + (t - s.beat0_time) * s.bpm / 60.0; }
+inline double live_time_of_beat(double b) { scheduler_state& s = sched(); return s.beat0_time + (b - s.beat0) * 60.0 / s.bpm; }
+
+// --- controls: named values with a range, bound to synth parameters, shown by the hosts ------
+struct control { std::string name; double lo, hi, value; bool toggle; std::vector<std::pair<long, std::string>> bindings; std::string osc; };
+inline std::vector<control>& controls() { static std::vector<control> c; return c; }
+inline control* find_control(const std::string& n) { for (auto& c : controls()) if (c.name == n) return &c; return nullptr; }
+inline void apply_control(Interp& i, control& c) {
+    for (auto& b : c.bindings) {
+        vlist a = { v_num((double)b.first), v_sym(b.second), v_num(c.value), v_num(0.02) };
+        try { live_set_param(a, i); } catch (...) {}
+    }
+}
+
+// --- OSC: a minimal encoder and decoder (f i s types) over UDP -----------------------------
+inline void osc_pad(std::string& b) { while (b.size() % 4) b += '\0'; }
+inline std::string osc_encode(const std::string& addr, const vlist& args) {
+    std::string out = addr; out += '\0'; osc_pad(out); std::string tags = ",";
+    std::string data;
+    for (auto& a : args) {
+        if (a->t == Value::NUM && a->num.size() == 1) { tags += 'f'; float f = (float)a->num[0]; uint32_t u; std::memcpy(&u, &f, 4); for (int k = 3; k >= 0; k--) data += (char)((u >> (8 * k)) & 255); }
+        else { tags += 's'; data += str_of(a); data += '\0'; osc_pad(data); }
+    }
+    out += tags; out += '\0'; osc_pad(out); out += data; return out;
+}
+inline bool osc_decode(const std::string& msg, std::string& addr, vlist& args) {
+    size_t p = msg.find('\0'); if (p == std::string::npos) return false; addr = msg.substr(0, p); p = (p + 4) & ~size_t(3);
+    if (p >= msg.size() || msg[p] != ',') return true;
+    size_t q = msg.find('\0', p); if (q == std::string::npos) return false; std::string tags = msg.substr(p + 1, q - p - 1); p = (q + 4) & ~size_t(3);
+    for (char t : tags) {
+        if (t == 'f' && p + 4 <= msg.size()) { uint32_t u = 0; for (int k = 0; k < 4; k++) u = (u << 8) | (unsigned char)msg[p + k]; float f; std::memcpy(&f, &u, 4); args.push_back(v_num(f)); p += 4; }
+        else if (t == 'i' && p + 4 <= msg.size()) { int32_t v = 0; for (int k = 0; k < 4; k++) v = (v << 8) | (unsigned char)msg[p + k]; args.push_back(v_num(v)); p += 4; }
+        else if (t == 's') { size_t e = msg.find('\0', p); if (e == std::string::npos) return false; args.push_back(v_str(msg.substr(p, e - p))); p = (e + 4) & ~size_t(3); }
+        else return false;
+    }
+    return true;
+}
+#ifndef _WIN32
+struct osc_listener { int sock = -1; int port = 0; };
+inline osc_listener& osc_in() { static osc_listener l; return l; }
+#endif
+
+// The idle work: due loops, incoming OSC. Called from the interpreter's idle hook (never re-entered).
+inline void live_idle(Interp& i) {
+    scheduler_state& s = sched();
+    if (engine().open && engine().running && s.running) {
+        double now = live_now();
+        for (auto& lp : s.loops) {
+            if (!lp.active) continue;
+            int guard = 0;
+            while (live_time_of_beat(lp.next_start) < now + s.lookahead && guard++ < 8) {
+                vptr fn = i.global->find(lp.name);
+                if (!fn || fn->t != Value::FN) { lp.active = false; *i.out << "live-loop " << lp.name << ": no function of that name, stopped\n" << std::flush; break; }
+                double start_time = live_time_of_beat(lp.next_start), spb = 60.0 / s.bpm;
+                vptr events;
+                try { events = i.call_fn(fn, { v_num((double)lp.cycle) }); }
+                catch (std::exception& e) { *i.out << "live-loop " << lp.name << ": " << e.what() << "\n" << std::flush; events = v_list({}); }
+                if (events && events->t == Value::LIST) for (auto& ev : events->l) {
+                    if (ev->t != Value::LIST || ev->l.size() < 3 || ev->l[0]->t != Value::NUM || ev->l[2]->t != Value::FN) continue;
+                    double t = start_time + ev->l[0]->num[0] * spb, d = ev->l[1]->t == Value::NUM ? ev->l[1]->num[0] * spb : 0;
+                    try { i.call_fn(ev->l[2], { v_num(t), v_num(d) }); } catch (std::exception& e) { *i.out << "live-loop " << lp.name << ": " << e.what() << "\n" << std::flush; }
+                }
+                lp.cycle++; lp.next_start += lp.beats;
+            }
+        }
+        s.loops.erase(std::remove_if(s.loops.begin(), s.loops.end(), [](const live_loop& l) { return !l.active; }), s.loops.end());
+    }
+#ifndef _WIN32
+    if (osc_in().sock >= 0) {
+        char buf[4096]; sockaddr_in from{}; socklen_t fl = sizeof from;
+        for (int k = 0; k < 64; k++) {
+            long n = recvfrom(osc_in().sock, buf, sizeof buf, MSG_DONTWAIT, (sockaddr*)&from, &fl);
+            if (n <= 0) break;
+            std::string addr; vlist args;
+            if (!osc_decode(std::string(buf, (size_t)n), addr, args)) continue;
+            for (auto& c : controls()) if (c.osc == addr && !args.empty() && args[0]->t == Value::NUM) { c.value = std::max(c.lo, std::min(c.hi, args[0]->num[0])); apply_control(i, c); }
+        }
+    }
+#endif
+}
+
+// (tempo bpm) set the tempo; beats are counted from now
+inline vptr live_tempo(vlist& a, Interp& i) {
+    double bpm = i.scalar(a[0]); if (bpm <= 0) i.bad("bpm must be > 0");
+    scheduler_state& s = sched(); double now = live_now(); s.beat0 = live_beat_at(now); s.beat0_time = now; s.bpm = bpm; return v_nil();
+}
+// (beat) => the current beat (a number, fractional); (beat-time b) => the clock time of beat b; (bpm) => the tempo
+inline vptr live_beat(vlist&, Interp&) { return v_num(live_beat_at(live_now())); }
+inline vptr live_beat_time(vlist& a, Interp& i) { return v_num(live_time_of_beat(i.scalar(a[0]))); }
+inline vptr live_bpm(vlist&, Interp&) { return v_num(sched().bpm); }
+// (live-loop name beats) start (or restart) the loop named name: the function of that name is called every
+//   cycle of `beats` beats; (stop-loop name) (stop-loops) (loops) => the names
+inline vptr live_loop_start(vlist& a, Interp& i) {
+    need_open(i); std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]); double beats = i.scalar(a[1]);
+    if (beats <= 0) i.bad("beats must be > 0");
+    vptr fn = i.global->find(name); if (!fn || fn->t != Value::FN) i.bad("no function named " + name);
+    scheduler_state& s = sched(); s.running = true;
+    double now_beat = live_beat_at(live_now()), prev = std::floor(now_beat / beats) * beats;
+    double start = now_beat - prev < 0.25 ? prev : prev + beats;     // just after a boundary: start now; otherwise at the next one
+    for (auto& lp : s.loops) if (lp.name == name) { lp.beats = beats; lp.active = true; return v_nil(); }
+    s.loops.push_back({ name, beats, 0, start, true }); return v_nil();
+}
+inline vptr live_loop_stop(vlist& a, Interp&) { std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]); for (auto& lp : sched().loops) if (lp.name == name) lp.active = false; return v_nil(); }
+inline vptr live_loops_stop(vlist&, Interp&) { for (auto& lp : sched().loops) lp.active = false; return v_nil(); }
+inline vptr live_loops(vlist&, Interp&) { vlist out; for (auto& lp : sched().loops) if (lp.active) out.push_back(v_str(lp.name)); return v_list(std::move(out)); }
+// (lookahead seconds) how far ahead of the clock loops are scheduled (default 0.25)
+inline vptr live_lookahead(vlist& a, Interp& i) { double v = i.scalar(a[0]); if (v < 0.01) i.bad("lookahead must be >= 0.01"); sched().lookahead = v; return v_nil(); }
+
+// (control name lo hi value) declare a control (a range and a value); (toggle name value) an on/off one
+inline vptr live_control(vlist& a, Interp& i) {
+    std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]);
+    double lo = i.scalar(a[1]), hi = i.scalar(a[2]), v = i.scalar(a[3]); if (hi <= lo) i.bad("hi must be > lo");
+    control* c = find_control(name); if (!c) { controls().push_back({ name, lo, hi, v, false, {}, "" }); c = &controls().back(); }
+    c->lo = lo; c->hi = hi; c->value = std::max(lo, std::min(hi, v)); c->toggle = false; apply_control(i, *c); return v_nil();
+}
+inline vptr live_toggle(vlist& a, Interp& i) {
+    std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]); double v = truthy(a[1]) ? 1 : 0;
+    control* c = find_control(name); if (!c) { controls().push_back({ name, 0, 1, v, true, {}, "" }); c = &controls().back(); }
+    c->lo = 0; c->hi = 1; c->value = v; c->toggle = true; apply_control(i, *c); return v_nil();
+}
+// (set-control name value) (control-value name) (controls-list) => (list (list name lo hi value toggle?) ...)
+inline vptr live_set_control(vlist& a, Interp& i) {
+    std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]);
+    control* c = find_control(name); if (!c) i.bad("no control " + name);
+    c->value = std::max(c->lo, std::min(c->hi, i.scalar(a[1]))); apply_control(i, *c); return v_num(c->value);
+}
+inline vptr live_control_value(vlist& a, Interp& i) { std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]); control* c = find_control(name); if (!c) i.bad("no control " + name); return v_num(c->value); }
+inline vptr live_controls_list(vlist&, Interp&) { vlist out; for (auto& c : controls()) out.push_back(v_list({ v_str(c.name), v_num(c.lo), v_num(c.hi), v_num(c.value), v_bool(c.toggle) })); return v_list(std::move(out)); }
+// (bind-control name synth-id param) a synth parameter follows the control (several bindings allowed); (unbind-control name)
+inline vptr live_bind_control(vlist& a, Interp& i) {
+    std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]);
+    control* c = find_control(name); if (!c) i.bad("no control " + name);
+    std::string param = a[2]->t == Value::SYM || a[2]->t == Value::STR ? a[2]->s : str_of(a[2]);
+    c->bindings.push_back({ (long)i.scalar(a[1]), param }); apply_control(i, *c); return v_nil();
+}
+inline vptr live_unbind_control(vlist& a, Interp& i) { std::string name = a[0]->t == Value::SYM || a[0]->t == Value::STR ? a[0]->s : str_of(a[0]); control* c = find_control(name); if (!c) i.bad("no control " + name); c->bindings.clear(); return v_nil(); }
+// (clear-controls) forget every control
+inline vptr live_clear_controls(vlist&, Interp&) { controls().clear(); return v_nil(); }
+
+// (osc-send host port address args...) send an OSC message (numbers as floats, anything else as strings)
+inline vptr live_osc_send(vlist& a, Interp& i) {
+#ifndef _WIN32
+    std::string host = i.str(a[0]); int port = (int)i.scalar(a[1]); std::string addr = i.str(a[2]);
+    vlist args(a.begin() + 3, a.end()); std::string msg = osc_encode(addr, args);
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (sock < 0) return v_bool(false);
+    sockaddr_in srv{}; srv.sin_family = AF_INET; srv.sin_port = htons((uint16_t)port); srv.sin_addr.s_addr = inet_addr(host.c_str());
+    long r = sendto(sock, msg.data(), msg.size(), 0, (sockaddr*)&srv, sizeof srv); ::close(sock); return v_bool(r >= 0);
+#else
+    return v_bool(false);
+#endif
+}
+// (osc-listen port) receive OSC on a port (polled in the background); (osc-map "/address" control-name) the first
+//   number of a message at that address sets the control; (osc-stop)
+inline vptr live_osc_listen(vlist& a, Interp& i) {
+#ifndef _WIN32
+    int port = (int)i.scalar(a[0]); osc_listener& l = osc_in();
+    if (l.sock >= 0) ::close(l.sock);
+    l.sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (l.sock < 0) i.bad("cannot open a socket");
+    int yes = 1; setsockopt(l.sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+    sockaddr_in addr{}; addr.sin_family = AF_INET; addr.sin_port = htons((uint16_t)port); addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (::bind(l.sock, (sockaddr*)&addr, sizeof addr) < 0) { ::close(l.sock); l.sock = -1; i.bad("cannot bind port " + std::to_string(port)); }
+    l.port = port; return v_nil();
+#else
+    i.bad("OSC input is not available on this platform");
+#endif
+}
+inline vptr live_osc_map(vlist& a, Interp& i) { std::string addr = i.str(a[0]); std::string name = a[1]->t == Value::SYM || a[1]->t == Value::STR ? a[1]->s : str_of(a[1]); control* c = find_control(name); if (!c) i.bad("no control " + name); c->osc = addr; return v_nil(); }
+inline vptr live_osc_stop(vlist&, Interp&) {
+#ifndef _WIN32
+    osc_listener& l = osc_in(); if (l.sock >= 0) ::close(l.sock); l.sock = -1; l.port = 0;
+#endif
+    return v_nil();
+}
+
 inline void add_live(Interp& i) {
     i.def("audio-open", live_open, 3, 4); i.def("audio-close", live_close, 0, 0);
     i.def("audio-start", live_start, 0, 0); i.def("audio-stop", live_stop, 0, 0);
@@ -631,6 +827,13 @@ inline void add_live(Interp& i) {
     i.def("synth", live_synth, 1, 1); i.def("set-param", live_set_param, 3, 5); i.def("free", live_free, 1, 1);
     i.def("synth-params", live_synth_params, 1, 1); i.def("synths", live_synths, 0, 0); i.def("streamable", live_streamable, 0, 0);
     i.def("synth-render", live_synth_render, 3, 4);
+    i.def("tempo", live_tempo, 1, 1); i.def("beat", live_beat, 0, 0); i.def("beat-time", live_beat_time, 1, 1); i.def("bpm", live_bpm, 0, 0);
+    i.def("live-loop", live_loop_start, 2, 2); i.def("stop-loop", live_loop_stop, 1, 1); i.def("stop-loops", live_loops_stop, 0, 0); i.def("loops", live_loops, 0, 0);
+    i.def("lookahead", live_lookahead, 1, 1);
+    i.def("control", live_control, 4, 4); i.def("toggle", live_toggle, 2, 2); i.def("set-control", live_set_control, 2, 2); i.def("control-value", live_control_value, 1, 1);
+    i.def("controls-list", live_controls_list, 0, 0); i.def("bind-control", live_bind_control, 3, 3); i.def("unbind-control", live_unbind_control, 1, 1); i.def("clear-controls", live_clear_controls, 0, 0);
+    i.def("osc-send", live_osc_send, 3, -1); i.def("osc-listen", live_osc_listen, 1, 1); i.def("osc-map", live_osc_map, 2, 2); i.def("osc-stop", live_osc_stop, 0, 0);
+    i.idle_fn = [&i]() { live_idle(i); };
 }
 
 } // namespace musil

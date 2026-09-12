@@ -137,6 +137,12 @@ echo "==> Signing (ad-hoc)"
 codesign --force --deep --sign - "$APP"
 codesign --force --sign - "$DIST/musil" "$DIST/musil-listener"
 
+# --- 6b. the VS Code extension, as a .vsix when npx is available ------------------------------
+if command -v npx >/dev/null; then
+    echo "==> VS Code extension"
+    ( cd editors/vscode/musil && npx --yes @vscode/vsce package --allow-missing-repository -o "../../../$DIST/musil-$VERSION.vsix" >/dev/null 2>&1 ) || echo "    (vsce failed; skipping the .vsix)"
+fi
+
 # --- 7. zip for sending ---------------------------------------------------------------------
 echo "==> Zipping"
 ( cd "$DIST" && rm -f "$APP_NAME-$VERSION-macos.zip" && ditto -c -k --keepParent --norsrc "$APP_NAME.app" "$APP_NAME-$VERSION-macos.zip" \

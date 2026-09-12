@@ -40,6 +40,25 @@ synth-render     : the graph offline; equals the call within 1
 not streamable   : reference_live.mu:99: synth: not streamable: pvoc-stretch (see (streamable))
 tables           : sine-table saw-table square-table triangle-table, for osc
 
+--- loops ---
+tempo, bpm, beat : 120 bpm; beat 1 ; beat-time of beat 2 minus beat 0: 1 s
+live-loop        : loops (bassline) ; the function named bassline runs every 2 beats
+redefine         : function bassline ... again; the next cycle uses the new one
+stop-loop        : loops ()
+ev, ev-beat      : (0 2) (an event is (list beat dur thunk); the thunk gets the time and duration)
+fast, slow, shift: (0 1) (0 4) (1 3)
+rev, every       : (3 1) (0 1)
+cat, stack       : (0 2 4 6) 4
+steps            : (0 1 1.5) (nil is a rest)
+synth-ev, play-ev: events on a synth (parameters + gate) or a buffer
+
+--- controls and osc ---
+control, toggle  : ((cutoff 100 5000 1200 0) (on 0 1 0 1))
+set-control      : cutoff now 300 (the bound synth followed, ramped)
+controls         : the window (CLI) or the panel (Listener): arrows, Space, Esc
+osc-send/listen  : after a message to /cutoff, the control is 2000
+serve            : (serve 7770) opens the evaluation port editors send code to; (serving) tells which
+
 --- closing ---
 audio-stop       : running 0
 audio-quit       : open 0

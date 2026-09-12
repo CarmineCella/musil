@@ -46,6 +46,10 @@ cd "\$(dirname "\$0")" && MUSIL_PATH="\$PWD/lib" ./musil-listener "\$@"
 RUN
 chmod +x "$OUT/run.sh"
 
+if command -v npx >/dev/null; then
+    echo "==> VS Code extension"
+    ( cd editors/vscode/musil && npx --yes @vscode/vsce package --allow-missing-repository -o "../../../dist/musil-$VERSION.vsix" >/dev/null 2>&1 ) || echo "    (vsce failed; skipping the .vsix)"
+fi
 ( cd dist && rm -f "musil-$VERSION-linux.tar.gz" && tar -czf "musil-$VERSION-linux.tar.gz" "musil-$VERSION-linux" )
 du -sh "$OUT" "dist/musil-$VERSION-linux.tar.gz" | sed 's/^/    /'
 echo

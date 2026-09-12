@@ -1,0 +1,42 @@
+{
+  "name": "musil",
+  "displayName": "Musil",
+  "description": "Musil: syntax highlighting, and sending code to a running Listener or musil --serve for live coding",
+  "version": "0.7.0",
+  "publisher": "carminecella",
+  "license": "MIT",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:musil"],
+  "contributes": {
+    "languages": [{
+      "id": "musil",
+      "aliases": ["Musil", "musil"],
+      "extensions": [".mu"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "musil",
+      "scopeName": "source.musil",
+      "path": "./syntaxes/musil.tmLanguage.json"
+    }],
+    "commands": [
+      { "command": "musil.sendBlock", "title": "Musil: Send Block (or Selection)" },
+      { "command": "musil.sendFile", "title": "Musil: Send File" },
+      { "command": "musil.sendLine", "title": "Musil: Send Line" }
+    ],
+    "keybindings": [
+      { "command": "musil.sendBlock", "key": "ctrl+enter", "mac": "cmd+enter", "when": "editorTextFocus && editorLangId == musil" },
+      { "command": "musil.sendFile", "key": "ctrl+shift+enter", "mac": "cmd+shift+enter", "when": "editorTextFocus && editorLangId == musil" },
+      { "command": "musil.sendLine", "key": "ctrl+alt+enter", "mac": "cmd+alt+enter", "when": "editorTextFocus && editorLangId == musil" }
+    ],
+    "configuration": {
+      "title": "Musil",
+      "properties": {
+        "musil.host": { "type": "string", "default": "127.0.0.1", "description": "Where the Listener (or musil --serve) runs" },
+        "musil.port": { "type": "number", "default": 7770, "description": "The evaluation port" }
+      }
+    }
+  }
+}
