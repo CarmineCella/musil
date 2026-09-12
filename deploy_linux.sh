@@ -5,7 +5,7 @@
 #   ./deploy_linux.sh --clean    rebuild from scratch
 #
 # Produces dist/musil-<version>-linux/ (musil the CLI, musil-ide, lib/ with the .mu libraries and
-# help.txt, the manual, run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the
+# help.txt, examples/ with their data, the manual, run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the
 # system's X11 (with Xft) and ALSA libraries at run time, which every desktop Linux has.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -36,6 +36,7 @@ cp "$BUILD_DIR/musil-ide" "$OUT/musil-ide"
 cp "$BUILD_DIR/musil" "$OUT/musil"
 strip "$OUT/musil-ide" "$OUT/musil" 2>/dev/null || true
 cp src/*.mu src/help.txt "$OUT/lib/"
+mkdir -p "$OUT/examples" && cp -R examples/. "$OUT/examples/" && find "$OUT/examples" -name '.DS_Store' -delete
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$OUT/"
 cp README.md LICENSE.md "$OUT/"
 cat > "$OUT/run.sh" <<RUN

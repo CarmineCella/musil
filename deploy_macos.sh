@@ -14,6 +14,7 @@
 #   dist/musil                      the command-line interpreter
 #   dist/musil-ide                  the IDE as a plain binary (finds lib/ next to it)
 #   dist/lib/                       the .mu libraries and help.txt, to copy into ~/.musil for the CLI
+#   dist/examples/                  the examples with their data: the best way to learn the language
 #   dist/musil_manual.pdf           the manual
 #   dist/Musil-<version>-macos.zip  all of the above
 set -euo pipefail
@@ -81,6 +82,8 @@ strip "$DIST/musil" "$DIST/musil-ide" 2>/dev/null || true
 echo "==> Copying resources"
 cp src/*.mu src/help.txt "$APP/Contents/Resources/lib/"
 cp src/*.mu src/help.txt "$DIST/lib/"
+echo "==> Copying the examples"
+mkdir -p "$DIST/examples" && cp -R examples/. "$DIST/examples/" && find "$DIST/examples" -name '.DS_Store' -delete
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$APP/Contents/Resources/" && cp docs/musil_manual.pdf "$DIST/"
 cp README.md LICENSE.md "$DIST/"
 
@@ -144,7 +147,7 @@ fi
 # --- 7. zip for sending ---------------------------------------------------------------------
 echo "==> Zipping"
 ( cd "$DIST" && rm -f "$APP_NAME-$VERSION-macos.zip" && ditto -c -k --keepParent --norsrc "$APP_NAME.app" "$APP_NAME-$VERSION-macos.zip" \
-  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil musil-ide lib README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
+  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil musil-ide lib examples README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
 
 if [[ "$FLAG" == "--dmg" ]]; then
     echo "==> DMG"
@@ -153,6 +156,6 @@ if [[ "$FLAG" == "--dmg" ]]; then
 fi
 
 echo
-echo "Done: $APP, $DIST/musil, $DIST/musil-ide, $DIST/lib, $DIST/musil_manual.pdf  and  $DIST/$APP_NAME-$VERSION-macos.zip"
+echo "Done: $APP, $DIST/musil, $DIST/musil-ide, $DIST/lib, $DIST/examples, $DIST/musil_manual.pdf  and  $DIST/$APP_NAME-$VERSION-macos.zip"
 echo "Recipients: unzip, then right-click Musil.app -> Open (first launch only, it is not notarized)."
 echo "The CLI: copy musil somewhere in the PATH and lib/* into ~/.musil."
