@@ -10,53 +10,66 @@ endif()
 
 option(MUSIL_READLINE "Use GNU readline in the REPL when available" ON)
 option(MUSIL_TESTS    "Build the test targets" ON)
-option(MUSIL_RAYLIB   "Fetch raylib and build the plot library and the Listener" ON)
+
 
 # --- Uninstall ------------------------------------------------------------------
-#   cmake --build build --target uninstall    removes <prefix>/bin/musil, <prefix>/bin/musil-listener,
+#   cmake --build build --target uninstall    removes <prefix>/bin/musil, <prefix>/bin/musil-ide,
 #   <prefix>/include/musil/ and ~/.musil/ (plus whatever the last install's manifest lists, for an
-#   install made with --prefix elsewhere). Defined before raylib is fetched, because raylib would
-#   otherwise add an `uninstall` of its own.
+#   install made with --prefix elsewhere). FLTK's own `uninstall` target is renamed when it is
+#   fetched (see the patch below), so `uninstall` is ours.
 if(WIN32)
   set(MUSIL_HOME "$ENV{USERPROFILE}/.musil")
 else()
   set(MUSIL_HOME "$ENV{HOME}/.musil")
 endif()
+
+# --- FLTK: the one external dependency (plots, controls, the IDE) -------------------------
+option(MUSIL_FLTK "Fetch FLTK and build the plot library, the controls window and the IDE" ON)
+if(MUSIL_FLTK)
+  include(FetchContent)
+  set(FLTK_BUILD_TEST OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_FLUID OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_FLTK_OPTIONS OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_GL OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_FORMS OFF CACHE BOOL "" FORCE)
+  set(FLTK_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  set(FLTK_USE_SYSTEM_LIBPNG OFF CACHE BOOL "" FORCE)
+  set(FLTK_USE_SYSTEM_LIBJPEG OFF CACHE BOOL "" FORCE)
+  set(FLTK_USE_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
+  set(FLTK_USE_PANGO OFF CACHE BOOL "" FORCE)
+  set(FLTK_BACKEND_WAYLAND OFF CACHE BOOL "" FORCE)
+  if(POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+  endif()
+  # EXCLUDE_FROM_ALL keeps FLTK out of `cmake --install`: it is linked statically. The patch renames
+  # FLTK's own `uninstall` target (fltk-uninstall), so `uninstall` stays ours.
+  set(FLTK_PATCH sed -i.bak "s/add_custom_target(uninstall/add_custom_target(fltk-uninstall/" CMake/install.cmake)
+  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+    FetchContent_Declare(fltk
+      URL https://github.com/fltk/fltk/archive/refs/tags/release-1.4.3.tar.gz
+      PATCH_COMMAND ${FLTK_PATCH}
+      URL_HASH SHA256=6a11c0bf91b7b193a87a1928c32a953f36d7dd4b65fef3e9d0c40a51882f97a6
+      EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(fltk)
+  else()
+    FetchContent_Declare(fltk URL https://github.com/fltk/fltk/archive/refs/tags/release-1.4.3.tar.gz
+      URL_HASH SHA256=6a11c0bf91b7b193a87a1928c32a953f36d7dd4b65fef3e9d0c40a51882f97a6)
+    FetchContent_GetProperties(fltk)
+    if(NOT fltk_POPULATED)
+      FetchContent_Populate(fltk)
+      add_subdirectory(${fltk_SOURCE_DIR} ${fltk_BINARY_DIR} EXCLUDE_FROM_ALL)
+    endif()
+  endif()
+  message(STATUS "FLTK 1.4.3 fetched: plot library, controls and the IDE enabled")
+endif()
+
 add_custom_target(uninstall
   COMMAND ${CMAKE_COMMAND} -DMANIFEST=${CMAKE_BINARY_DIR}/install_manifest.txt
                            -DPREFIX=${CMAKE_INSTALL_PREFIX} -DMUSIL_HOME=${MUSIL_HOME}
                            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/uninstall.cmake
   COMMENT "Removing the installed files (${CMAKE_INSTALL_PREFIX}, ${MUSIL_HOME})")
 add_custom_target(musil-uninstall DEPENDS uninstall)
-
-# --- raylib: the one external dependency (plotting, the Listener, later live audio) ---
-if(MUSIL_RAYLIB)
-  include(FetchContent)
-  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-  if(POLICY CMP0135)
-    cmake_policy(SET CMP0135 NEW)
-  endif()
-  # EXCLUDE_FROM_ALL keeps raylib out of `cmake --install`: it is linked statically and nothing
-  # of it belongs in the user's prefix.
-  if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    FetchContent_Declare(raylib
-      URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
-      URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e
-      EXCLUDE_FROM_ALL)
-    FetchContent_MakeAvailable(raylib)
-  else()
-    FetchContent_Declare(raylib
-      URL https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
-      URL_HASH SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e)
-    FetchContent_GetProperties(raylib)
-    if(NOT raylib_POPULATED)
-      FetchContent_Populate(raylib)
-      add_subdirectory(${raylib_SOURCE_DIR} ${raylib_BINARY_DIR} EXCLUDE_FROM_ALL)
-    endif()
-  endif()
-  message(STATUS "raylib 5.5 fetched: plot library and Listener enabled")
-endif()
 
 # --- The language: header-only ------------------------------------------------
 add_library(musil_base INTERFACE)
@@ -77,20 +90,18 @@ if(APPLE)
 elseif(UNIX)
   target_link_libraries(musil_base INTERFACE pthread dl m)
 endif()
-if(MUSIL_RAYLIB)
-  target_compile_definitions(musil PRIVATE MUSIL_HAS_RAYLIB)
-  target_link_libraries(musil PRIVATE raylib)
+if(MUSIL_FLTK)
+  target_compile_definitions(musil PRIVATE MUSIL_HAS_FLTK)
+  target_link_libraries(musil PRIVATE fltk::images fltk::fltk)
 endif()
 
-# --- The Listener: a window to run, watch and read ------------------------------
-if(MUSIL_RAYLIB)
-  add_executable(musil-listener listener/main.cpp)
-  target_link_libraries(musil-listener PRIVATE musil_base raylib)
-  target_compile_definitions(musil-listener PRIVATE MUSIL_HAS_RAYLIB
-    MUSIL_LISTENER_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/listener/assets"
-    MUSIL_SOURCE_LIB="${CMAKE_CURRENT_SOURCE_DIR}/src")
+# --- The IDE: editor, console, variables, help; plots and controls in windows --------
+if(MUSIL_FLTK)
+  add_executable(musil-ide ide/main.cpp)
+  target_link_libraries(musil-ide PRIVATE musil_base fltk::images fltk::fltk)
+  target_compile_definitions(musil-ide PRIVATE MUSIL_HAS_FLTK MUSIL_SOURCE_LIB="${CMAKE_CURRENT_SOURCE_DIR}/src")
   if(APPLE)
-    target_link_libraries(musil-listener PRIVATE "-framework IOKit" "-framework Cocoa" "-framework OpenGL")
+    set_target_properties(musil-ide PROPERTIES MACOSX_BUNDLE FALSE)
   endif()
 endif()
 
@@ -148,9 +159,8 @@ endif()
 file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt)
 file(GLOB MUSIL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 install(TARGETS musil RUNTIME DESTINATION bin)
-if(MUSIL_RAYLIB)
-  install(TARGETS musil-listener RUNTIME DESTINATION bin)
-  install(FILES listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt DESTINATION ${MUSIL_HOME}/assets)
+if(MUSIL_FLTK)
+  install(TARGETS musil-ide RUNTIME DESTINATION bin)
 endif()
 install(FILES ${MUSIL_HEADERS} DESTINATION include/musil)
 install(DIRECTORY src/system src/scientific src/live DESTINATION include/musil FILES_MATCHING PATTERN "*.h")
@@ -166,7 +176,7 @@ if(MUSIL_TESTS)
   add_test(NAME scientific COMMAND musil ${T}/test_scientific.mu)
   add_test(NAME signals COMMAND musil ${T}/test_signals.mu)
   add_test(NAME live    COMMAND musil ${T}/test_live.mu)
-  if(MUSIL_RAYLIB)
+  if(MUSIL_FLTK)
     add_test(NAME plot COMMAND musil ${T}/test_plot.mu)
   endif()
   add_test(NAME stress  COMMAND musil ${T}/test_stress.mu)
@@ -174,7 +184,7 @@ if(MUSIL_TESTS)
   add_test(NAME load    COMMAND musil ${T}/test_load.mu WORKING_DIRECTORY ${T})
   # reference outputs frozen in tests/golden/ (timing and rand lines filtered)
   set(REFS reference reference_std reference_scientific reference_signals reference_live)
-  if(MUSIL_RAYLIB)
+  if(MUSIL_FLTK)
     list(APPEND REFS reference_plot)
   endif()
   foreach(ref ${REFS})
@@ -205,11 +215,11 @@ if(MUSIL_TESTS)
   set(NEEDS_phase_vocoder "${D}/Vox.wav")
   set(NEEDS_live_play "${D}/drums.wav")
   set(NEEDS_live_loops "${D}/skip-in-tests")       # 22 s of music: run it, don't test it
-  set(NEEDS_live_session "${D}/skip-in-tests")     # meant to be dropped on the Listener and left running
-  if(NOT MUSIL_RAYLIB)
-    set(NEEDS_plots "${D}/no-raylib")
-    set(NEEDS_iris_plot "${D}/no-raylib")
-    set(NEEDS_reference_plot "${D}/no-raylib")
+  set(NEEDS_live_session "${D}/skip-in-tests")     # meant to be opened in the IDE and left running
+  if(NOT MUSIL_FLTK)
+    set(NEEDS_plots "${D}/no-fltk")
+    set(NEEDS_iris_plot "${D}/no-fltk")
+    set(NEEDS_reference_plot "${D}/no-fltk")
   endif()
   file(GLOB MUSIL_EXAMPLES ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.mu)
   foreach(ex ${MUSIL_EXAMPLES})

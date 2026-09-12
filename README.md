@@ -2,7 +2,7 @@
 
 **Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
 
-It comes as a command-line interpreter (`musil`) and as **Musil**, the Listener: a window where you type Musil, drop files to run them (they re-run when you save), see your variables, search the documentation and look at your plots.
+It comes as a command-line interpreter (`musil`) and as **Musil**, the IDE: an editor with syntax colouring where Cmd-Enter runs the block under the cursor, a console, your variables, a documentation search, and plots and controls in windows of their own.
 
 The core of the language is made of a single [C++ header](src/core.h) and a more or less comprehensive overview of the language can be found [here](examples/reference.mu).
 
@@ -55,8 +55,8 @@ git clone https://github.com/CarmineCella/musil.git
 cd musil
 ./build.sh --test                       # configure, build everything into build/, run the tests
 ./build/musil examples/reference.mu     # tour of the core language
-./build/musil-listener                  # the Listener
-sudo cmake --install build              # musil and musil-listener -> /usr/local/bin, headers -> /usr/local/include/musil,
+./build/musil-ide                       # the IDE
+sudo cmake --install build              # musil and musil-ide -> /usr/local/bin, headers -> /usr/local/include/musil,
                                         # the .mu libraries, help.txt and the font -> ~/.musil
 cmake --build build --target uninstall         # removes exactly that
 ```
@@ -65,7 +65,7 @@ cmake --build build --target uninstall         # removes exactly that
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release        # configure (regenerates src/help.txt from the source comments)
-cmake --build build -j                           # build musil and musil-listener
+cmake --build build -j                           # build musil and musil-ide
 ctest --test-dir build                           # tests: one per library, goldens, examples
 cmake --build build --target musil-docs          # help.txt, docs/generated/*.tex and docs/musil_manual.pdf (pdflatex)
 cmake --install build --prefix ~/.local          # install without sudo
@@ -76,15 +76,27 @@ Configure options:
 | option | default | effect |
 |---|---|---|
 | `-DCMAKE_BUILD_TYPE=Release\|Debug` | Release | optimisation vs symbols |
-| `-DMUSIL_RAYLIB=ON\|OFF` | ON | fetch raylib 5.5 and build the plot library and the Listener; OFF builds the language and the other libraries with no dependency |
+| `-DMUSIL_FLTK=ON\|OFF` | ON | fetch FLTK 1.4 and build the plot library, the controls window and the IDE; OFF builds the language and the other libraries with no dependency at all |
 | `-DMUSIL_READLINE=ON\|OFF` | ON | use GNU readline in the REPL when found |
 | `-DMUSIL_TESTS=ON\|OFF` | ON | register the tests with ctest |
 | `-DCMAKE_INSTALL_PREFIX=dir` | /usr/local | where `cmake --install` puts `bin/musil` and `include/musil`; the `.mu` files always go to `~/.musil` |
 
-Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--listener`, `--docs`,
-`--no-raylib`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
-`dist/Musil.app`, `dist/musil`, `dist/musil-listener`, `dist/lib`, the manual, a zip),
+Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--ide`, `--docs`,
+`--no-fltk`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
+`dist/Musil.app`, `dist/musil`, `dist/musil-ide`, `dist/lib`, the manual, a zip),
 `./deploy_linux.sh` (a folder with the same plus `run.sh`, and a tar.gz).
+
+A complete release, from a clean tree (this is what the release assets are made of):
+
+```sh
+./clean.sh                    # fresh-clone state: no build directories, no generated documentation
+./build.sh --test             # configure (regenerates help.txt and the VS Code grammar), build, run every test
+./build.sh --docs             # the manual: docs/musil_manual.pdf (needs pdflatex)
+./deploy_macos.sh --clean     # macOS: dist/Musil.app, dist/musil, dist/musil-ide, dist/lib, dist/musil_manual.pdf,
+                              #        dist/musil-<version>.vsix (when npx is present), dist/Musil-<version>-macos.zip
+./deploy_linux.sh --clean     # Linux: dist/musil-<version>-linux/ and its tar.gz, on a Linux machine
+git tag -a v<version> -m "Musil <version>" && git push --tags   # then attach the zip, the tarball and the PDF to the GitHub release
+```
 
 Nothing is loaded automatically: a program that wants the Musil halves of the
 libraries says `load "std.mu"` (or `load "system.mu"`, which loads std.mu itself),

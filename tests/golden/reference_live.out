@@ -55,7 +55,7 @@ synth-ev, play-ev: events on a synth (parameters + gate) or a buffer
 --- controls and osc ---
 control, toggle  : ((cutoff 100 5000 1200 0) (on 0 1 0 1))
 set-control      : cutoff now 300 (the bound synth followed, ramped)
-controls         : the window (CLI) or the panel (Listener): arrows, Space, Esc
+controls         : opens the controls window (sliders and check boxes) and returns; (controls-open?) tells if it is
 osc-send/listen  : after a message to /cutoff, the control is 2000
 serve            : (serve 7770) opens the evaluation port editors send code to; (serving) tells which
 

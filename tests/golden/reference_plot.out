@@ -31,9 +31,9 @@ scatter-clusters: 2 layers, one per cluster
 wrote waveform and spectrogram: 1 1
 
 --- errors ---
-empty figure    : plot.mu:18: save-png: figure: no layers
-length mismatch : plot.mu:38: save-png: figure: line: x and y must have the same length
-unknown option  : plot.mu:45: save-png: figure: unknown option nope
+empty figure    : plot.mu:19: save-png: figure: no layers
+length mismatch : plot.mu:39: save-png: figure: line: x and y must have the same length
+unknown option  : plot.mu:46: save-png: figure: unknown option nope
 
 ================================================================
   end of plot reference

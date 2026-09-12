@@ -11,7 +11,7 @@
 #include "signals.h"
 #include "live.h"
 #include "serve.h"
-#ifdef MUSIL_HAS_RAYLIB
+#ifdef MUSIL_HAS_FLTK
 #include "plot.h"
 #include "controls.h"
 #endif
@@ -25,7 +25,7 @@ inline void make_env(Interp& i) {
     add_signals(i);
     add_live(i);
     add_serve(i);
-#ifdef MUSIL_HAS_RAYLIB
+#ifdef MUSIL_HAS_FLTK
     add_plot(i);
     add_controls_window(i);
 #endif

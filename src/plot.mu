@@ -7,10 +7,11 @@
 # with add-line / add-scatter / add-bars / add-image / add-surface, set options with
 # set-option, then (show fig) or (save-png fig "file.png" [w h]). The one-call helpers
 # below (plot, scatter, bars, image, surface) build and show in one go.
-# show and save-png come from the host: the CLI opens a window and waits until Esc (or
-# skips it when the environment variable MUSIL_NOSHOW is set); the Listener shows the
-# figure in its window and keeps the figures of the session in a gallery. Keys in both:
-# + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports a PNG, Esc or q closes.
+# show and save-png come from the host: (show fig) opens the figure in a window of its own
+# and returns (several can be open; skipped when the environment variable MUSIL_NOSHOW is
+# set), from the command line and from the IDE alike; (save-png fig path [w h]) writes a
+# file. Keys in a window: + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset,
+# e exports a PNG, Esc or q closes; the mouse drags to pan or orbit, the wheel zooms.
 load "signals.mu"
 
 # --- building figures ----------------------------------------------------------

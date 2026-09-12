@@ -1,9 +1,10 @@
 # musil — library reference: plot (plot.h + plot.mu)
 #
 # A figure is (list title layers options). plot.mu builds it; the host renders it:
-# (show fig) opens the window and waits until Esc (the CLI) or turns the Listener's
-# window into the figure; (save-png fig path [w h]) writes a file. Keys in a figure:
-# + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports, Esc or q closes. The
+# (show fig) opens the figure in a window of its own and returns (several can be open,
+# from the command line and from the IDE alike); (save-png fig path [w h]) writes a file.
+# Keys in a window: + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports,
+# Esc or q closes; the mouse drags to pan or orbit, the wheel zooms. The
 # one-call helpers plot, scatter, bars, image, surface build and show in one go;
 # subplots puts several figures in a grid. plot.mu loads signals.mu (and so scientific
 # and std).

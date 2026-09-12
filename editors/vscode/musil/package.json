@@ -1,7 +1,7 @@
 {
   "name": "musil",
   "displayName": "Musil",
-  "description": "Musil: syntax highlighting, and sending code to a running Listener or musil --serve for live coding",
+  "description": "Musil: syntax highlighting, and sending code to the running Musil IDE or musil --serve for live coding",
   "version": "0.7.0",
   "publisher": "carminecella",
   "license": "MIT",
@@ -34,7 +34,7 @@
     "configuration": {
       "title": "Musil",
       "properties": {
-        "musil.host": { "type": "string", "default": "127.0.0.1", "description": "Where the Listener (or musil --serve) runs" },
+        "musil.host": { "type": "string", "default": "127.0.0.1", "description": "Where the Musil IDE (or musil --serve) runs" },
         "musil.port": { "type": "number", "default": 7770, "description": "The evaluation port" }
       }
     }

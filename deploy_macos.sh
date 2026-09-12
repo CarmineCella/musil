@@ -2,19 +2,18 @@
 # deploy_macos.sh — build Musil for macOS and package it.
 #
 #   ./deploy_macos.sh               Release, static, universal (arm64 + x86_64), in build-dist/
-#   ./deploy_macos.sh --clean       delete build-dist/ first (raylib rebuilt fat from scratch)
+#   ./deploy_macos.sh --clean       delete build-dist/ first (FLTK rebuilt fat from scratch)
 #   ./deploy_macos.sh --no-build    just package what is in build-dist/
 #   ./deploy_macos.sh --dmg         also make dist/Musil-<version>.dmg
 #
 #   ARCHS=arm64 ./deploy_macos.sh   single-arch build (faster)
 #
 # Produces
-#   dist/Musil.app                  the Listener as an application, with icon (docs/icon.png or .jpg),
-#                                   font, .mu libraries, help.txt and the manual in Resources/
+#   dist/Musil.app                  the IDE as an application, with icon (docs/icon.png or .jpg),
+#                                   the .mu libraries, help.txt and the manual in Resources/
 #   dist/musil                      the command-line interpreter
-#   dist/musil-listener             the Listener as a plain binary (finds lib/ and assets/ next to it)
+#   dist/musil-ide                  the IDE as a plain binary (finds lib/ next to it)
 #   dist/lib/                       the .mu libraries and help.txt, to copy into ~/.musil for the CLI
-#   dist/assets/                    the font, for the plain binary
 #   dist/musil_manual.pdf           the manual
 #   dist/Musil-<version>-macos.zip  all of the above
 set -euo pipefail
@@ -47,12 +46,12 @@ if [[ "$FLAG" != "--no-build" ]]; then
         -DCMAKE_OSX_ARCHITECTURES="$ARCHS" \
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$MIN_MACOS" \
         -DBUILD_SHARED_LIBS=OFF -DMUSIL_TESTS=OFF -DMUSIL_READLINE=OFF
-    echo "==> Building musil-listener and musil"
-    cmake --build "$BUILD_DIR" -j --target musil-listener musil
+    echo "==> Building musil-ide and musil"
+    cmake --build "$BUILD_DIR" -j --target musil-ide musil
 fi
-LISTENER="$BUILD_DIR/musil-listener"
+IDE="$BUILD_DIR/musil-ide"
 CLI="$BUILD_DIR/musil"
-for BIN in "$LISTENER" "$CLI"; do
+for BIN in "$IDE" "$CLI"; do
     [[ -x "$BIN" ]] || { echo "Binary $BIN not found. Build first." >&2; exit 1; }
     echo "==> Binary: $(lipo -info "$BIN" 2>/dev/null || file "$BIN")"
     for arch in ${ARCHS//;/ }; do
@@ -63,27 +62,25 @@ for BIN in "$LISTENER" "$CLI"; do
         otool -L "$BIN" | grep -v -e '/System/Library' -e '/usr/lib' -e "$BIN" >&2
     fi
 done
-RAYLIB_A=$(find "$BUILD_DIR/_deps" -name 'libraylib.a' 2>/dev/null | head -1)
-[[ -n "$RAYLIB_A" ]] && echo "==> raylib: $(lipo -info "$RAYLIB_A" 2>/dev/null)"
+FLTK_A=$(find "$BUILD_DIR/_deps" -name 'libfltk.a' 2>/dev/null | head -1)
+[[ -n "$FLTK_A" ]] && echo "==> FLTK: $(lipo -info "$FLTK_A" 2>/dev/null)"
 
 # --- 2. bundle skeleton --------------------------------------------------------------
-# Only the Listener goes in MacOS/: a case-insensitive file system cannot hold "Musil" and
+# Only the IDE goes in MacOS/: a case-insensitive file system cannot hold "Musil" and
 # "musil" side by side, so the CLI lives in dist/ next to the app.
 echo "==> Creating $APP"
 rm -rf "$DIST"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/lib" "$DIST/lib"
-cp "$LISTENER" "$APP/Contents/MacOS/$APP_NAME"
+cp "$IDE" "$APP/Contents/MacOS/$APP_NAME"
 chmod +x "$APP/Contents/MacOS/$APP_NAME"
 cp "$CLI" "$DIST/musil"
-cp "$LISTENER" "$DIST/musil-listener"
-strip "$DIST/musil" "$DIST/musil-listener" 2>/dev/null || true
+cp "$IDE" "$DIST/musil-ide"
+strip "$DIST/musil" "$DIST/musil-ide" 2>/dev/null || true
 
 # --- 3. resources: font, libraries, help, manual -------------------------------------------
 echo "==> Copying resources"
-cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$APP/Contents/Resources/"
 cp src/*.mu src/help.txt "$APP/Contents/Resources/lib/"
 cp src/*.mu src/help.txt "$DIST/lib/"
-mkdir -p "$DIST/assets" && cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$DIST/assets/"
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$APP/Contents/Resources/" && cp docs/musil_manual.pdf "$DIST/"
 cp README.md LICENSE.md "$DIST/"
 
@@ -122,6 +119,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key>     <string>$MIN_MACOS</string>
     <key>NSHighResolutionCapable</key>    <true/>
     <key>NSMicrophoneUsageDescription</key> <string>Musil can analyse sound from the microphone.</string>
+    <key>NSPrincipalClass</key>           <string>NSApplication</string>
     <key>CFBundleDocumentTypes</key>
     <array><dict>
         <key>CFBundleTypeName</key>       <string>Musil source</string>
@@ -135,7 +133,7 @@ PLIST
 # --- 6. ad-hoc signature (required on Apple Silicon to launch at all) --------------------------
 echo "==> Signing (ad-hoc)"
 codesign --force --deep --sign - "$APP"
-codesign --force --sign - "$DIST/musil" "$DIST/musil-listener"
+codesign --force --sign - "$DIST/musil" "$DIST/musil-ide"
 
 # --- 6b. the VS Code extension, as a .vsix when npx is available ------------------------------
 if command -v npx >/dev/null; then
@@ -146,7 +144,7 @@ fi
 # --- 7. zip for sending ---------------------------------------------------------------------
 echo "==> Zipping"
 ( cd "$DIST" && rm -f "$APP_NAME-$VERSION-macos.zip" && ditto -c -k --keepParent --norsrc "$APP_NAME.app" "$APP_NAME-$VERSION-macos.zip" \
-  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil musil-listener lib assets README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
+  && zip -qr "$APP_NAME-$VERSION-macos.zip" musil musil-ide lib README.md LICENSE.md $( [[ -f musil_manual.pdf ]] && echo musil_manual.pdf ) )
 
 if [[ "$FLAG" == "--dmg" ]]; then
     echo "==> DMG"
@@ -155,6 +153,6 @@ if [[ "$FLAG" == "--dmg" ]]; then
 fi
 
 echo
-echo "Done: $APP, $DIST/musil, $DIST/musil-listener, $DIST/lib, $DIST/musil_manual.pdf  and  $DIST/$APP_NAME-$VERSION-macos.zip"
+echo "Done: $APP, $DIST/musil, $DIST/musil-ide, $DIST/lib, $DIST/musil_manual.pdf  and  $DIST/$APP_NAME-$VERSION-macos.zip"
 echo "Recipients: unzip, then right-click Musil.app -> Open (first launch only, it is not notarized)."
 echo "The CLI: copy musil somewhere in the PATH and lib/* into ~/.musil."

@@ -7,7 +7,7 @@
 // evaluated in the global environment as if typed in the console, its printed output goes
 // where the host's output goes, and a one-line reply ("ok", the value, or "error: ...")
 // is written back. The server is polled from the interpreter's idle hook, so it works in
-// the CLI (`musil --serve 7770 -i`), during a running script, and in the Listener.
+// the CLI (`musil --serve 7770 -i`), during a running script, and in the IDE.
 // Only local connections (127.0.0.1) are accepted.
 
 #pragma once
@@ -25,7 +25,7 @@ struct eval_server {
     int sock = -1, port = 0;
     struct client { int fd; std::string buf; };
     std::vector<client> clients;
-    std::function<void(const std::string&)> on_receive;   // hosts may show what arrived (the Listener's code pane)
+    std::function<void(const std::string&)> on_receive;   // hosts may show what arrived (the IDE's console)
 };
 inline eval_server& server() { static eval_server s; return s; }
 

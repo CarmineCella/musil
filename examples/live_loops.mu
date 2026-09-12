@@ -1,10 +1,10 @@
 # live_loops: patterns that repeat on the clock, and change while they run
-# Usage: musil live_loops.mu        (or drop it on the Listener and keep editing it)
+# Usage: musil live_loops.mu        (or open it in the IDE and send its blocks with Cmd-Enter)
 #
 # A loop is a function of the cycle number returning events; (live-loop 'name beats) calls
 # the function of that name every cycle, a little ahead of the clock, so everything lands
 # sample-accurately. Redefine the function (send the new definition from the editor, or
-# just save this file while the Listener watches it) and the next cycle plays the new one.
+# select it and press Cmd-Enter in the IDE) and the next cycle plays the new one.
 load "live.mu"
 audio-init
 var sr (audio-sr)

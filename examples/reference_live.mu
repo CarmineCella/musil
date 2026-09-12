@@ -132,7 +132,7 @@ bind-control 'on q 'gate
 print "control, toggle  :" (controls-list)
 set-control 'cutoff 300
 print "set-control      : cutoff now" (control-value 'cutoff) "(the bound synth followed, ramped)"
-print "controls         : the window (CLI) or the panel (Listener): arrows, Space, Esc"
+print "controls         : opens the controls window (sliders and check boxes) and returns; (controls-open?) tells if it is"
 osc-listen 47131
 osc-map "/cutoff" 'cutoff
 osc-send "127.0.0.1" 47131 "/cutoff" 2000

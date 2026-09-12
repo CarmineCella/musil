@@ -13,10 +13,10 @@ bar. A block is the lines between blank lines around the cursor.
 
 ## What receives the code
 
-The Listener (`Musil.app`, or `musil-listener`) opens the evaluation port 7770 when it
-starts and evaluates what arrives as if it were typed in its console; the block also shows
-in its "from the editor" pane. From the command line: `musil --serve 7770 -i` (or
-`(serve 7770)` in any script). Host and port are settings (`musil.host`, `musil.port`).
+The Musil IDE (`Musil.app`, or `musil-ide`) opens the evaluation port 7770 when it starts
+and evaluates what arrives as if it were typed in its console (the first line of each block
+is echoed there). From the command line: `musil --serve 7770 -i` (or `(serve 7770)` in any
+script). Host and port are settings (`musil.host`, `musil.port`).
 
 ## Installing
 

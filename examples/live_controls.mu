@@ -1,6 +1,6 @@
 # live_controls: hot parameters with a range, shown as sliders, driven by keys or OSC
 # Usage: musil live_controls.mu     (a controls window opens; Esc closes it)
-#        in the Listener the controls are a panel: Tab to it, arrows change them
+#        in the IDE the same window opens
 load "live.mu"
 audio-init
 var sr (audio-sr)
@@ -27,8 +27,10 @@ osc-map "/pad/resonance" 'resonance
 print "controls:" (map (controls-list) head) "; OSC on port 9000 at /pad/cutoff and /pad/resonance"
 print "e.g. from another terminal:  musil -e '(osc-send \"127.0.0.1\" 9000 \"/pad/cutoff\" 2500)'"
 
-# the window (the CLI) or the panel (the Listener); loops, OSC and the editor port keep running meanwhile
+# the window; loops, OSC and the editor port keep running meanwhile. It returns at once,
+# so this script waits while it is open (close it to go on)
 controls
+while (controls-open?) { sleep 0.1 }
 # a control can also be read by code
 print "cutoff is now" (control-value 'cutoff)
 osc-stop

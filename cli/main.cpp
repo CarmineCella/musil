@@ -60,8 +60,8 @@ int main(int argc, char** argv) {
         for (auto& c : code) I.run(c, "<cmdline>");
         for (auto& f : files) if (!run_file(I, f)) return 1;
     }
-    catch (musil::Exit_signal& e) { return e.code; }
-    catch (const std::exception& e) { std::cerr << "error: " << e.what() << "\n"; return 1; }
+    catch (musil::Exit_signal& e) { musil::live_shutdown(); return e.code; }
+    catch (const std::exception& e) { std::cerr << "error: " << e.what() << "\n"; musil::live_shutdown(); return 1; }
 
     if (files.empty() && code.empty()) {
         std::cout << "[musil " << MUSIL_VERSION << "]\n\n"
@@ -70,8 +70,13 @@ int main(int argc, char** argv) {
         interactive = true;
     }
     if (interactive) {
-        try { I.repl(); } catch (musil::Exit_signal& e) { return e.code; }
+        try { I.repl(); } catch (musil::Exit_signal& e) { musil::live_shutdown(); return e.code; }
     }
+#ifdef MUSIL_HAS_FLTK
+    // a script that opened plot or controls windows: keep them (and the loops, the port) alive until they are closed
+    while (musil::plot_windows_open() > 0 || musil::controls_window_open()) { I.idle(); Fl::wait(0.05); }
+#endif
+    musil::live_shutdown();
     return 0;
 }
 

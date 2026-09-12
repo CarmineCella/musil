@@ -1,6 +1,7 @@
-# live_session: drop this file on the Listener; it opens the device, defines an instrument
-# and starts a sound, and leaves everything running. Then type in the console, one line at
-# a time (Enter runs it; Up recalls the previous line):
+# live_session: open this file in the IDE and run it (Cmd-Shift-Enter); it opens the device,
+# defines an instrument, starts a sound, and leaves everything running. Then type in the
+# console line, one line at a time (Enter runs it; Up recalls the previous line), or put the
+# cursor on a line below and press Cmd-Alt-Enter:
 #
 #   set-param a 'cutoff 300 2          the filter closes over two seconds
 #   set-param a 'freq 165              a new pitch, at once
@@ -15,7 +16,7 @@
 #   free-all
 #   audio-quit                         when you are done
 #
-# Save this file with a changed number and the Listener runs it again (it re-opens the device).
+# Change a number, select the lines and press Cmd-Enter: the change is heard at once.
 load "live.mu"
 if (opt (audio-status) "open" 0) { audio-quit }
 audio-init

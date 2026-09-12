@@ -1003,7 +1003,7 @@ inline void Interp::repl() {
     // slices and idles in between. rl_getc_function exists in GNU readline and in libedit (macOS);
     // rl_event_hook, the usual way, does not exist in libedit.
     rl_getc_function = [](FILE* f) -> int {
-        int fd = fileno(f);
+        int fd = f ? fileno(f) : 0;                       // libedit (macOS) calls this with a null FILE*: read stdin then
         while (true) {
             fd_set fds; FD_ZERO(&fds); FD_SET(fd, &fds); timeval tv{ 0, 20000 };
             int r = select(fd + 1, &fds, nullptr, nullptr, &tv);

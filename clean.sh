@@ -6,7 +6,7 @@
 #                        src/help.txt, docs/generated/, docs/musil_manual.pdf and LaTeX leftovers
 #   ./clean.sh --dry     only show what would be removed
 #
-# Never touches sources, examples/data or listener/assets. The generated documentation comes back
+# Never touches sources or examples/data. The generated documentation comes back
 # at the next configure (help.txt, docs/generated/) and with  ./build.sh musil-docs  (the PDF).
 set -euo pipefail
 cd "$(dirname "$0")"

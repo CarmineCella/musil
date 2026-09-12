@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # deploy_linux.sh — build a redistributable Linux folder for Musil.
 #
-#   ./deploy_linux.sh            Release, static raylib, into build-dist-linux/
+#   ./deploy_linux.sh            Release, static FLTK, into build-dist-linux/
 #   ./deploy_linux.sh --clean    rebuild from scratch
 #
-# Produces dist/musil-<version>-linux/ (musil the CLI, musil-listener, lib/ with the .mu libraries
-# and help.txt, assets/ with the font, the manual, run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the system's
-# OpenGL, X11 and ALSA libraries at run time, which every desktop Linux has.
+# Produces dist/musil-<version>-linux/ (musil the CLI, musil-ide, lib/ with the .mu libraries and
+# help.txt, the manual, run.sh) and dist/musil-<version>-linux.tar.gz. The binaries still need the
+# system's X11 (with Xft) and ALSA libraries at run time, which every desktop Linux has.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -24,25 +24,24 @@ fi
 echo "==> Configuring (Release, static)"
 cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DMUSIL_TESTS=OFF -DMUSIL_READLINE=OFF
 echo "==> Building"
-cmake --build "$BUILD_DIR" -j --target musil-listener musil
-for BIN in "$BUILD_DIR/musil-listener" "$BUILD_DIR/musil"; do
+cmake --build "$BUILD_DIR" -j --target musil-ide musil
+for BIN in "$BUILD_DIR/musil-ide" "$BUILD_DIR/musil"; do
     [[ -x "$BIN" ]] || { echo "Binary $BIN not found." >&2; exit 1; }
     echo "==> Runtime libraries of $BIN:"; ldd "$BIN" | sed 's/^/    /'
 done
 
 echo "==> Collecting into $OUT"
-rm -rf "$OUT"; mkdir -p "$OUT/lib" "$OUT/assets"
-cp "$BUILD_DIR/musil-listener" "$OUT/musil-listener"
+rm -rf "$OUT"; mkdir -p "$OUT/lib"
+cp "$BUILD_DIR/musil-ide" "$OUT/musil-ide"
 cp "$BUILD_DIR/musil" "$OUT/musil"
-strip "$OUT/musil-listener" "$OUT/musil" 2>/dev/null || true
-cp listener/assets/JetBrainsMono-Regular.ttf listener/assets/JetBrainsMono-OFL.txt "$OUT/assets/"
+strip "$OUT/musil-ide" "$OUT/musil" 2>/dev/null || true
 cp src/*.mu src/help.txt "$OUT/lib/"
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$OUT/"
 cp README.md LICENSE.md "$OUT/"
 cat > "$OUT/run.sh" <<RUN
 #!/usr/bin/env bash
-# the Listener finds lib/ and assets/ next to itself; the CLI needs MUSIL_PATH or ~/.musil
-cd "\$(dirname "\$0")" && MUSIL_PATH="\$PWD/lib" ./musil-listener "\$@"
+# the IDE finds lib/ next to itself; the CLI needs MUSIL_PATH or ~/.musil
+cd "\$(dirname "\$0")" && MUSIL_PATH="\$PWD/lib" ./musil-ide "\$@"
 RUN
 chmod +x "$OUT/run.sh"
 

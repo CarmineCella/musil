@@ -1,5 +1,5 @@
-# plots: sound and data as pictures. Each figure is saved to /tmp and, in the Listener
-# or a CLI with a display, also shown.
+# plots: sound and data as pictures. Each figure is saved to /tmp and, unless MUSIL_NOSHOW
+# is set, also shown in a window of its own (the windows stay until closed).
 # Usage: musil plots.mu [sound.wav]   (defaults to the bundled data/ file)
 load "system.mu"
 load "plot.mu"

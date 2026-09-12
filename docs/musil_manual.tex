@@ -81,8 +81,8 @@
 Musil is a small scripting language for sound and music computing: Scheme underneath,
 Tcl on the surface. Numbers are vectors, functions are values, code is data. The
 language is one C++ header with no dependencies; the libraries add the operating
-system, linear algebra and machine learning, signal processing and plotting, and the
-Listener puts all of it in a window.
+system, linear algebra and machine learning, signal processing, real-time sound and
+plotting, and the IDE puts all of it in a window.
 }\par
 \vfill
 {\small\color{gray} (c) 2026 by Carmine-Emanuele Cella}
@@ -121,10 +121,10 @@ arithmetic when a formula reads better that way.
 REPL; \texttt{musil a.mu b.mu -- x y} runs several files in one interpreter with
 \musil{args} bound to \musil{(x y)}; \texttt{musil -e "print 42"} evaluates a string.
 
-\textbf{The Listener.} \textit{Musil} the application is a window with a console you
-type into, a file panel you drop \texttt{.mu} files on (they run, and run again every
-time you save them), a list of your variables, a panel where plots appear, and sound
-output. It runs the same interpreter. See section~\ref{sec:listener}.
+\textbf{The IDE.} \textit{Musil} the application is an editor with syntax colouring
+where Cmd-Enter runs the block under the cursor, a console with an input line, the
+list of your variables, a documentation search, and plots and controls in windows of
+their own. It runs the same interpreter. See section~\ref{sec:ide}.
 
 \subsection{Building and installing}
 
@@ -136,8 +136,8 @@ cmake --install build           # musil -> /usr/local/bin,  *.mu and help.txt ->
 ./deploy_macos.sh               # macOS: dist/Musil.app
 \end{lstlisting}
 
-The build fetches raylib~5.5, the one external dependency, used by the plot library
-and the Listener; \texttt{-DMUSIL\_RAYLIB=OFF} builds everything else with no
+The build fetches FLTK~1.4, the one external dependency, used by the plot library, the
+controls window and the IDE; \texttt{-DMUSIL\_FLTK=OFF} builds everything else with no
 dependency at all. Libraries are found by \musil{load} in \texttt{\textasciitilde/.musil}
 after installing, in any directory listed in the \texttt{MUSIL\_PATH} environment
 variable, or next to the file that loads them; during development
@@ -358,7 +358,7 @@ is searched next to the loading file, in the current directory, in each entry of
 (\musil{read}, \musil{read-wav}, \musil{read-csv}, \musil{exists?}, \musil{stat})
 apply a similar rule to their data: a relative path that does not exist in the current
 directory is looked for next to the file being run, so a script finds its data from
-wherever it was started, on the command line or dropped on the Listener. A file that ran is not
+wherever it was started, on the command line or from the IDE. A file that ran is not
 run again (so mutual loads are safe); a file that failed is not cached. Nothing is
 loaded automatically: a program that wants the standard library says
 \musil{load "std.mu"}; each library loads what it needs (\musil{signals.mu} loads
@@ -372,42 +372,38 @@ both. \musil{(copy x)} makes a new list or vector with the same elements (a shal
 copy). Strings and numbers behave as values.
 
 % ═════════════════════════════════════════════════════════════════════════════
-\section{The Listener}
-\label{sec:listener}
+\section{The IDE}
+\label{sec:ide}
 
-\textit{Musil} the application is the interpreter with a window around it, for people
-who don't use a terminal and for everyone when there is something to see or hear.
+\textit{Musil} the application is the interpreter with an editor around it.
 
-Tab moves the focus between its panels (the focused one has a blue frame).
 \begin{itemize}[nosep]
-  \item \textbf{Console} (left): everything printed, wrapped, and a line to type Musil
-        into. Enter runs it, or continues it while braces or parentheses are open;
-        Up and Down recall history; Right arrow completes a name; Esc or Ctrl-C stops
-        a running program; Ctrl-L clears; Ctrl-R runs the last file again;
-        Ctrl-+ / Ctrl-- change the text size.
-  \item \textbf{Files} (top right): drop \texttt{.mu} files on the window to run them.
-        They stay in the list, are watched, and run again each time you save them, so
-        the loop is: edit in any editor, save, look. Up/Down select, Enter runs again.
-  \item \textbf{Variables} (middle right): your globals with a preview of their values,
-        a coloured dot per kind, and your functions below. Up/Down select, Enter prints.
-  \item \textbf{Help} (bottom right): type a name or a word to search the documentation
-        of every function; Enter prints the first match. \musil{(manual)} opens this PDF.
-  \item \textbf{Controls} (bottom right, when some are declared): sliders and toggles for
-        the hot parameters; arrows change the selected one.
-  \item \textbf{From the editor}: the Listener listens on port 7770; a block sent from VS
-        Code (Cmd-Enter) is evaluated and shown above the console. Ctrl-V pastes.
-  \item \textbf{Plots}: \musil{(show fig)} turns the window into the figure, as the
-        command line's window does; Esc returns to the console. The figures of a session
-        stay in a gallery: \texttt{,} and \texttt{.} page through them. In a figure,
-        \texttt{+}/\texttt{-} zoom, W A S D pan, arrows orbit a surface, \texttt{0} or
-        \texttt{r} reset, dragging pans or orbits, \texttt{e} exports a PNG, Esc or
-        \texttt{q} closes; the coordinates under the cursor and the nearest data point
-        are shown.
+  \item \textbf{Editor} (top left): \texttt{.mu} files with syntax colouring (keywords,
+        the documented builtins, strings, numbers, comments). \textbf{Cmd-Enter} runs the
+        block around the cursor (the lines between blank lines) or the selection;
+        \textbf{Cmd-Shift-Enter} the whole file; \textbf{Cmd-Alt-Enter} the current line.
+        The lines sent flash. A toolbar has Run file, Run block, Run line, Stop, Clear,
+        Controls and Settings. Undo, find (Cmd-F, Cmd-G), comment/uncomment (Cmd-/), text
+        size (Cmd-+, Cmd--, for every panel), files by drag and drop; Settings (Cmd-,)
+        chooses the font, the size, line numbers, the current-line highlight and the
+        margin guide, and remembers them.
+  \item \textbf{Console} (bottom left): everything printed, and a line to type Musil into:
+        Enter runs it, Up/Down recall history, Tab completes a name. Esc or Cmd-. stops a
+        running program (the interpreter checks at safe points, so the session survives).
+  \item \textbf{Variables} (top right): the globals with a preview of their values, coloured
+        by kind (numbers, strings, lists, functions); double-click prints one.
+  \item \textbf{Help} (bottom right): type a name or a word to search the documentation of
+        every function. \musil{(manual)} or the Help menu opens this PDF.
+  \item \textbf{Plots and controls} open in windows of their own, from the IDE exactly as
+        from the command line; several plots can be open at once.
+  \item \textbf{From another editor}: the IDE listens on port 7770; code sent from VS Code
+        (the extension in \texttt{editors/vscode/musil}) or from \texttt{nc} is evaluated in
+        the same session.
 \end{itemize}
 
-The interpreter runs on its own thread; one program at a time, and the window stays
-alive while it runs. Libraries are found inside the app bundle, so nothing needs to be
-installed. On macOS, \texttt{./deploy\_macos.sh} builds \texttt{dist/Musil.app}.
+The interpreter runs on its own thread; the window stays responsive while a program
+runs. Libraries are found inside the app bundle, so nothing needs to be installed. On
+macOS, \texttt{./deploy\_macos.sh} builds \texttt{dist/Musil.app}.
 
 % ═════════════════════════════════════════════════════════════════════════════
 \section{Libraries}
@@ -603,7 +599,7 @@ redefining it while the loop runs is the live coding: the next cycle plays the n
 definition. \musil{tempo}, \musil{beat}, \musil{stop-loop}; and the transformations of
 event lists, \musil{fast}, \musil{slow}, \musil{shift}, \musil{rev}, \musil{every},
 \musil{degrade}, \musil{cat}, \musil{stack}, \musil{steps}, are plain list functions.
-The scheduler runs in the interpreter's idle time (while the REPL or the Listener waits,
+The scheduler runs in the interpreter's idle time (while the REPL or the IDE waits,
 and inside \musil{sleep}), on one thread with everything else.
 
 \begin{lstlisting}
@@ -618,11 +614,10 @@ function drums (cycle) ...          # redefine: next cycle it changes
 \textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
 parameters follow it, \musil{set-control} and \musil{control-value} read and write it from
-code, \musil{(controls)} opens the window (the command line) or points to the panel (the
-Listener), where arrows change the selected control. \musil{osc-listen} and
+code, \musil{(controls)} opens the window of sliders and check boxes and returns. \musil{osc-listen} and
 \musil{osc-map} let an incoming OSC message move a control; \musil{osc-send} sends one.
 
-\textbf{Editors.} \musil{(serve 7770)} (the Listener does it at start-up; the command line
+\textbf{Editors.} \musil{(serve 7770)} (the IDE does it at start-up; the command line
 with \texttt{--serve 7770 -i}) opens a local port that evaluates the text it receives, in
 the session, as if typed. The VS Code extension in \texttt{editors/vscode/musil} sends the
 block around the cursor with Cmd-Enter (the file with Cmd-Shift-Enter) and gives
@@ -635,9 +630,13 @@ that can run \texttt{nc localhost 7770 < block.mu} can do the same.
 \subsection{plot}
 
 A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and
-\musil{show} displays it: the command line opens its window and waits until Esc, plot
-after plot; the Listener turns its window into the figure and keeps a gallery.
-\musil{save-png} writes a file. \musil{subplots} puts several figures in one grid. Layers are lines, points, bars, an image (a matrix as
+\musil{show} opens it in a window of its own and returns, from the command line and from
+the IDE alike; the interpreter keeps the windows alive while it waits or sleeps, so
+several plots can be open while a program goes on, and a script that ends with windows
+open stays until they are closed. \musil{save-png} writes a file. \musil{subplots} puts
+several figures in one grid. Keys in a window: \texttt{+}/\texttt{-} zoom, W A S D pan,
+arrows orbit a surface, \texttt{0} or \texttt{r} reset, \texttt{e} exports a PNG, Esc or
+\texttt{q} closes; the mouse drags to pan or orbit, the wheel zooms. Layers are lines, points, bars, an image (a matrix as
 a heat map) or a surface (a matrix in 3D). The one-call helpers build and show in one
 go; the ready-made figures know about signals and data.
 
@@ -703,7 +702,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
 \texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
-\texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to drop on the Listener and play with \\
+\texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
 \bottomrule
 \end{tabular}
 \end{center}

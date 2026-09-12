@@ -1,5 +1,5 @@
-// plot.h — plotting, C++ half: renders a figure description to a raylib texture or a PNG.
-// The Musil half (plot.mu) builds the descriptions. Needs raylib.
+// plot.h — plotting, C++ half: figures drawn with FLTK, in windows of their own or to PNG.
+// The Musil half (plot.mu) builds the figure descriptions.
 //
 // Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
 //
@@ -8,13 +8,23 @@
 //           "scatter" x y label, "bars" x y label, "image" matrix, "surface" matrix,
 //           or "subplot" figure (a figure made only of subplots is drawn as a grid)
 //   options is a list of (list key value): "xlabel" "ylabel" "xmin" "xmax" "ymin" "ymax" "rows" "cols"
-// The CLI's show opens the one raylib window and waits until it is closed (plot after plot);
-// the Listener shows figures in its own window. save-png renders to a texture and writes a file.
+//
+// show opens a window and returns: the interpreter's idle hook keeps every open window
+// alive (Fl::check), so several plots can be open while the program goes on, from the
+// command line as from the IDE. In the IDE, whose interpreter runs on a worker thread,
+// windows are created on the FLTK thread through Fl::awake. save-png renders offscreen.
+// Keys in a window: + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset,
+// e exports a PNG, Esc or q closes; the mouse drags to pan or orbit, the wheel zooms.
 
 #pragma once
 #include "core.h"
-#include "raylib.h"
-#include "rlgl.h"
+#include <FL/Fl.H>
+#include <FL/Fl_Double_Window.H>
+#include <FL/Fl_Widget.H>
+#include <FL/Fl_Image_Surface.H>
+#include <FL/Fl_RGB_Image.H>
+#include <FL/fl_draw.H>
+#include <FL/platform.H>
 #include <cstdio>
 #include <set>
 
@@ -73,26 +83,7 @@ inline figure parse_figure(const vptr& v) {
     return f;
 }
 
-inline Color plot_palette(size_t k) {
-    static const Color c[] = { {31,119,180,255}, {255,127,14,255}, {44,160,44,255}, {214,39,40,255}, {148,103,189,255}, {140,86,75,255}, {227,119,194,255}, {127,127,127,255} };
-    return c[k % 8];
-}
-inline Color plot_colormap(double t) {   // viridis-like, t in [0,1]
-    static const unsigned char pts[][3] = { {68,1,84}, {59,82,139}, {33,145,140}, {94,201,98}, {253,231,37} };
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    double p = t * 4; int i = (int)p; if (i >= 4) i = 3; double f = p - i;
-    return { (unsigned char)(pts[i][0] + f * (pts[i+1][0] - pts[i][0])), (unsigned char)(pts[i][1] + f * (pts[i+1][1] - pts[i][1])), (unsigned char)(pts[i][2] + f * (pts[i+1][2] - pts[i][2])), 255 };
-}
-// --- interaction state, owned by the host and passed to render/interact ---
-struct plot_view {
-    bool zoomed = false; double xmin = 0, xmax = 1, ymin = 0, ymax = 1;   // current 2D view when zoomed
-    float angle = 0.9f, pitch = 0.6f, dist = 2.6f, tx = 0, ty = 0, tz = 0;   // surface camera: orbit, distance, target offset
-    bool has_cursor = false; double cx = 0, cy = 0;                         // data coordinates under the mouse
-    bool has_pick = false; double px = 0, py = 0; std::string pick_label;   // nearest data point
-    int hover_x = -1, hover_y = -1;                                          // mouse in figure pixels
-    std::set<int> chars;                                                     // characters typed this frame (the host fills it from GetCharPressed)
-};
-// 2D data range of a figure (before the view is applied)
+
 inline void figure_range(const figure& f, double& xmin, double& xmax, double& ymin, double& ymax) {
     xmin = 1e300; xmax = -1e300; ymin = 1e300; ymax = -1e300; bool image = false;
     for (auto& L : f.layers) {
@@ -112,249 +103,12 @@ inline void figure_range(const figure& f, double& xmin, double& xmax, double& ym
     if (f.has_ymax) ymax = f.ymax;
 }
 // image layers as textures, built once per figure (drawing them every frame was the slow part)
-struct plot_image_cache { const std::vector<varr>* key = nullptr; Texture2D tex = {}; };
-inline std::vector<plot_image_cache>& plot_images() { static std::vector<plot_image_cache> c; return c; }
-inline Texture2D plot_image_texture(const plot_layer& L) {
-    for (auto& c : plot_images()) if (c.key == &L.m) return c.tex;
-    double lo = 1e300, hi = -1e300; for (auto& r : L.m) for (double v : r) { lo = std::min(lo, v); hi = std::max(hi, v); }
-    if (hi <= lo) hi = lo + 1;
-    size_t rows = L.m.size(), cols = L.m[0].size();
-    Image img = GenImageColor((int)cols, (int)rows, BLACK);
-    for (size_t r = 0; r < rows; r++) for (size_t c = 0; c < cols; c++) ImageDrawPixel(&img, (int)c, (int)(rows - 1 - r), plot_colormap((L.m[r][c] - lo) / (hi - lo)));
-    Texture2D tex = LoadTextureFromImage(img); UnloadImage(img);
-    plot_images().push_back({ &L.m, tex });
-    return tex;
-}
-inline void plot_cache_clear() { for (auto& c : plot_images()) UnloadTexture(c.tex); plot_images().clear(); }
-
 inline double nice_step(double range, int target) {
     if (range <= 0) return 1;
     double raw = range / target, mag = std::pow(10, std::floor(std::log10(raw))), r = raw / mag;
     return (r < 1.5 ? 1 : r < 3.5 ? 2 : r < 7.5 ? 5 : 10) * mag;
 }
 inline std::string tick_label(double v) { char b[32]; std::snprintf(b, sizeof b, "%.6g", std::fabs(v) < 1e-12 ? 0.0 : v); return b; }
-
-struct plot_font { Font font; bool custom = false; int size = 14; };
-inline plot_font& plot_get_font() { static plot_font f; if (!f.custom) f.font = GetFontDefault(); return f; }
-inline void plot_text(const std::string& s, float x, float y, int size, Color c) { DrawTextEx(plot_get_font().font, s.c_str(), { x, y }, (float)size, 1, c); }
-inline float plot_text_width(const std::string& s, int size) { return MeasureTextEx(plot_get_font().font, s.c_str(), (float)size, 1).x; }
-
-// 2D layers (line, scatter, bars, image) into the current drawing target of size w x h
-inline void render_2d(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
-    DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
-    const int fs = 14; int left = ox + 64, right = 20, top = oy + (f.title.empty() ? 16 : 34), bottom = 44;
-    float pw = (float)(ox + w - left - right), ph = (float)(oy + h - top - bottom);
-    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
-    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
-    auto X = [&](double x) { return left + (float)((x - xmin) / (xmax - xmin) * pw); };
-    auto Y = [&](double y) { return top + ph - (float)((y - ymin) / (ymax - ymin) * ph); };
-    if (!f.title.empty()) plot_text(f.title, left + (pw - plot_text_width(f.title, fs + 2)) / 2, (float)oy + 8, fs + 2, { 40, 40, 40, 255 });
-    DrawRectangleLines(left, top, (int)pw, (int)ph, { 120, 120, 120, 255 });
-    double sx = nice_step(xmax - xmin, 6), sy = nice_step(ymax - ymin, 5);
-    for (double t = std::ceil(xmin / sx) * sx; t <= xmax + 1e-9 * sx; t += sx) {
-        float px = X(t); DrawLine((int)px, top, (int)px, top + (int)ph, { 225, 225, 225, 255 });
-        std::string ss = tick_label(t); plot_text(ss, px - plot_text_width(ss, fs - 2) / 2, top + ph + 4, fs - 2, { 80, 80, 80, 255 });
-    }
-    for (double t = std::ceil(ymin / sy) * sy; t <= ymax + 1e-9 * sy; t += sy) {
-        float py = Y(t); DrawLine(left, (int)py, left + (int)pw, (int)py, { 225, 225, 225, 255 });
-        std::string ss = tick_label(t); plot_text(ss, left - 6 - plot_text_width(ss, fs - 2), py - (fs - 2) / 2.0f, fs - 2, { 80, 80, 80, 255 });
-    }
-    if (!f.xlabel.empty()) plot_text(f.xlabel, left + (pw - plot_text_width(f.xlabel, fs)) / 2, (float)(oy + h) - fs - 6, fs, { 60, 60, 60, 255 });
-    if (!f.ylabel.empty()) { rlPushMatrix(); rlTranslatef((float)ox + 14, top + ph / 2 + plot_text_width(f.ylabel, fs) / 2, 0); rlRotatef(-90, 0, 0, 1); plot_text(f.ylabel, 0, 0, fs, { 60, 60, 60, 255 }); rlPopMatrix(); }
-    BeginScissorMode(left, top, (int)pw, (int)ph);
-    size_t ci = 0; std::vector<std::pair<std::string, Color>> legend;
-    for (auto& L : f.layers) {
-        if (L.kind == "surface") continue;
-        if (L.kind == "image") {
-            Texture2D tex = plot_image_texture(L);
-            size_t rows = L.m.size(), cols = L.m[0].size();
-            Rectangle dst = { X(0), Y((double)rows), X((double)cols) - X(0), Y(0) - Y((double)rows) };
-            DrawTexturePro(tex, { 0, 0, (float)cols, (float)rows }, dst, { 0, 0 }, 0, WHITE);
-            continue;
-        }
-        Color col = plot_palette(ci++);
-        if (!L.label.empty()) legend.push_back({ L.label, col });
-        if (L.kind == "line") {
-            // when there are more points than pixels, draw the min/max envelope of each pixel column
-            size_t n = L.x.size();
-            if (n > (size_t)pw * 2 && n > 1) {
-                double per = (double)n / pw; size_t k = 0;
-                while (k < n) {
-                    size_t e = std::min(n, k + (size_t)per + 1); double lo = 1e300, hi = -1e300, x0 = L.x[k];
-                    for (size_t j = k; j < e; j++) { lo = std::min(lo, L.y[j]); hi = std::max(hi, L.y[j]); }
-                    DrawLineEx({ X(x0), Y(lo) }, { X(x0), Y(hi) }, 1.5f, col);
-                    if (e < n) DrawLineEx({ X(L.x[e-1]), Y(L.y[e-1]) }, { X(L.x[e]), Y(L.y[e]) }, 1.5f, col);
-                    k = e;
-                }
-            } else for (size_t k = 1; k < n; k++) DrawLineEx({ X(L.x[k-1]), Y(L.y[k-1]) }, { X(L.x[k]), Y(L.y[k]) }, 1.5f, col);
-        }
-        else if (L.kind == "scatter") for (size_t k = 0; k < L.x.size(); k++) DrawCircleV({ X(L.x[k]), Y(L.y[k]) }, 3.5f, col);
-        else if (L.kind == "bars") {
-            double bw = L.x.size() > 1 ? (L.x[1] - L.x[0]) * 0.8 : (xmax - xmin) * 0.5;
-            for (size_t k = 0; k < L.x.size(); k++) { float x0 = X(L.x[k] - bw / 2), x1 = X(L.x[k] + bw / 2), y0 = Y(0), y1 = Y(L.y[k]); DrawRectangle((int)x0, (int)std::min(y0, y1), (int)(x1 - x0), (int)std::fabs(y1 - y0), col); }
-        }
-    }
-    if (view.has_pick) { DrawCircleLinesV({ X(view.px), Y(view.py) }, 6, { 200, 40, 40, 255 }); }
-    EndScissorMode();
-    for (size_t k = 0; k < legend.size(); k++) {
-        float y = top + 8 + k * (fs + 4), x = left + pw - 12 - plot_text_width(legend[k].first, fs) - 22;
-        DrawRectangle((int)x, (int)y + 3, 14, fs - 6, legend[k].second); plot_text(legend[k].first, x + 20, y, fs, { 40, 40, 40, 255 });
-    }
-    if (view.has_cursor) {
-        std::string ss = "x = " + tick_label(view.cx) + "   y = " + tick_label(view.cy);
-        if (view.has_pick) ss += "   nearest: (" + tick_label(view.px) + ", " + tick_label(view.py) + ")" + (view.pick_label.empty() ? "" : " " + view.pick_label);
-        float tw = plot_text_width(ss, fs - 1) + 12;
-        DrawRectangle(left + 4, top + 4, (int)tw, fs + 6, { 255, 255, 255, 220 });
-        plot_text(ss, left + 10, top + 7, fs - 1, { 40, 40, 40, 255 });
-    }
-    if (view.zoomed) plot_text("zoomed: 0 resets", (float)(ox + w) - 130, (float)(oy + h) - fs - 6, fs - 2, { 130, 130, 130, 255 });
-}
-inline float angle_of(const plot_view& v) { return v.angle; }
-// Keys and mouse over a figure drawn at rect. Keys (they do not depend on the wheel, which
-// macOS trackpads report unreliably): + and - zoom around the centre, 0 resets, W A S D pan,
-// arrows orbit a surface. Mouse: drag pans (or orbits), the wheel zooms around the cursor; the
-// cursor's data coordinates and the nearest point are stored in the view.
-inline void plot_interact(const figure& f, const plot_view& in, plot_view& view, Rectangle rect, Vector2 mouse) {
-    view = in;
-    if (f.is_grid()) return;                     // a grid of subplots is a static picture
-    const int fs = 14; int left = 64, right = 20, top = f.title.empty() ? 16 : 34, bottom = 44;
-    (void)fs;
-    float pw = rect.width - left - right, ph = rect.height - top - bottom;
-    bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
-    bool inside = CheckCollisionPointRec(mouse, rect);
-    bool plus = view.chars.count('+') || view.chars.count('=') || IsKeyPressed(KEY_KP_ADD) || IsKeyPressedRepeat(KEY_EQUAL) || IsKeyPressedRepeat(KEY_RIGHT_BRACKET);
-    bool minus = view.chars.count('-') || IsKeyPressed(KEY_KP_SUBTRACT) || IsKeyPressedRepeat(KEY_MINUS) || IsKeyPressedRepeat(KEY_SLASH);
-    if (surface) {
-        if (inside && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { view.angle += GetMouseDelta().x * 0.01f; view.pitch = std::max(0.05f, std::min(1.5f, view.pitch - GetMouseDelta().y * 0.01f)); }
-        if (IsKeyDown(KEY_LEFT)) view.angle -= 0.03f;
-        if (IsKeyDown(KEY_RIGHT)) view.angle += 0.03f;
-        if (IsKeyDown(KEY_UP)) view.pitch = std::min(1.5f, view.pitch + 0.02f);
-        if (IsKeyDown(KEY_DOWN)) view.pitch = std::max(0.05f, view.pitch - 0.02f);
-        if (plus || GetMouseWheelMove() > 0) view.dist = std::max(0.6f, view.dist * 0.9f);
-        if (minus || GetMouseWheelMove() < 0) view.dist = std::min(8.0f, view.dist * 1.1f);
-        float pan = 0.03f * view.dist;      // pan in the camera's horizontal frame
-        float rx = -std::sin(angle_of(view)), rz = std::cos(angle_of(view));
-        if (IsKeyDown(KEY_A) || view.chars.count('a')) { view.tx -= pan * rx; view.tz -= pan * rz; }
-        if (IsKeyDown(KEY_D) || view.chars.count('d')) { view.tx += pan * rx; view.tz += pan * rz; }
-        if (IsKeyDown(KEY_W) || view.chars.count('w')) view.ty += pan;
-        if (IsKeyDown(KEY_S) || view.chars.count('s')) view.ty -= pan;
-        if (view.chars.count('0') || view.chars.count('r') || IsKeyPressed(KEY_KP_0)) { view.angle = 0.9f; view.pitch = 0.6f; view.dist = 2.6f; view.tx = view.ty = view.tz = 0; }
-        return;
-    }
-    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
-    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
-    auto dx = [&](float px) { return xmin + (px - rect.x - left) / pw * (xmax - xmin); };
-    auto dy = [&](float py) { return ymin + (rect.y + top + ph - py) / ph * (ymax - ymin); };
-    view.has_cursor = inside && mouse.x >= rect.x + left && mouse.x <= rect.x + left + pw && mouse.y >= rect.y + top && mouse.y <= rect.y + top + ph;
-    view.has_pick = false;
-    if (view.has_cursor) {
-        view.cx = dx(mouse.x); view.cy = dy(mouse.y);
-        double best = 1e300; size_t ci = 0;
-        for (auto& L : f.layers) {
-            if (L.kind == "image" || L.kind == "surface") continue;
-            for (size_t k = 0; k < L.x.size(); k++) {
-                double ex = (L.x[k] - view.cx) / (xmax - xmin) * pw, ey = (L.y[k] - view.cy) / (ymax - ymin) * ph, d = ex * ex + ey * ey;
-                if (d < best && d < 20 * 20) { best = d; view.has_pick = true; view.px = L.x[k]; view.py = L.y[k]; view.pick_label = L.label.empty() ? "layer " + std::to_string(ci) : L.label; }
-            }
-            ci++;
-        }
-        float wheel = GetMouseWheelMove();
-        if (wheel != 0) {
-            double zf = wheel > 0 ? 0.8 : 1.25, cx = view.cx, cy = view.cy;
-            view.xmin = cx - (cx - xmin) * zf; view.xmax = cx + (xmax - cx) * zf; view.ymin = cy - (cy - ymin) * zf; view.ymax = cy + (ymax - cy) * zf; view.zoomed = true;
-        }
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-            Vector2 d = GetMouseDelta(); double ddx = -d.x / pw * (xmax - xmin), ddy = d.y / ph * (ymax - ymin);
-            if (d.x != 0 || d.y != 0) { view.xmin = xmin + ddx; view.xmax = xmax + ddx; view.ymin = ymin + ddy; view.ymax = ymax + ddy; view.zoomed = true; }
-        }
-    }
-    // keyboard zoom and pan, on the current view
-    double cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2, hw = (xmax - xmin) / 2, hh = (ymax - ymin) / 2;
-    auto set = [&](double nx0, double nx1, double ny0, double ny1) { view.xmin = nx0; view.xmax = nx1; view.ymin = ny0; view.ymax = ny1; view.zoomed = true; };
-    if (plus)  set(cx - hw * 0.8, cx + hw * 0.8, cy - hh * 0.8, cy + hh * 0.8);
-    if (minus) set(cx - hw * 1.25, cx + hw * 1.25, cy - hh * 1.25, cy + hh * 1.25);
-    double step = 0.05;
-    if (IsKeyDown(KEY_A) || view.chars.count('a')) set(xmin - hw * step, xmax - hw * step, ymin, ymax);
-    if (IsKeyDown(KEY_D) || view.chars.count('d')) set(xmin + hw * step, xmax + hw * step, ymin, ymax);
-    if (IsKeyDown(KEY_W) || view.chars.count('w')) set(xmin, xmax, ymin + hh * step, ymax + hh * step);
-    if (IsKeyDown(KEY_S) || view.chars.count('s')) set(xmin, xmax, ymin - hh * step, ymax - hh * step);
-    if (view.chars.count('0') || view.chars.count('r') || IsKeyPressed(KEY_KP_0)) view.zoomed = false;
-}
-
-// 3D surface: z = m[r][c] over a unit square, coloured by height, seen from an orbiting camera
-// The 3D viewport is in framebuffer pixels: on a Retina screen that is twice the logical size the
-// rest of the drawing uses (which is why a surface once occupied a quarter of its cell). Render
-// textures are 1:1, so figure_to_png sets the scale to 1 around its call.
-inline float& plot_target_scale() { static float s = 0; return s; }
-inline void render_surface(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, int target_h, const plot_view& view) {
-    float angle = view.angle, pitch = view.pitch;
-    float sc = plot_target_scale() > 0 ? plot_target_scale() : (GetScreenWidth() > 0 ? (float)GetRenderWidth() / GetScreenWidth() : 1.0f);
-    DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
-    if (!f.title.empty()) plot_text(f.title, ox + (w - plot_text_width(f.title, 16)) / 2, (float)oy + 8, 16, { 40, 40, 40, 255 });
-    size_t rows = L.m.size(), cols = L.m[0].size();
-    double lo = 1e300, hi = -1e300; for (auto& r : L.m) for (double v : r) { lo = std::min(lo, v); hi = std::max(hi, v); }
-    if (hi <= lo) hi = lo + 1;
-    float dist = view.dist;
-    Vector3 target = { view.tx, 0.25f + view.ty, view.tz };
-    Camera3D cam = { { target.x + dist * std::cos(angle) * std::cos(pitch), target.y + dist * std::sin(pitch), target.z + dist * std::sin(angle) * std::cos(pitch) }, target, { 0, 1, 0 }, 40, CAMERA_PERSPECTIVE };
-    rlDrawRenderBatchActive(); rlViewport((int)(ox * sc), (int)((target_h - oy - h) * sc), (int)(w * sc), (int)(h * sc));   // the 3D view fills this cell only
-    rlMatrixMode(RL_PROJECTION); rlPushMatrix(); rlLoadIdentity(); rlMatrixMode(RL_MODELVIEW); rlLoadIdentity();
-    BeginMode3D(cam);
-    rlDisableBackfaceCulling();
-    // large matrices are drawn at reduced resolution (block averages), which keeps rotation fluid
-    size_t step_r = std::max<size_t>(1, rows / 160), step_c = std::max<size_t>(1, cols / 160);
-    size_t R = (rows + step_r - 1) / step_r, C = (cols + step_c - 1) / step_c;
-    auto at = [&](size_t rr, size_t cc) { double s = 0; size_t n = 0; for (size_t r = rr * step_r; r < std::min(rows, (rr + 1) * step_r); r++) for (size_t c = cc * step_c; c < std::min(cols, (cc + 1) * step_c); c++) { s += L.m[r][c]; n++; } return s / n; };
-    std::vector<double> z(R * C); for (size_t r = 0; r < R; r++) for (size_t c = 0; c < C; c++) z[r * C + c] = at(r, c);
-    auto P = [&](size_t r, size_t c) { return Vector3{ (float)c / std::max<size_t>(1, C - 1) - 0.5f, (float)((z[r * C + c] - lo) / (hi - lo)) * 0.8f, (float)r / std::max<size_t>(1, R - 1) - 0.5f }; };
-    rlBegin(RL_TRIANGLES);
-    for (size_t r = 0; r + 1 < R; r++) for (size_t c = 0; c + 1 < C; c++) {
-        Vector3 a = P(r, c), b = P(r, c + 1), d = P(r + 1, c), e = P(r + 1, c + 1);
-        auto col = [&](const Vector3& v) { Color k = plot_colormap(v.y / 0.8f); rlColor4ub(k.r, k.g, k.b, 255); };
-        col(a); rlVertex3f(a.x, a.y, a.z); col(d); rlVertex3f(d.x, d.y, d.z); col(b); rlVertex3f(b.x, b.y, b.z);
-        col(b); rlVertex3f(b.x, b.y, b.z); col(d); rlVertex3f(d.x, d.y, d.z); col(e); rlVertex3f(e.x, e.y, e.z);
-    }
-    rlEnd();
-    rlEnableBackfaceCulling();
-    Color wire = { 60, 60, 60, 110 };
-    size_t rs = std::max<size_t>(1, R / 24), cs = std::max<size_t>(1, C / 24);
-    for (size_t r = 0; r < R; r += rs) for (size_t c = 0; c + 1 < C; c++) DrawLine3D(P(r, c), P(r, c + 1), wire);
-    for (size_t c = 0; c < C; c += cs) for (size_t r = 0; r + 1 < R; r++) DrawLine3D(P(r, c), P(r + 1, c), wire);
-    DrawLine3D({ -0.5f, 0, -0.5f }, { 0.5f, 0, -0.5f }, GRAY); DrawLine3D({ -0.5f, 0, -0.5f }, { -0.5f, 0, 0.5f }, GRAY);
-    DrawLine3D({ -0.5f, 0, -0.5f }, { -0.5f, 0.8f, -0.5f }, GRAY);
-    EndMode3D();
-    rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());
-    rlMatrixMode(RL_PROJECTION); rlPopMatrix(); rlMatrixMode(RL_MODELVIEW); rlLoadIdentity();
-    plot_text((f.xlabel.empty() ? "columns" : f.xlabel) + "  (arrows or drag orbit)", (float)ox + 12, (float)(oy + h) - 22, 13, { 90, 90, 90, 255 });
-    plot_text(tick_label(lo) + " .. " + tick_label(hi), (float)(ox + w) - 140, (float)(oy + h) - 22, 13, { 90, 90, 90, 255 });
-}
-
-// Draw the figure into the rectangle (ox, oy, w, h) of a target of height target_h (needed for the 3D viewport).
-inline void render_figure_at(const figure& f, int ox, int oy, int w, int h, int target_h, const plot_view& view) {
-    if (f.is_grid()) {
-        int n = (int)f.layers.size();
-        int cols = f.cols > 0 ? f.cols : (int)std::ceil(std::sqrt((double)n)), rows = f.rows > 0 ? f.rows : (n + cols - 1) / cols;
-        int top = f.title.empty() ? 0 : 30;
-        DrawRectangle(ox, oy, w, h, { 250, 250, 250, 255 });
-        if (!f.title.empty()) plot_text(f.title, ox + (w - plot_text_width(f.title, 16)) / 2, (float)oy + 8, 16, { 40, 40, 40, 255 });
-        int cw = w / cols, ch = (h - top) / rows;
-        for (int k = 0; k < n; k++) {
-            int r = k / cols, c = k % cols;
-            render_figure_at(*f.layers[k].sub, ox + c * cw, oy + top + r * ch, cw, ch, target_h, plot_view());
-            DrawRectangleLines(ox + c * cw, oy + top + r * ch, cw, ch, { 215, 215, 215, 255 });
-        }
-        return;
-    }
-    for (auto& L : f.layers) if (L.kind == "surface") { render_surface(f, L, ox, oy, w, h, target_h, view); return; }
-    render_2d(f, ox, oy, w, h, view);
-}
-inline void render_figure(const figure& f, int w, int h, const plot_view& view = plot_view()) {
-    ClearBackground({ 250, 250, 250, 255 });
-    render_figure_at(f, 0, 0, w, h, h, view);
-}
-// Where an exported PNG goes: the current directory when it is writable (a script run from the
-// command line), otherwise the home directory (an application launched from the Finder has "/"
-// as its current directory). Always an absolute path, so the host can print it.
 inline std::string plot_save_name(const figure& f) {
     static int n = 0; std::string base = f.title.empty() ? "plot" : f.title;
     for (auto& c : base) if (!std::isalnum((unsigned char)c)) c = '_';
@@ -364,64 +118,368 @@ inline std::string plot_save_name(const figure& f) {
     if (ec || dir == "/" || !writable(dir)) { const char* home = std::getenv("HOME"); dir = home ? fs::path(home) : fs::temp_directory_path(); }
     return (dir / name).string();
 }
-// Render to a PNG file. The caller must own a window (hidden is fine).
-inline void figure_to_png(const figure& f, const std::string& path, int w, int h) {
-    RenderTexture2D rt = LoadRenderTexture(w, h);
-    plot_target_scale() = 1.0f;
-    BeginTextureMode(rt); render_figure(f, w, h); EndTextureMode();
-    plot_target_scale() = 0.0f;
-    plot_cache_clear();                       // textures were keyed by this figure's layers
-    Image img = LoadImageFromTexture(rt.texture); ImageFlipVertical(&img);
-    bool ok = ExportImage(img, path.c_str());
-    UnloadImage(img); UnloadRenderTexture(rt);
-    if (!ok) throw std::runtime_error("save-png: cannot write " + path);
+
+// --- colours ---
+struct rgb { unsigned char r, g, b; };
+inline rgb plot_palette(size_t k) {
+    static const rgb c[] = { {31,119,180}, {255,127,14}, {44,160,44}, {214,39,40}, {148,103,189}, {140,86,75}, {227,119,194}, {127,127,127} };
+    return c[k % 8];
+}
+inline rgb plot_colormap(double t) {   // viridis-like, t in [0,1]
+    static const unsigned char pts[][3] = { {68,1,84}, {59,82,139}, {33,145,140}, {94,201,98}, {253,231,37} };
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    double p = t * 4; int i = (int)p; if (i >= 4) i = 3; double f = p - i;
+    return { (unsigned char)(pts[i][0] + f * (pts[i+1][0] - pts[i][0])), (unsigned char)(pts[i][1] + f * (pts[i+1][1] - pts[i][1])), (unsigned char)(pts[i][2] + f * (pts[i+1][2] - pts[i][2])) };
+}
+inline void plot_color(rgb c) { fl_color(c.r, c.g, c.b); }
+
+// --- the view: zoom/pan/orbit state, and what the cursor is over ---
+struct plot_view {
+    bool zoomed = false; double xmin = 0, xmax = 1, ymin = 0, ymax = 1;
+    float angle = 0.9f, pitch = 0.6f, dist = 2.6f, tx = 0, ty = 0, tz = 0;
+    bool has_cursor = false; double cx = 0, cy = 0;
+    bool has_pick = false; double px = 0, py = 0; std::string pick_label;
+};
+
+// --- 2D drawing into the rectangle (ox, oy, w, h) of the current FLTK drawing surface ---
+inline void render_2d(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
+    fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
+    const int fs = 13; int left = ox + 64, right = 20, top = oy + (f.title.empty() ? 16 : 34), bottom = 44;
+    double pw = w - 64 - right, ph = h - (f.title.empty() ? 16 : 34) - bottom;
+    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
+    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    auto X = [&](double x) { return left + (x - xmin) / (xmax - xmin) * pw; };
+    auto Y = [&](double y) { return top + ph - (y - ymin) / (ymax - ymin) * ph; };
+    fl_font(FL_HELVETICA, fs);
+    if (!f.title.empty()) { fl_font(FL_HELVETICA_BOLD, fs + 1); fl_color(40, 40, 40); fl_draw(f.title.c_str(), left + (int)((pw - fl_width(f.title.c_str())) / 2), oy + 8 + fs); fl_font(FL_HELVETICA, fs); }
+    double sx = nice_step(xmax - xmin, 6), sy = nice_step(ymax - ymin, 5);
+    fl_font(FL_HELVETICA, fs - 2);
+    for (double t = std::ceil(xmin / sx) * sx; t <= xmax + 1e-9 * sx; t += sx) {
+        int px = (int)X(t); fl_color(225, 225, 225); fl_line(px, top, px, top + (int)ph);
+        std::string s = tick_label(t); fl_color(80, 80, 80); fl_draw(s.c_str(), px - (int)(fl_width(s.c_str()) / 2), top + (int)ph + fs + 2);
+    }
+    for (double t = std::ceil(ymin / sy) * sy; t <= ymax + 1e-9 * sy; t += sy) {
+        int py = (int)Y(t); fl_color(225, 225, 225); fl_line(left, py, left + (int)pw, py);
+        std::string s = tick_label(t); fl_color(80, 80, 80); fl_draw(s.c_str(), left - 6 - (int)fl_width(s.c_str()), py + (fs - 2) / 2);
+    }
+    fl_color(120, 120, 120); fl_rect(left, top, (int)pw, (int)ph);
+    fl_font(FL_HELVETICA, fs); fl_color(60, 60, 60);
+    if (!f.xlabel.empty()) fl_draw(f.xlabel.c_str(), left + (int)((pw - fl_width(f.xlabel.c_str())) / 2), oy + h - 6);
+    if (!f.ylabel.empty()) fl_draw(90, f.ylabel.c_str(), ox + 14, top + (int)(ph / 2 + fl_width(f.ylabel.c_str()) / 2));
+    fl_push_clip(left, top, (int)pw, (int)ph);
+    size_t ci = 0; std::vector<std::pair<std::string, rgb>> legend;
+    for (auto& L : f.layers) {
+        if (L.kind == "surface") continue;
+        if (L.kind == "image") {
+            double lo = 1e300, hi = -1e300; for (auto& r : L.m) for (double v : r) { lo = std::min(lo, v); hi = std::max(hi, v); }
+            if (hi <= lo) hi = lo + 1;
+            int rows = (int)L.m.size(), cols = (int)L.m[0].size();
+            std::vector<unsigned char> pix((size_t)rows * cols * 3);
+            for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) { rgb k = plot_colormap((L.m[r][c] - lo) / (hi - lo)); size_t p = ((size_t)(rows - 1 - r) * cols + c) * 3; pix[p] = k.r; pix[p + 1] = k.g; pix[p + 2] = k.b; }
+            Fl_RGB_Image img(pix.data(), cols, rows, 3);
+            int x0 = (int)X(0), y0 = (int)Y(rows), x1 = (int)X(cols), y1 = (int)Y(0);
+            Fl_RGB_Image* scaled = (Fl_RGB_Image*)img.copy(std::max(1, x1 - x0), std::max(1, y1 - y0));
+            scaled->draw(x0, y0); delete scaled;
+            continue;
+        }
+        rgb col = plot_palette(ci++); plot_color(col);
+        if (!L.label.empty()) legend.push_back({ L.label, col });
+        if (L.kind == "line") {
+            size_t n = L.x.size();
+            if (n > (size_t)pw * 2 && n > 1) {                // more points than pixels: min/max envelope per column
+                double per = (double)n / pw; size_t k = 0;
+                while (k < n) {
+                    size_t e = std::min(n, k + (size_t)per + 1); double lo = 1e300, hi = -1e300, x0 = L.x[k];
+                    for (size_t j = k; j < e; j++) { lo = std::min(lo, L.y[j]); hi = std::max(hi, L.y[j]); }
+                    fl_line((int)X(x0), (int)Y(lo), (int)X(x0), (int)Y(hi));
+                    k = e;
+                }
+            } else { fl_line_style(FL_SOLID, 2); fl_begin_line(); for (size_t k = 0; k < n; k++) fl_vertex(X(L.x[k]), Y(L.y[k])); fl_end_line(); fl_line_style(0); }
+        }
+        else if (L.kind == "scatter") for (size_t k = 0; k < L.x.size(); k++) fl_pie((int)X(L.x[k]) - 3, (int)Y(L.y[k]) - 3, 7, 7, 0, 360);
+        else if (L.kind == "bars") {
+            double bw = L.x.size() > 1 ? (L.x[1] - L.x[0]) * 0.8 : (xmax - xmin) * 0.5;
+            for (size_t k = 0; k < L.x.size(); k++) { int x0 = (int)X(L.x[k] - bw / 2), x1 = (int)X(L.x[k] + bw / 2), y0 = (int)Y(0), y1 = (int)Y(L.y[k]); fl_rectf(x0, std::min(y0, y1), std::max(1, x1 - x0), std::abs(y1 - y0)); }
+        }
+    }
+    if (view.has_pick) { fl_color(200, 40, 40); fl_circle(X(view.px), Y(view.py), 6); }
+    fl_pop_clip();
+    fl_font(FL_HELVETICA, fs);
+    for (size_t k = 0; k < legend.size(); k++) {
+        int y = top + 8 + (int)k * (fs + 4), x = left + (int)pw - 12 - (int)fl_width(legend[k].first.c_str()) - 22;
+        plot_color(legend[k].second); fl_rectf(x, y + 2, 14, fs - 4); fl_color(40, 40, 40); fl_draw(legend[k].first.c_str(), x + 20, y + fs - 2);
+    }
+    if (view.has_cursor) {
+        std::string ss = "x = " + tick_label(view.cx) + "   y = " + tick_label(view.cy);
+        if (view.has_pick) ss += "   nearest: (" + tick_label(view.px) + ", " + tick_label(view.py) + ")" + (view.pick_label.empty() ? "" : " " + view.pick_label);
+        fl_font(FL_HELVETICA, fs - 1); int tw = (int)fl_width(ss.c_str()) + 12;
+        fl_color(255, 255, 255); fl_rectf(left + 4, top + 4, tw, fs + 6); fl_color(40, 40, 40); fl_draw(ss.c_str(), left + 10, top + 4 + fs);
+    }
+    if (view.zoomed) { fl_font(FL_HELVETICA, fs - 2); fl_color(130, 130, 130); fl_draw("zoomed: 0 resets", ox + w - 120, oy + h - 8); }
 }
 
-// --- hosts ------------------------------------------------------------------------------
-// The CLI: show opens the window and waits until Esc (plot after plot); save-png uses a hidden
-// window. The Listener draws the same figures in its own window with the same key map.
-inline const char* plot_keys_hint = "+ - zoom   W A S D pan   arrows orbit   0 or r reset   drag pans   e exports a PNG   Esc or q closes";
-// The characters typed this frame, for layout-independent keys (+ - 0 w a x d)
-inline void plot_collect_chars(plot_view& view) { view.chars.clear(); for (int c = GetCharPressed(); c; c = GetCharPressed()) view.chars.insert(c); }
-inline void plot_ensure_window(bool visible, int w, int h) {
-    if (!IsWindowReady()) { SetTraceLogLevel(LOG_WARNING); SetConfigFlags(visible ? FLAG_WINDOW_RESIZABLE : FLAG_WINDOW_HIDDEN); InitWindow(w, h, "musil"); if (!IsWindowReady()) throw std::runtime_error("plot: cannot open a window (no display?)"); }
-    else { if (visible && IsWindowHidden()) ClearWindowState(FLAG_WINDOW_HIDDEN); SetWindowSize(w, h); }
-    if (visible) {   // centre on the current monitor and take the keyboard: a window opened from a terminal is not focused by default on macOS
-        int m = GetCurrentMonitor(); Vector2 mp = GetMonitorPosition(m);
-        SetWindowPosition((int)mp.x + (GetMonitorWidth(m) - w) / 2, (int)mp.y + (GetMonitorHeight(m) - h) / 2);
-        SetWindowFocused();
+// --- 3D surface: projected and painted in software, so it draws and exports like everything else ---
+inline void render_surface(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
+    fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
+    fl_font(FL_HELVETICA_BOLD, 14); fl_color(40, 40, 40);
+    if (!f.title.empty()) fl_draw(f.title.c_str(), ox + (int)((w - fl_width(f.title.c_str())) / 2), oy + 22);
+    size_t rows = L.m.size(), cols = L.m[0].size();
+    double lo = 1e300, hi = -1e300; for (auto& r : L.m) for (double v : r) { lo = std::min(lo, v); hi = std::max(hi, v); }
+    if (hi <= lo) hi = lo + 1;
+    size_t step_r = std::max<size_t>(1, rows / 120), step_c = std::max<size_t>(1, cols / 120);   // block averages keep it fluid
+    size_t R = (rows + step_r - 1) / step_r, C = (cols + step_c - 1) / step_c;
+    std::vector<double> z(R * C);
+    for (size_t rr = 0; rr < R; rr++) for (size_t cc = 0; cc < C; cc++) { double s = 0; size_t n = 0; for (size_t r = rr * step_r; r < std::min(rows, (rr + 1) * step_r); r++) for (size_t c = cc * step_c; c < std::min(cols, (cc + 1) * step_c); c++) { s += L.m[r][c]; n++; } z[rr * C + cc] = s / n; }
+    // camera: orbit around a target, perspective projection
+    double ca = std::cos(view.angle), sa = std::sin(view.angle), cp = std::cos(view.pitch), sp = std::sin(view.pitch);
+    double tx = view.tx, ty = 0.25 + view.ty, tz = view.tz, dist = view.dist;
+    double ex = tx + dist * ca * cp, ey = ty + dist * sp, ez = tz + dist * sa * cp;
+    double fx = tx - ex, fy = ty - ey, fz = tz - ez; double fl = std::sqrt(fx * fx + fy * fy + fz * fz); fx /= fl; fy /= fl; fz /= fl;
+    double rx = fz * 0 - fy * 1 * 0 + (fy * 0 - fz * 1), ry = fz * 0 - fx * 0, rz = fx * 1 - fy * 0;   // right = forward x up(0,1,0)
+    rx = fy * 0 - fz * 1; ry = fz * 0 - fx * 0; rz = fx * 1 - fy * 0; { double rl = std::sqrt(rx * rx + ry * ry + rz * rz); rx /= rl; ry /= rl; rz /= rl; }
+    double ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    double focal = (h - 40) / (2 * std::tan(0.35));
+    auto project = [&](double x, double y, double zz, double& sx, double& sy, double& depth) {
+        double dx = x - ex, dy = y - ey, dz = zz - ez;
+        double cxp = dx * rx + dy * ry + dz * rz, cyp = dx * ux + dy * uy + dz * uz, czp = dx * fx + dy * fy + dz * fz;
+        depth = czp; if (czp < 0.05) czp = 0.05;
+        sx = ox + w / 2.0 + cxp / czp * focal; sy = oy + h / 2.0 + 10 - cyp / czp * focal;
+    };
+    auto P = [&](size_t r, size_t c, double& sx, double& sy, double& d) { project((double)c / std::max<size_t>(1, C - 1) - 0.5, (z[r * C + c] - lo) / (hi - lo) * 0.8, (double)r / std::max<size_t>(1, R - 1) - 0.5, sx, sy, d); };
+    struct quad { double d; double x[4], y[4]; rgb col; };
+    std::vector<quad> quads; quads.reserve((R - 1) * (C - 1));
+    for (size_t r = 0; r + 1 < R; r++) for (size_t c = 0; c + 1 < C; c++) {
+        quad q; double d0, d1, d2, d3;
+        P(r, c, q.x[0], q.y[0], d0); P(r, c + 1, q.x[1], q.y[1], d1); P(r + 1, c + 1, q.x[2], q.y[2], d2); P(r + 1, c, q.x[3], q.y[3], d3);
+        q.d = (d0 + d1 + d2 + d3) / 4;
+        double zm = (z[r * C + c] + z[r * C + c + 1] + z[(r + 1) * C + c + 1] + z[(r + 1) * C + c]) / 4;
+        q.col = plot_colormap((zm - lo) / (hi - lo)); quads.push_back(q);
+    }
+    std::sort(quads.begin(), quads.end(), [](const quad& a, const quad& b) { return a.d > b.d; });   // painter's algorithm: far first
+    fl_push_clip(ox, oy, w, h);
+    for (auto& q : quads) {
+        plot_color(q.col); fl_polygon((int)q.x[0], (int)q.y[0], (int)q.x[1], (int)q.y[1], (int)q.x[2], (int)q.y[2], (int)q.x[3], (int)q.y[3]);
+        if (quads.size() < 2500) { fl_color(170, 170, 170); fl_loop((int)q.x[0], (int)q.y[0], (int)q.x[1], (int)q.y[1], (int)q.x[2], (int)q.y[2], (int)q.x[3], (int)q.y[3]); }
+    }
+    // the base axes
+    double ax, ay, ad, bx, by, bd, cx2, cy2, cd, dx2, dy2, dd;
+    project(-0.5, 0, -0.5, ax, ay, ad); project(0.5, 0, -0.5, bx, by, bd); project(-0.5, 0, 0.5, cx2, cy2, cd); project(-0.5, 0.8, -0.5, dx2, dy2, dd);
+    fl_color(120, 120, 120); fl_line((int)ax, (int)ay, (int)bx, (int)by); fl_line((int)ax, (int)ay, (int)cx2, (int)cy2); fl_line((int)ax, (int)ay, (int)dx2, (int)dy2);
+    fl_pop_clip();
+    fl_font(FL_HELVETICA, 12); fl_color(90, 90, 90);
+    fl_draw(((f.xlabel.empty() ? "columns" : f.xlabel) + "  (arrows or drag orbit)").c_str(), ox + 12, oy + h - 8);
+    std::string range = tick_label(lo) + " .. " + tick_label(hi); fl_draw(range.c_str(), ox + w - 12 - (int)fl_width(range.c_str()), oy + h - 8);
+}
+
+// --- a figure into a rectangle: a grid of subplots, a surface, or a 2D plot ---
+inline void render_figure_at(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
+    if (f.is_grid()) {
+        int n = (int)f.layers.size();
+        int cols = f.cols > 0 ? f.cols : (int)std::ceil(std::sqrt((double)n)), rows = f.rows > 0 ? f.rows : (n + cols - 1) / cols;
+        int top = f.title.empty() ? 0 : 30;
+        fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
+        if (!f.title.empty()) { fl_font(FL_HELVETICA_BOLD, 15); fl_color(40, 40, 40); fl_draw(f.title.c_str(), ox + (int)((w - fl_width(f.title.c_str())) / 2), oy + 22); }
+        int cw = w / cols, ch = (h - top) / rows;
+        for (int k = 0; k < n; k++) {
+            int r = k / cols, c = k % cols;
+            render_figure_at(*f.layers[k].sub, ox + c * cw, oy + top + r * ch, cw, ch, plot_view());
+            fl_color(215, 215, 215); fl_rect(ox + c * cw, oy + top + r * ch, cw, ch);
+        }
+        return;
+    }
+    for (auto& L : f.layers) if (L.kind == "surface") { render_surface(f, L, ox, oy, w, h, view); return; }
+    render_2d(f, ox, oy, w, h, view);
+}
+
+// --- keys and mouse, shared by the window and any host that embeds a plot ---
+// + - zoom, W A S D pan, arrows orbit, 0 or r reset; drag pans/orbits; the wheel zooms around the cursor
+inline void plot_key(const figure& f, plot_view& view, int key, bool shift) {
+    if (f.is_grid()) return;
+    bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
+    (void)shift;
+    if (surface) {
+        if (key == FL_Left) view.angle -= 0.08f;
+        if (key == FL_Right) view.angle += 0.08f;
+        if (key == FL_Up) view.pitch = std::min(1.5f, view.pitch + 0.05f);
+        if (key == FL_Down) view.pitch = std::max(0.05f, view.pitch - 0.05f);
+        if (key == '+' || key == '=') view.dist = std::max(0.6f, view.dist * 0.9f);
+        if (key == '-') view.dist = std::min(8.0f, view.dist * 1.1f);
+        float pan = 0.05f * view.dist, rx = -std::sin(view.angle), rz = std::cos(view.angle);
+        if (key == 'a') { view.tx -= pan * rx; view.tz -= pan * rz; }
+        if (key == 'd') { view.tx += pan * rx; view.tz += pan * rz; }
+        if (key == 'w') view.ty += pan;
+        if (key == 's') view.ty -= pan;
+        if (key == '0' || key == 'r') { view.angle = 0.9f; view.pitch = 0.6f; view.dist = 2.6f; view.tx = view.ty = view.tz = 0; }
+        return;
+    }
+    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
+    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    double cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2, hw = (xmax - xmin) / 2, hh = (ymax - ymin) / 2;
+    auto set = [&](double a, double b, double c, double d) { view.xmin = a; view.xmax = b; view.ymin = c; view.ymax = d; view.zoomed = true; };
+    if (key == '+' || key == '=') set(cx - hw * 0.8, cx + hw * 0.8, cy - hh * 0.8, cy + hh * 0.8);
+    if (key == '-') set(cx - hw * 1.25, cx + hw * 1.25, cy - hh * 1.25, cy + hh * 1.25);
+    double step = 0.1;
+    if (key == 'a') set(xmin - hw * step, xmax - hw * step, ymin, ymax);
+    if (key == 'd') set(xmin + hw * step, xmax + hw * step, ymin, ymax);
+    if (key == 'w') set(xmin, xmax, ymin + hh * step, ymax + hh * step);
+    if (key == 's') set(xmin, xmax, ymin - hh * step, ymax - hh * step);
+    if (key == '0' || key == 'r') view.zoomed = false;
+}
+// the cursor's data coordinates and the nearest point, for a mouse at (mx, my) inside (ox, oy, w, h)
+inline void plot_cursor(const figure& f, plot_view& view, int ox, int oy, int w, int h, int mx, int my) {
+    view.has_cursor = false; view.has_pick = false;
+    if (f.is_grid()) return;
+    for (auto& L : f.layers) if (L.kind == "surface") return;
+    int left = ox + 64, top = oy + (f.title.empty() ? 16 : 34); double pw = w - 64 - 20, ph = h - (f.title.empty() ? 16 : 34) - 44;
+    if (mx < left || mx > left + pw || my < top || my > top + ph) return;
+    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
+    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    view.has_cursor = true; view.cx = xmin + (mx - left) / pw * (xmax - xmin); view.cy = ymin + (top + ph - my) / ph * (ymax - ymin);
+    double best = 1e300; size_t ci = 0;
+    for (auto& L : f.layers) {
+        if (L.kind == "image") continue;
+        for (size_t k = 0; k < L.x.size(); k++) {
+            double exx = (L.x[k] - view.cx) / (xmax - xmin) * pw, eyy = (L.y[k] - view.cy) / (ymax - ymin) * ph, d = exx * exx + eyy * eyy;
+            if (d < best && d < 400) { best = d; view.has_pick = true; view.px = L.x[k]; view.py = L.y[k]; view.pick_label = L.label.empty() ? "layer " + std::to_string(ci) : L.label; }
+        }
+        ci++;
     }
 }
+inline void plot_drag(const figure& f, plot_view& view, int ox, int oy, int w, int h, int dx, int dy) {
+    if (f.is_grid()) return;
+    bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
+    if (surface) { view.angle += dx * 0.01f; view.pitch = std::max(0.05f, std::min(1.5f, view.pitch - dy * 0.01f)); return; }
+    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
+    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    double pw = w - 64 - 20, ph = h - (f.title.empty() ? 16 : 34) - 44;
+    double ddx = -dx / pw * (xmax - xmin), ddy = dy / ph * (ymax - ymin);
+    view.xmin = xmin + ddx; view.xmax = xmax + ddx; view.ymin = ymin + ddy; view.ymax = ymax + ddy; view.zoomed = true; (void)ox; (void)oy;
+}
+inline void plot_wheel(const figure& f, plot_view& view, int dir) {
+    if (f.is_grid()) return;
+    bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
+    if (surface) { view.dist = dir < 0 ? std::max(0.6f, view.dist * 0.9f) : std::min(8.0f, view.dist * 1.1f); return; }
+    double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
+    if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    double cx = view.has_cursor ? view.cx : (xmin + xmax) / 2, cy = view.has_cursor ? view.cy : (ymin + ymax) / 2, zf = dir < 0 ? 0.8 : 1.25;
+    view.xmin = cx - (cx - xmin) * zf; view.xmax = cx + (xmax - cx) * zf; view.ymin = cy - (cy - ymin) * zf; view.ymax = cy + (ymax - cy) * zf; view.zoomed = true;
+}
+
+// --- PNG export: draw offscreen, encode (a small PNG writer: stored deflate blocks, no dependency) ---
+inline unsigned long plot_crc32(const unsigned char* d, size_t n, unsigned long crc = 0xffffffffUL) {
+    static unsigned long table[256]; static bool init = false;
+    if (!init) { for (unsigned long k = 0; k < 256; k++) { unsigned long c = k; for (int j = 0; j < 8; j++) c = c & 1 ? 0xedb88320UL ^ (c >> 1) : c >> 1; table[k] = c; } init = true; }
+    for (size_t k = 0; k < n; k++) crc = table[(crc ^ d[k]) & 255] ^ (crc >> 8);
+    return crc;
+}
+inline void plot_write_png(const std::string& path, const unsigned char* rgb_pixels, int w, int h) {
+    std::string raw; raw.reserve((size_t)h * (w * 3 + 1));
+    for (int y = 0; y < h; y++) { raw += '\0'; raw.append((const char*)rgb_pixels + (size_t)y * w * 3, (size_t)w * 3); }
+    std::string z; z += '\x78'; z += '\x01';                    // zlib header, then stored blocks of up to 65535 bytes
+    size_t pos = 0; while (pos < raw.size()) { size_t n = std::min<size_t>(65535, raw.size() - pos); bool last = pos + n == raw.size();
+        z += (char)(last ? 1 : 0); z += (char)(n & 255); z += (char)(n >> 8); z += (char)(~n & 255); z += (char)((~n >> 8) & 255); z.append(raw, pos, n); pos += n; }
+    unsigned long a = 1, b = 0; for (unsigned char c : raw) { a = (a + c) % 65521; b = (b + a) % 65521; } unsigned long adler = (b << 16) | a;
+    for (int k = 3; k >= 0; k--) z += (char)((adler >> (8 * k)) & 255);
+    std::string out = "\x89PNG\r\n\x1a\n";
+    auto chunk = [&](const char* type, const std::string& data) {
+        unsigned long len = data.size(); for (int k = 3; k >= 0; k--) out += (char)((len >> (8 * k)) & 255);
+        std::string td = std::string(type) + data; out += td;
+        unsigned long crc = plot_crc32((const unsigned char*)td.data(), td.size()) ^ 0xffffffffUL; for (int k = 3; k >= 0; k--) out += (char)((crc >> (8 * k)) & 255);
+    };
+    std::string ihdr; for (int k = 3; k >= 0; k--) ihdr += (char)((w >> (8 * k)) & 255); for (int k = 3; k >= 0; k--) ihdr += (char)((h >> (8 * k)) & 255);
+    ihdr += '\x08'; ihdr += '\x02'; ihdr += '\0'; ihdr += '\0'; ihdr += '\0';
+    chunk("IHDR", ihdr); chunk("IDAT", z); chunk("IEND", "");
+    std::ofstream f(path, std::ios::binary); if (!f) throw std::runtime_error("save-png: cannot write " + path); f << out;
+}
+inline void figure_to_png(const figure& f, const std::string& path, int w, int h) {
+    fl_open_display();
+    Fl_Image_Surface surf(w, h);
+    Fl_Surface_Device::push_current(&surf);
+    render_figure_at(f, 0, 0, w, h, plot_view());
+    Fl_RGB_Image* img = surf.image();
+    Fl_Surface_Device::pop_current();
+    if (!img) throw std::runtime_error("save-png: cannot render offscreen");
+    std::vector<unsigned char> rgb_pixels((size_t)w * h * 3);
+    const unsigned char* src = (const unsigned char*)img->data()[0]; int d = img->d(), ld = img->ld() ? img->ld() : img->w() * d;
+    for (int y = 0; y < h && y < img->h(); y++) for (int x = 0; x < w && x < img->w(); x++) for (int c = 0; c < 3; c++) rgb_pixels[((size_t)y * w + x) * 3 + c] = src[(size_t)y * ld + x * d + (d >= 3 ? c : 0)];
+    delete img;
+    plot_write_png(path, rgb_pixels.data(), w, h);
+}
+
+// --- the window ---
+struct plot_widget : Fl_Widget {
+    figure f; plot_view view; int lastx = 0, lasty = 0;
+    plot_widget(int x, int y, int w, int h, figure fig) : Fl_Widget(x, y, w, h), f(std::move(fig)) {}
+    void draw() override {
+        render_figure_at(f, x(), y(), w(), h() - 18, view);
+        fl_color(246, 246, 244); fl_rectf(x(), y() + h() - 18, w(), 18);
+        fl_font(FL_HELVETICA, 11); fl_color(150, 150, 150); fl_draw("+ - zoom   W A S D pan   arrows orbit   0 or r reset   drag pans   wheel zooms   e exports a PNG   Esc or q closes", x() + 8, y() + h() - 5);
+    }
+    int handle(int e) override {
+        switch (e) {
+        case FL_FOCUS: case FL_UNFOCUS: return 1;
+        case FL_ENTER: case FL_LEAVE: return 1;
+        case FL_MOVE: plot_cursor(f, view, x(), y(), w(), h() - 18, Fl::event_x(), Fl::event_y()); redraw(); return 1;
+        case FL_PUSH: lastx = Fl::event_x(); lasty = Fl::event_y(); take_focus(); return 1;
+        case FL_DRAG: plot_drag(f, view, x(), y(), w(), h() - 18, Fl::event_x() - lastx, Fl::event_y() - lasty); lastx = Fl::event_x(); lasty = Fl::event_y(); redraw(); return 1;
+        case FL_MOUSEWHEEL: plot_wheel(f, view, Fl::event_dy()); redraw(); return 1;
+        case FL_KEYDOWN: {
+            int k = Fl::event_key(); const char* t = Fl::event_text();
+            if (k == FL_Escape || (t && (t[0] == 'q'))) { window()->hide(); return 1; }
+            if (t && t[0] == 'e') { std::string p = plot_save_name(f); try { figure_to_png(f, p, w(), h() - 18); std::cout << "saved " << p << std::endl; } catch (std::exception& ex) { std::cerr << ex.what() << "\n"; } return 1; }
+            plot_key(f, view, k >= FL_Left && k <= FL_Down ? k : (t && t[0] ? t[0] : k), Fl::event_state(FL_SHIFT));
+            redraw(); return 1;
+        }
+        }
+        return Fl_Widget::handle(e);
+    }
+};
+inline std::vector<Fl_Double_Window*>& plot_windows() { static std::vector<Fl_Double_Window*> w; return w; }
+inline void plot_open_window(figure f, int w, int h) {
+    static int n = 0; int off = 60 + 30 * (n++ % 8);         // cascade, so several windows do not cover each other
+    Fl_Double_Window* win = new Fl_Double_Window(off, off, w, h, f.title.empty() ? "musil" : f.title.c_str());
+    plot_widget* pw = new plot_widget(0, 0, w, h, std::move(f));
+    win->resizable(pw); win->end(); win->size_range(300, 200);
+    win->callback([](Fl_Widget* wd, void*) { wd->hide(); });
+    plot_windows().push_back(win); win->show(); pw->take_focus();
+}
+inline int plot_windows_open() { int n = 0; for (auto* w : plot_windows()) if (w->shown()) n++; return n; }
+// Hosts with the interpreter on another thread (the IDE) set this so windows are made on the FLTK thread
+inline bool& plot_needs_awake() { static bool b = false; return b; }
+struct plot_request { figure f; int w, h; };
+inline void plot_awake_cb(void* p) { plot_request* r = (plot_request*)p; plot_open_window(std::move(r->f), r->w, r->h); delete r; }
+inline void plot_show_figure(figure f, int w, int h) {
+    if (plot_needs_awake()) { Fl::awake(plot_awake_cb, new plot_request{ std::move(f), w, h }); }
+    else plot_open_window(std::move(f), w, h);
+}
+
+// --- builtins ---
 // (save-png fig path [w h]) render a figure to a PNG file (900 x 560 by default)
-inline vptr cli_save_png(vlist& a, Interp& i) {
+inline vptr plot_save_png(vlist& a, Interp& i) {
     figure f; try { f = parse_figure(a[0]); } catch (std::exception& e) { i.bad(e.what()); }
     int w = a.size() > 2 ? (int)i.scalar(a[2]) : 900, h = a.size() > 3 ? (int)i.scalar(a[3]) : 560;
-    try { plot_ensure_window(false, 64, 64); figure_to_png(f, i.str(a[1]), w, h); } catch (std::exception& e) { i.bad(e.what()); }
+    if (plot_needs_awake()) Fl::lock();
+    try { figure_to_png(f, i.str(a[1]), w, h); } catch (std::exception& e) { if (plot_needs_awake()) Fl::unlock(); i.bad(e.what()); }
+    if (plot_needs_awake()) Fl::unlock();
     return v_nil();
 }
-// (show fig [w h]) show a figure in a window and wait until it is closed with Esc (skipped when MUSIL_NOSHOW is set)
-inline vptr cli_show(vlist& a, Interp& i) {
+// (show fig [w h]) open the figure in a window of its own and return; the program goes on and the window
+//   stays (the idle hook keeps it alive); several can be open. Skipped when MUSIL_NOSHOW is set.
+inline vptr plot_show(vlist& a, Interp& i) {
     figure f; try { f = parse_figure(a[0]); } catch (std::exception& e) { i.bad(e.what()); }
-    if (std::getenv("MUSIL_NOSHOW")) return v_nil();     // tests and batch runs
-    int w = a.size() > 1 ? (int)i.scalar(a[1]) : 1100, h = a.size() > 2 ? (int)i.scalar(a[2]) : 700;
-    try { plot_ensure_window(true, w, h); } catch (std::exception& e) { i.bad(e.what()); }
-    SetWindowTitle(f.title.empty() ? "musil" : f.title.c_str());
-    plot_view view; plot_cache_clear();
-    while (!WindowShouldClose()) {
-        plot_collect_chars(view);
-        if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_ENTER) || view.chars.count('q')) break;
-        int W = GetScreenWidth(), H = GetScreenHeight();
-        plot_interact(f, view, view, { 0, 0, (float)W, (float)H }, GetMousePosition());
-        if (view.chars.count('e')) { std::string p = plot_save_name(f); try { figure_to_png(f, p, W, H); *i.out << "saved " << p << "\n" << std::flush; } catch (std::exception& e) { *i.out << "error: " << e.what() << "\n"; } }
-        BeginDrawing(); render_figure(f, W, H, view); plot_text(plot_keys_hint, 8, (float)H - 18, 12, { 150, 150, 150, 255 }); EndDrawing();
-    }
-    plot_cache_clear();
-    CloseWindow();
+    if (std::getenv("MUSIL_NOSHOW")) return v_nil();
+    int w = a.size() > 1 ? (int)i.scalar(a[1]) : 900, h = a.size() > 2 ? (int)i.scalar(a[2]) : 600;
+    plot_show_figure(std::move(f), w, h);
+    if (!plot_needs_awake()) Fl::check();
     return v_nil();
 }
-inline void add_plot(Interp& i) {   // the CLI host; the Listener registers its own show/save-png
-    i.def("save-png", cli_save_png, 2, 4);
-    i.def("show", cli_show, 1, 3);
+// (plot-windows) => how many plot windows are open; (close-plots) closes them
+inline vptr plot_windows_count(vlist&, Interp&) { return v_num(plot_windows_open()); }
+inline vptr plot_close_all(vlist&, Interp&) { for (auto* w : plot_windows()) w->hide(); return v_nil(); }
+inline void add_plot(Interp& i) {
+    i.def("save-png", plot_save_png, 2, 4); i.def("show", plot_show, 1, 3);
+    i.def("plot-windows", plot_windows_count, 0, 0); i.def("close-plots", plot_close_all, 0, 0);
+    if (!plot_needs_awake()) { auto prev = i.idle_fn; i.idle_fn = [prev]() { if (prev) prev(); if (Fl::first_window()) Fl::check(); }; }   // keep the windows alive while the interpreter waits (only once there is one: no GUI setup for plain scripts)
 }
 
 } // namespace musil

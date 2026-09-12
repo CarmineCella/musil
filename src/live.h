@@ -12,8 +12,8 @@
 //   loop flag. Commands carry a time in samples, so a program running with jitter can still
 //   place sounds exactly, by asking for them slightly ahead.
 //
-//   The device is miniaudio (src/live/miniaudio.h, public domain; the same file raylib
-//   carries, but no window and no raylib are needed). The null backend, chosen with the
+//   The device is miniaudio (src/live/miniaudio.h, public domain, one header; no window is
+//   needed). The null backend, chosen with the
 //   option "device" "null" or automatically when there is no hardware, runs the callback
 //   from a timer, so the tests and a headless machine exercise everything but the ears.
 //
@@ -46,6 +46,7 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <deque>
 #include <map>
 #include <random>
 #ifndef _WIN32
@@ -686,9 +687,16 @@ struct osc_listener { int sock = -1; int port = 0; };
 inline osc_listener& osc_in() { static osc_listener l; return l; }
 #endif
 
-// The idle work: due loops, incoming OSC. Called from the interpreter's idle hook (never re-entered).
+// Edits made in a controls window (possibly on another thread) wait here for the interpreter thread
+struct control_edit_queue { std::mutex m; std::deque<std::pair<std::string, double>> edits; };
+inline control_edit_queue& control_edits() { static control_edit_queue q; return q; }
+inline void queue_control_edit(const std::string& name, double value) { std::lock_guard<std::mutex> g(control_edits().m); control_edits().edits.push_back({ name, value }); }
+
+// The idle work: control edits, due loops, incoming OSC. Called from the interpreter's idle hook (never re-entered).
 inline void live_idle(Interp& i) {
     scheduler_state& s = sched();
+    { std::deque<std::pair<std::string, double>> edits; { std::lock_guard<std::mutex> g(control_edits().m); edits.swap(control_edits().edits); }
+      for (auto& e : edits) { control* c = find_control(e.first); if (c) { c->value = std::max(c->lo, std::min(c->hi, e.second)); apply_control(i, *c); } } }
     if (engine().open && engine().running && s.running) {
         double now = live_now();
         for (auto& lp : s.loops) {
@@ -818,6 +826,9 @@ inline vptr live_osc_stop(vlist&, Interp&) {
     return v_nil();
 }
 
+// Close the device without an interpreter (at exit, in the hosts): the audio thread must stop before
+// the engine's statics are destroyed
+inline void live_shutdown() { audio_engine& e = engine(); if (e.open) { ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear(); } sched_reset(); }
 inline void add_live(Interp& i) {
     i.def("audio-open", live_open, 3, 4); i.def("audio-close", live_close, 0, 0);
     i.def("audio-start", live_start, 0, 0); i.def("audio-stop", live_stop, 0, 0);
