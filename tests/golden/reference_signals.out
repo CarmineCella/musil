@@ -80,6 +80,12 @@ ramped           : 6144 samples, stretch 1->3 and pitch 1->2 at once
 pvoc-cross       : modes 1 (multiplicative), 2 (flattener), 3 (morph); denoise, robotize, whisperize
 robotize, whisperize, denoise: lengths 4096 4032 4096
 
+--- hpss and onsets ---
+hpss             : harmonic rms 0.349 percussive rms 0.069 ; they add up to the input within 0
+onset-strength   : 28 values (the spectral flux per frame)
+onsets           : 0.248 (seconds)
+segments         : (2016) (the pieces between onsets)
+
 --- resampling and channels ---
 resample x2      : 320 samples
 resample-to 4000 : 80 samples

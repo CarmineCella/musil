@@ -368,3 +368,45 @@ function sweep (id name from to beats) {
 }
 # (accents events amount)  push every event a little later except the ones on the beat (a lazy feel)
 function accents (events amount) (map events (function (e) (ev (if (near? (mod (ev-beat e) 1) 0 0.01) (ev-beat e) (+ (ev-beat e) amount)) (ev-dur e) (ev-thunk e))))
+
+# --- a trance kit: supersaws, plucks, gates and arpeggios ---------------------------------
+# (supersaw gate freq cutoff spread)   seven detuned saws (spread in cents, ~12) through a lowpass: the lead and pad of trance
+function supersaw (gate freq cutoff spread) (* 0.16 (adsr sr gate 0.01 0.4 0.7 0.5) (lowpass (+ (osc sr (sig gate (* freq (pow 2 (/ (* -3 spread) 1200)))) saw-table) (osc sr (sig gate (* freq (pow 2 (/ (* -2 spread) 1200)))) saw-table) (osc sr (sig gate (* freq (pow 2 (/ (* -1 spread) 1200)))) saw-table) (osc sr (sig gate freq) saw-table) (osc sr (sig gate (* freq (pow 2 (/ spread 1200)))) saw-table) (osc sr (sig gate (* freq (pow 2 (/ (* 2 spread) 1200)))) saw-table) (osc sr (sig gate (* freq (pow 2 (/ (* 3 spread) 1200)))) saw-table)) sr cutoff 1))
+# (pluck gate freq cutoff)  a short bright saw pluck: the arpeggio voice (its cutoff falls with the note)
+function pluck (gate freq cutoff) (* 0.35 (adsr sr gate 0.002 0.18 0 0.1) (lowpass (+ (osc sr (sig gate freq) saw-table) (osc sr (sig gate (* freq 1.004)) saw-table)) sr (* cutoff (+ 0.2 (adsr sr gate 0.002 0.12 0 0.1))) 2))
+# (offbass gate freq)       the off-beat bass: a saw and a sub, tight envelope, lowpassed
+function offbass (gate freq) (* 0.7 (adsr sr gate 0.003 0.12 0.4 0.06) (lowpass (+ (osc sr (sig gate freq) saw-table) (* 0.8 (osc sr (sig gate (* 0.5 freq)) sine-table))) sr 700 1))
+# (riser gate rate)         a build: noise whose highpass opens with an envelope, over rate seconds (streaming: a moving cutoff)
+function riser (gate rate) (* 0.4 (adsr sr gate rate 0.1 1 0.5) (highpass (noise gate) sr (+ 200 (* 6000 (adsr sr gate rate 0.1 1 0.5))) 0.8))
+# (trance-kit)             the drums as synths: kick clap hat ohat (house sounds, a harder kick), tokens bd cp hh oh
+function trance-kit () (list (list "kick" (synth tkick)) (list "clap" (synth clap)) (list "hat" (synth hat)) (list "ohat" (synth ohat)))
+# (arp midis mode steps beats)   an arpeggio as a list of MIDI notes over steps: mode 'up 'down 'updown 'random
+function arp (midis mode steps beats) {
+    var m (str mode)
+    var seq (if (equal? m "down") (reverse midis) (if (equal? m "updown") (concat-list midis (reverse (slice midis 1 (- (length midis) 2)))) midis))
+    var out (list)
+    each (range steps) (function (k) (push out (if (equal? m "random") (getidx midis (floor (* (rand) (length midis)))) (getidx seq (mod k (length seq))))))
+    return out
+}
+# (arp-events id midis mode n beats pairs)   the arpeggio of n steps over beats, played on a synth
+function arp-events (id midis mode n beats pairs) (steps (/ beats n) (arp midis mode n beats) (function (m) (function (t d) {
+    set-param id 'freq (midi->hz m) 0 t
+    each pairs (function (q) (set-param id (head q) (last q) 0 t))
+    note-at t id (* d 0.9)
+})))
+# (gater ids pattern-string beats depth)   the trance gate: the amp parameter of the ids follows a pattern of x and ~
+#                          (x = open, ~ = closed to depth), for pads with an amp parameter (tpad)
+function gater (ids s beats depth) {
+    var toks (pat-tokens s)
+    var step (/ beats (length toks))
+    var out (list)
+    var k 0
+    each toks (function (tok) {
+        var open (not (equal? tok "~"))
+        push out (ev (* k step) step (function (t d) (each ids (function (id) (set-param id 'amp (if open 1 depth) 0.004 t)))))
+        set k (+ k 1)
+    })
+    return out
+}
+# (roll id beats n)        a snare or clap roll accelerating over beats: n hits spaced tighter and tighter
+function roll (id beats n) (map (vec->list (range n)) (function (k) (ev (* beats (pow (/ k n) 1.6)) 0.05 (function (t d) (note-at t id 0.03)))))

@@ -209,6 +209,28 @@ check (> (rms xs) 0) "pvoc-cross mode 2: something comes out"
 check (> (rms (pvoc-cross voiced tone 1 0.5 100)) 0) "pvoc-cross mode 1"
 check (near? (slice (pvoc-cross voiced tone 3 0 100) 4096 2000) (slice (pvoc voiced (list)) 4096 2000) 1e-9) "pvoc-cross mode 3 at 0 is the first sound"
 
+# --- hpss and onsets ---
+var tone2 (* 0.5 (sin (* tau 220 (/ (range 16000) sr))))
+var clicks2 (mix (map (list 0 4000 8000 12000) (function (p) (list p (* 0.8 (noise 200))))))
+var mixed2 (+ tone2 (vec clicks2 (zeros (- 16000 (length clicks2)))))
+var hp (hpss mixed2 512 128 17)
+check (== (length (head hp)) 16000) "hpss: outputs as long as the input"
+check (> (/ (dot (head hp) tone2) (* (norm (head hp)) (norm tone2))) 0.98) "hpss: the harmonic part is the tone"
+check (> (rms (slice (last hp) 4000 200)) (* 20 (+ 1e-9 (rms (slice (last hp) 2000 1000))))) "hpss: the percussive part is the clicks"
+check (< (max (abs (- (+ (head hp) (last hp)) mixed2))) 0.02) "hpss: the parts add up to the input (soft masks sum to one)"
+check (contains? (error-of (function () (hpss mixed2 500 128 17))) "power of 2") "hpss: n must be a power of 2"
+check (contains? (error-of (function () (hpss mixed2 512 128 2))) ">= 3") "hpss: kernel"
+var on (onsets mixed2 sr 512 128 0.3)
+check (== (length on) 3) "onsets: three clicks after the first (which has no previous frame)"
+check (near? on (vec 0.5 1.0 1.5) 0.01) "onsets: at the samples where the hits start (refined inside the frame)"
+var close-clicks (+ tone2 (vec (zeros 4000) (* 0.8 (noise 200)) (zeros 100) (* 0.8 (noise 200)) (zeros 11500)))
+check (== (length (onsets close-clicks sr 512 128 0.3)) 1) "onsets: a second peak within n samples of the previous onset is not a new onset"
+check (and (>= (length (onsets mixed2 sr 512 128 0.98)) 1) (< (length (onsets mixed2 sr 512 128 0.98)) 3)) "onsets: the threshold is relative to the flux maximum (0.98 keeps the strongest peak(s) only)"
+check (== (length (onset-strength mixed2 512 128)) (length (stft mixed2 512 128))) "onset-strength: one value per frame"
+check (equal? (onsets (zeros 4000) sr 512 128 0.3) (vec)) "onsets: silence has none"
+check (== (length (segments mixed2 sr on)) 3) "segments: one per onset, to the end"
+check (== (sum (vec (map (segments mixed2 sr on) length))) (- 16000 (floor (* (head on) sr)))) "segments: tile the sound from the first onset"
+
 # --- resampling ---
 var slow (sine sr 100 0.02)
 check (== (length (resample slow 2)) 320) "resample: length"

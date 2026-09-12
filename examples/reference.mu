@@ -347,6 +347,11 @@ print "--- eval and apply ---"
 var program '(+ 1 2 3 4)
 print "eval program:" (eval program)
 
+# parse reads text into forms (what reading a file does): text -> form -> eval is a REPL in two calls.
+# examples/bootstrap.mu goes all the way: an evaluator for the language written in the language.
+print "parse text    :" (parse "print 1\nvar q 2")
+print "eval of parsed:" (eval (parse "(* 6 7)"))
+
 # Build a program at runtime
 var op '+
 var prog (list op 10 20 30)

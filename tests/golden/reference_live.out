@@ -59,6 +59,8 @@ euclid 3 8       : (1 nil nil 1 nil nil 1 nil)
 swing 0.3        : (0 0.65) (off-beat eighths later)
 kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums
 techno kit       : tkick rumble that tohat tclap perc sub hoover tstab tpad zap; (techno-kit); duck, sweep, accents
+trance kit       : supersaw pluck offbass riser; (trance-kit); arp / arp-events, gater, roll
+arp              : (60 64 67 64 60 64 67 64)
 sig              : 100 (a constant as a signal, so an instrument works offline and streamed)
 user helpers     : a synth function may call your own functions; they are inlined into the graph
 drums, melody    : 5 drum events; 3 notes

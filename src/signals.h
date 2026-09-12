@@ -423,6 +423,59 @@ inline vptr sig_lag(vlist& a, Interp& i) {
     return v_arr(std::move(out));
 }
 
+// --- harmonic / percussive separation (HPSS, Fitzgerald 2010) -------------------------------
+// (hpss x n hop kernel) => (list harmonic percussive): STFT with a periodic Hann window of n and
+// hop; the magnitude spectrogram is median-filtered along time (harmonic sounds are horizontal
+// lines) and along frequency (percussive sounds are vertical ones); soft masks from the two
+// filtered spectrograms weight the original spectra, which are inverted and overlap-added. kernel
+// is the filter length in frames and bins (odd, ~17). C++: a median per bin per frame.
+inline double median_of(std::vector<double>& v) { size_t m = v.size() / 2; std::nth_element(v.begin(), v.begin() + m, v.end()); return v[m]; }
+inline vptr sig_hpss(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); size_t n = (size_t)i.index(a[1]), hop = (size_t)i.index(a[2]); int kernel = (int)i.scalar(a[3]);
+    if (n < 16 || (n & (n - 1))) i.bad("n must be a power of 2 >= 16");
+    if (hop < 1 || hop > n) i.bad("hop must be in 1..n");
+    if (kernel < 3) i.bad("kernel must be >= 3"); if (kernel % 2 == 0) kernel++;
+    // the signal is padded with n zeros on both sides, so its edges are covered by full overlaps
+    std::vector<double> xp(x.size() + 2 * n, 0.0); for (size_t k = 0; k < x.size(); k++) xp[n + k] = x[k];
+    size_t half = kernel / 2, bins = n / 2 + 1, frames = (xp.size() - n) / hop + 1;
+    std::vector<double> w(n); for (size_t k = 0; k < n; k++) w[k] = 0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * k / n);
+    // analysis
+    std::vector<std::vector<double>> spec(frames, std::vector<double>(2 * n)), mag(frames, std::vector<double>(bins));
+    for (size_t f = 0; f < frames; f++) {
+        for (size_t k = 0; k < n; k++) { size_t idx = f * hop + k; spec[f][2 * k] = idx < xp.size() ? xp[idx] * w[k] : 0; spec[f][2 * k + 1] = 0; }
+        fft_inplace(spec[f].data(), n, -1);
+        for (size_t b = 0; b < bins; b++) mag[f][b] = std::hypot(spec[f][2 * b], spec[f][2 * b + 1]);
+    }
+    // medians along time (harmonic) and along frequency (percussive)
+    std::vector<std::vector<double>> H(frames, std::vector<double>(bins)), P(frames, std::vector<double>(bins));
+    std::vector<double> buf; buf.reserve(kernel);
+    for (size_t b = 0; b < bins; b++) for (size_t f = 0; f < frames; f++) {
+        buf.clear(); for (long t = (long)f - (long)half; t <= (long)f + (long)half; t++) buf.push_back(t >= 0 && t < (long)frames ? mag[t][b] : 0.0);
+        H[f][b] = median_of(buf);
+    }
+    for (size_t f = 0; f < frames; f++) for (size_t b = 0; b < bins; b++) {
+        buf.clear(); for (long q = (long)b - (long)half; q <= (long)b + (long)half; q++) buf.push_back(q >= 0 && q < (long)bins ? mag[f][q] : 0.0);
+        P[f][b] = median_of(buf);
+    }
+    // soft masks, synthesis
+    size_t out_len = (frames - 1) * hop + n; varr harm(0.0, out_len), perc(0.0, out_len);
+    std::vector<double> wsum(out_len, 0.0);          // the overlap-added squared window: the exact gain at every sample, edges included
+    for (size_t f = 0; f < frames; f++) for (size_t k = 0; k < n; k++) wsum[f * hop + k] += w[k] * w[k];
+    std::vector<double> fh(2 * n), fp(2 * n);
+    for (size_t f = 0; f < frames; f++) {
+        for (size_t k = 0; k < n; k++) {
+            size_t b = k <= n / 2 ? k : n - k; double h2 = H[f][b] * H[f][b], p2 = P[f][b] * P[f][b], d = h2 + p2 + 1e-12;
+            double mh = h2 / d, mp = p2 / d;
+            fh[2 * k] = spec[f][2 * k] * mh; fh[2 * k + 1] = spec[f][2 * k + 1] * mh; fp[2 * k] = spec[f][2 * k] * mp; fp[2 * k + 1] = spec[f][2 * k + 1] * mp;
+        }
+        fft_inplace(fh.data(), n, 1); fft_inplace(fp.data(), n, 1);
+        for (size_t k = 0; k < n; k++) { harm[f * hop + k] += fh[2 * k] / n * w[k]; perc[f * hop + k] += fp[2 * k] / n * w[k]; }
+    }
+    varr ho(0.0, x.size()), po(0.0, x.size());       // the padding removed: as long as the input
+    for (size_t k = 0; k < x.size() && n + k < out_len; k++) { double g = std::max(wsum[n + k], 1e-3); ho[k] = harm[n + k] / g; po[k] = perc[n + k] / g; }
+    return v_list({ v_arr(std::move(ho)), v_arr(std::move(po)) });
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
@@ -431,7 +484,7 @@ inline void add_signals(Interp& i) {
     i.def("local-maxima", sig_local_maxima, 1, 1); i.def("gather", sig_gather, 2, 2);
     i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
     i.def("pvoc", sig_pvoc, 2, 2);
-    i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3);
+    i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3); i.def("hpss", sig_hpss, 4, 4);
 }
 
 } // namespace musil

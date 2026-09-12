@@ -130,6 +130,8 @@ print "euclid 3 8       :" (euclid 3 8)
 print "swing 0.3        :" (map (swing (list (ev 0 0.5 print) (ev 0.5 0.5 print)) 0.3) ev-beat) "(off-beat eighths later)"
 print "kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums"
 print "techno kit       : tkick rumble that tohat tclap perc sub hoover tstab tpad zap; (techno-kit); duck, sweep, accents"
+print "trance kit       : supersaw pluck offbass riser; (trance-kit); arp / arp-events, gater, roll"
+print "arp              :" (arp (list 60 64 67) 'updown 8 4)
 print "sig              :" (length (sig (zeros 100) 440)) "(a constant as a signal, so an instrument works offline and streamed)"
 print "user helpers     : a synth function may call your own functions; they are inlined into the graph"
 var kit (house-kit)

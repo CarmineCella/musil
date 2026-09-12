@@ -83,7 +83,7 @@ Configure options:
 
 Scripts: `./build.sh` (`--debug`, `--clean`, `--test`, `--run FILE.mu`, `--ide`, `--docs`,
 `--no-fltk`), `./clean.sh` (back to a fresh clone), `./deploy_macos.sh` (universal
-`dist/Musil.app`, `dist/musil`, `dist/musil-ide`, `dist/lib`, the examples, the manual, a zip),
+`dist/Musil.app` with the examples inside for its Help menu, `dist/musil`, `dist/musil-ide`, `dist/lib`, the examples, the manual, a zip),
 `./deploy_linux.sh` (a folder with the same plus `run.sh`, and a tar.gz).
 
 A complete release, from a clean tree (this is what the release assets are made of):

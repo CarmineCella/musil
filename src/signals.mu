@@ -242,6 +242,60 @@ function spectral-morph (a b t n hop) {
     return (istft frames n hop)
 }
 
+# --- onsets ---------------------------------------------------------------------------
+# (onset-strength x n hop)   the spectral flux of every frame, as a vector (one value per hop)
+function onset-strength (x n hop) {
+    var mags (stft-magnitudes (stft x n hop))
+    var flux (list 0)
+    for (var k 1) (< k (length mags)) (var k (+ k 1)) {
+        push flux (spectral-flux (getidx mags k) (getidx mags (- k 1)))
+    }
+    return (vec flux)
+}
+# (onsets x sr n hop threshold)   onset times in seconds: the peaks of the spectral flux (local maxima)
+#                          above threshold x the flux's maximum, at least n samples apart; each is then
+#                          placed at the sample where the energy jumps inside its frame (64-sample blocks:
+#                          the block with the largest rise), so a hit is found where it starts, not a
+#                          window early
+function onsets (x sr n hop threshold) {
+    var flux (onset-strength x n hop)
+    if (< (length flux) 3) { return (vec) }
+    var level (* threshold (max flux))
+    var out (list)
+    var last (- 0 n)
+    each (vec->list (local-maxima flux)) (function (k) {
+        if (> (getidx flux k) level) {
+            var sample (onset-refine x (* k hop) n)
+            if (>= (- sample last) n) {
+                push out (/ sample sr)
+                set last sample
+            }
+        }
+    })
+    return (vec out)
+}
+# (onset-refine x start n)   the sample within [start, start + n) where the energy rises most (64-sample blocks)
+function onset-refine (x start n) {
+    var blk 64
+    var seg (slice x start (min n (- (length x) start)))
+    if (< (length seg) (* 2 blk)) { return start }
+    var e (envelope-follow seg blk)
+    var d (diff e)
+    if (<= (max d) 0) { return start }
+    return (+ start (* blk (+ 1 (argmax d))))         # d[j] = e[j+1] - e[j]: the rise is in block j+1
+}
+# (segments x sr times)    the pieces of x between consecutive onset times (and the end), as a list
+function segments (x sr times) {
+    var starts (vec->list (floor (* times sr)))
+    var out (list)
+    for (var k 0) (< k (length starts)) (var k (+ k 1)) {
+        var a (getidx starts k)
+        var b (if (< (+ k 1) (length starts)) (getidx starts (+ k 1)) (length x))
+        push out (slice x a (- b a))
+    }
+    return out
+}
+
 # --- spectral and temporal features (amps: positive-frequency magnitudes; freqs: their frequencies) ---
 # (spectral-moment amps freqs order centroid) weighted moment of the frequencies about a centroid
 function spectral-moment (amps freqs order centroid) {

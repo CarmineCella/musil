@@ -1,4 +1,4 @@
-# Musil — project notes for working sessions
+# Musil — project notes and roadmap
 
 Musil is a small scripting language for sound and music computing: Scheme underneath, Tcl on the
 surface. Numbers are vectors, functions are values, code is data. C++17, one core header, libraries as

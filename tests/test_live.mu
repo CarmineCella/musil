@@ -241,6 +241,23 @@ check (== (length tk) 6) "techno-kit: six synths"
 check (== (length (drums tk "[bd rm] hh pc cp" 4)) 5) "drums: rm and pc tokens"
 check (== (length (duck (poly tpad 2) 4 0.2)) 4) "duck: one event per beat"
 check (equal? (map (accents (list (ev 0 1 print) (ev 0.5 1 print)) 0.05) ev-beat) (list 0 0.55)) "accents"
+# the trance kit
+check (near? (synth-render supersaw (list (list 'gate g) (list 'freq 220) (list 'cutoff 1800) (list 'spread 14)) (/ (length g) sr)) (supersaw g 220 1800 14) 1e-5) "supersaw: seven saws, graph equals call"
+check (> (rms (offbass g 110)) 0.05) "offbass"
+check (> (rms (synth-render pluck (list (list 'gate g) (list 'freq 440) (list 'cutoff 3000)) 0.18)) 0.05) "pluck (a falling cutoff: through the graph)"
+check (> (rms (synth-render riser (list (list 'gate g) (list 'rate 0.05)) 0.18)) 0.01) "riser"
+check (equal? (arp (list 60 64 67) 'up 6 4) (list 60 64 67 60 64 67)) "arp up"
+check (equal? (arp (list 60 64 67) 'down 4 2) (list 67 64 60 67)) "arp down"
+check (equal? (arp (list 60 64 67) 'updown 8 4) (list 60 64 67 64 60 64 67 64)) "arp updown"
+check (all? (map (arp (list 60 64 67) 'random 20 4) (function (n) (contains? (list 60 64 67) n))) identity) "arp random: notes of the chord"
+var pk (synth pluck)
+check (== (length (arp-events pk (list 60 64 67) 'up 8 4 (list))) 8) "arp-events: one event per step"
+check (== (ev-dur (head (arp-events pk (list 60 64 67) 'up 8 4 (list)))) 0.5) "arp-events: step length"
+var gp (poly tpad 2)
+check (== (length (gater gp "x ~ x x" 4 0.1)) 4) "gater: one event per token"
+check (== (length (roll (synth clap) 4 24)) 24) "roll: n hits"
+check (< (ev-beat (getidx (roll (synth clap) 4 24) 23)) 4) "roll: within the beats"
+check (== (length (trance-kit)) 4) "trance-kit"
 var kit (house-kit)
 check (== (length kit) 5) "house-kit: five synths"
 check (equal? (type (kit-get kit 'kick)) "scalar") "kit-get"

@@ -399,16 +399,19 @@ copy). Strings and numbers behave as values.
         \textbf{Cmd-Shift-Enter} the whole file; \textbf{Cmd-Alt-Enter} the current line.
         The lines sent flash. A toolbar has Run file, Run block, Run line, Stop, Clear,
         Controls and Settings. Undo, find (Cmd-F, Cmd-G), comment/uncomment (Cmd-/), text
-        size (Cmd-+, Cmd--, for every panel), files by drag and drop; Settings (Cmd-,)
-        chooses the font, the size, line numbers, the current-line highlight, the margin
-        guide and the evaluation port (0 turns it off), and remembers them.
+        size (Cmd-+, Cmd--, for every panel), go to line (Cmd-L), clear the console (Cmd-K),
+        files by drag and drop; Settings (Cmd-,) chooses the font (one fixed-width font for
+        everything, colours only mark syntax), the size, line numbers, the current-line
+        highlight, the margin guide and the evaluation port (0 turns it off), and remembers them.
   \item \textbf{Console} (bottom left): everything printed, and a line to type Musil into:
         Enter runs it, Up/Down recall history, Tab completes a name. Esc or Cmd-. stops a
         running program (the interpreter checks at safe points, so the session survives).
   \item \textbf{Variables} (top right): the globals with a preview of their values, coloured
         by kind (numbers, strings, lists, functions); double-click prints one.
   \item \textbf{Help} (bottom right): type a name or a word to search the documentation of
-        every function. \musil{(manual)} or the Help menu opens this PDF.
+        every function. \musil{(manual)} or the Help menu opens this PDF; Help~$\to$~Examples
+        copies any bundled example into an untitled buffer (the original stays untouched; its
+        data is still found), to run and edit.
   \item \textbf{Plots and controls} open in windows of their own, from the IDE exactly as
         from the command line; several plots can be open at once.
   \item \textbf{From another editor}: the IDE listens on port 7770; code sent from VS Code
@@ -527,7 +530,9 @@ the table oscillator, the IIR filter, delay, resampling, autocorrelation, peak
 picking and gather are C++; generators, windows, convolution, the STFT and its
 inverse, cepstral envelopes, the phase vocoder, the spectral and temporal descriptors,
 the RBJ biquads, comb and allpass sections and the Schroeder reverb are Musil, as
-compositions of vector operations.
+compositions of vector operations. \musil{hpss} (harmonic/percussive separation by median
+filters over the spectrogram) is C++; \musil{onset-strength}, \musil{onsets} and
+\musil{segments} build onset detection from the spectral flux in Musil.
 
 \begin{lstlisting}
 load "signals.mu"
@@ -641,8 +646,8 @@ they render offline too; \musil{tkick}, \musil{rumble}, \musil{that}, \musil{toh
 \musil{duck} (a pad pumping under the kick), \musil{sweep} and \musil{accents}. A synth
 function may call your own helper functions (\musil{sig} makes a constant as long as a
 signal, so \musil{(osc sr (sig gate 190) table)} is a fixed pitch offline and streamed):
-the compiler inlines them. \texttt{examples/live\_house.mu} and
-\texttt{examples/live\_techno.mu} are tracks meant to be edited while they play.
+the compiler inlines them. \texttt{examples/live\_house.mu}, \texttt{live\_techno.mu} and \texttt{live\_trance.mu} are
+tracks meant to be edited while they play.
 
 \textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
@@ -736,13 +741,14 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{music\_demo.mu} & temperament, scales, pitch-class sets, a sound written to a WAV \\
 \texttt{chords.mu} & pitch-class sets as vectors: distances, clustering, a PCA chord map \\
 \texttt{matrices.mu}, \texttt{iris.mu} & linear algebra; PCA, k-means and KNN on the Iris data \\
-\texttt{stft, filters, reverb, cross\_synth, transients, additive, features} & signal processing on recordings \\
+\texttt{stft, filters, reverb, cross\_synth, additive, features} & signal processing on recordings \\
 \texttt{phase\_vocoder.mu} & time stretching, pitch shifting with and without formants, robot, whisper \\
 \texttt{plots.mu}, \texttt{iris\_plot.mu} & waveforms, spectrograms, responses, clusters, surfaces \\
 \texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
-\texttt{live\_house.mu}, \texttt{live\_techno.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
+\texttt{live\_house.mu}, \texttt{live\_techno.mu}, \texttt{live\_trance.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
+\texttt{onsets.mu}, \texttt{transients.mu}, \texttt{make\_hpss\_demo.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

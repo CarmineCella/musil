@@ -126,6 +126,16 @@ print "ramped           :" (length (pvoc tone (list (list "stretch" (list 1 3)) 
 print "pvoc-cross       : modes 1 (multiplicative), 2 (flattener), 3 (morph); denoise, robotize, whisperize"
 print "robotize, whisperize, denoise: lengths" (length (robotize tone)) (length (whisperize tone)) (length (denoise tone 0.05))
 
+# --- 6c. Separation and onsets ----------------------------------------------------------------
+print ""
+print "--- hpss and onsets ---"
+var mixed (+ (* 0.5 (sine sr 220 0.5)) (vec (zeros 2000) (* 0.8 (noise 100)) (zeros 1900)))
+var parts (hpss mixed 512 128 17)
+print "hpss             : harmonic rms" (fixed (rms (head parts)) 3) "percussive rms" (fixed (rms (last parts)) 3) "; they add up to the input within" (fixed (max (abs (- (+ (head parts) (last parts)) mixed))) 3)
+print "onset-strength   :" (length (onset-strength mixed 512 128)) "values (the spectral flux per frame)"
+print "onsets           :" (onsets mixed sr 512 128 0.3) "(seconds)"
+print "segments         :" (map (segments mixed sr (onsets mixed sr 512 128 0.3)) length) "(the pieces between onsets)"
+
 # --- 7. Resampling and channels --------------------------------------------------
 print ""
 print "--- resampling and channels ---"

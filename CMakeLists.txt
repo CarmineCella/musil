@@ -218,6 +218,8 @@ if(MUSIL_TESTS)
   set(NEEDS_live_session "${D}/skip-in-tests")     # meant to be opened in the IDE and left running
   set(NEEDS_live_house "${D}/skip-in-tests")       # a minute of music: run it, don't test it
   set(NEEDS_live_techno "${D}/skip-in-tests")
+  set(NEEDS_live_trance "${D}/skip-in-tests")
+  set(NEEDS_make_hpss_demo "${D}/skip-in-tests")   # writes into examples/data
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")
     set(NEEDS_iris_plot "${D}/no-fltk")

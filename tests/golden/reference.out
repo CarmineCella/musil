@@ -126,6 +126,8 @@ type of 'foo      : symbol
 
 --- eval and apply ---
 eval program: 10
+parse text    : (do (print 1) (var q 2))
+eval of parsed: 42
 built then eval: 60
 apply add4: 10
 
@@ -149,22 +151,22 @@ src (untouched by dup)  : (1 2 3)
 dup                      : (99 2 3)
 
 --- errors ---
-num parse -> caught: reference.mu:412: num: not a number: not a number
-head empty: caught: reference.mu:417: head: empty list
+num parse -> caught: reference.mu:417: num: not a number: not a number
+head empty: caught: reference.mu:422: head: empty list
 check 5  : 5
-check -3 : reference.mu:424: negative not allowed: -3
-  1> check-positive() at reference.mu:429
-type error : reference.mu:432: +: expected number, got string
-arity error: reference.mu:433: sqrt: expected 1 argument, got 0
-size error : reference.mu:434: +: size mismatch (2 vs 3)
-nested     : reference.mu:437: outer saw reference.mu:437: inner
-call stack : reference.mu:440: from inner
-  1> inner() at reference.mu:442
-  2> outer() at reference.mu:445
+check -3 : reference.mu:429: negative not allowed: -3
+  1> check-positive() at reference.mu:434
+type error : reference.mu:437: +: expected number, got string
+arity error: reference.mu:438: sqrt: expected 1 argument, got 0
+size error : reference.mu:439: +: size mismatch (2 vs 3)
+nested     : reference.mu:442: outer saw reference.mu:442: inner
+call stack : reference.mu:445: from inner
+  1> inner() at reference.mu:447
+  2> outer() at reference.mu:450
 
 --- load ---
 (load "std.mu") would bring in the standard library from ~/.musil or MUSIL_PATH
-missing file: reference.mu:455: load: not found: no-such-file.mu
+missing file: reference.mu:460: load: not found: no-such-file.mu
 
 --- closing: Newton's method for sqrt ---
 newton sqrt 2   : 1.41421356237309

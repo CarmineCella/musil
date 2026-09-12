@@ -10,7 +10,7 @@
 #
 # Produces
 #   dist/Musil.app                  the IDE as an application, with icon (docs/icon.png or .jpg),
-#                                   the .mu libraries, help.txt and the manual in Resources/
+#                                   the .mu libraries, help.txt, the examples and the manual in Resources/
 #   dist/musil                      the command-line interpreter
 #   dist/musil-ide                  the IDE as a plain binary (finds lib/ next to it)
 #   dist/lib/                       the .mu libraries and help.txt, to copy into ~/.musil for the CLI
@@ -82,8 +82,9 @@ strip "$DIST/musil" "$DIST/musil-ide" 2>/dev/null || true
 echo "==> Copying resources"
 cp src/*.mu src/help.txt "$APP/Contents/Resources/lib/"
 cp src/*.mu src/help.txt "$DIST/lib/"
-echo "==> Copying the examples"
+echo "==> Copying the examples (dist, and the bundle's Resources: the IDE's Help > Examples menu)"
 mkdir -p "$DIST/examples" && cp -R examples/. "$DIST/examples/" && find "$DIST/examples" -name '.DS_Store' -delete
+mkdir -p "$APP/Contents/Resources/examples" && cp -R examples/. "$APP/Contents/Resources/examples/" && find "$APP/Contents/Resources/examples" -name '.DS_Store' -delete
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$APP/Contents/Resources/" && cp docs/musil_manual.pdf "$DIST/"
 cp README.md LICENSE.md "$DIST/"
 
