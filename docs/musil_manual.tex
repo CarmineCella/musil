@@ -185,7 +185,16 @@ if (> x 5) {
 A line holding a single parenthesised form is that form; a line holding a single
 literal is that value; a line holding a single \emph{symbol} calls it
 (\musil{ctr} calls the function \musil{ctr}, as in Tcl). A comment runs from
-\musil{\#} to the end of the line; a backslash at the end of a line continues it.
+\musil{\#} to the end of the line; a backslash at the end of a line continues it, and
+so does \textbf{indentation}: at the top level, a line that starts with spaces continues
+the command above it, which is how a function's body goes on the next line:
+
+\begin{lstlisting}
+function lead (gate freq cutoff)
+    (pan (* (adsr sr gate 0.01 0.2 0.5 0.4) (lowpass (osc sr freq saw-table) sr cutoff 2)) 0)
+\end{lstlisting}
+
+Inside \musil{\{ \}} lines are separate commands whatever their indentation.
 \musil{'x} is short for \musil{(quote x)}.
 
 \subsection{Values}
@@ -348,7 +357,13 @@ var code '(+ 1 2)                    # a list, not a call
 (eval code)                          # 3
 (eval (list '* 2 (+ 1 2)))           # code built at run time: 6
 (apply add3 (list 1 2 3))            # a list spread as arguments
+(eval (parse "var z (* 6 7)"))       # text read into a form, then evaluated: a REPL in two calls
 \end{lstlisting}
+
+\texttt{examples/bootstrap.mu} takes this to its end: an evaluator for the language,
+written in the language in eighty lines (environments, closures, \musil{if}, \musil{var},
+\musil{set}, \musil{return}, \musil{while}), with a prompt at which every line is read by
+the host and evaluated by it.
 
 \subsection{Loading files}
 
@@ -620,8 +635,14 @@ one string per cycle (\musil{"bd ~ sn ~"}: spaces are steps, \texttt{\textasciit
 \musil{poly} and \musil{chord-ev} play chords on several instances. \musil{kick},
 \musil{snare}, \musil{clap}, \musil{hat}, \musil{ohat}, \musil{acid}, \musil{stab},
 \musil{pad} are ordinary instrument functions (\musil{house-kit} makes the drums), so
-they render offline too. \texttt{examples/live\_house.mu} is a house track meant to be
-edited while it plays.
+they render offline too; \musil{tkick}, \musil{rumble}, \musil{that}, \musil{tohat},
+\musil{tclap}, \musil{perc}, \musil{sub}, \musil{hoover} (portamento through \musil{lag}),
+\musil{tstab}, \musil{tpad}, \musil{zap} and \musil{techno-kit} are the harder set, with
+\musil{duck} (a pad pumping under the kick), \musil{sweep} and \musil{accents}. A synth
+function may call your own helper functions (\musil{sig} makes a constant as long as a
+signal, so \musil{(osc sr (sig gate 190) table)} is a fixed pitch offline and streamed):
+the compiler inlines them. \texttt{examples/live\_house.mu} and
+\texttt{examples/live\_techno.mu} are tracks meant to be edited while they play.
 
 \textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
@@ -721,7 +742,8 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{live\_play.mu}, \texttt{live\_chorale.mu}, \texttt{live\_probe.mu} & sounds through the device; a four-voice chorale scheduled with \musil{sequence}; a device check \\
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
-\texttt{live\_house.mu} & a house track from the kit, the step notation and loops, to live-code in the IDE \\
+\texttt{live\_house.mu}, \texttt{live\_techno.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
+\texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}
 \end{center}

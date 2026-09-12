@@ -129,6 +129,9 @@ print "pat              :" (pat "bd ~ sn ~" 4) "  bd [hh hh] sn:" (map (pat "bd 
 print "euclid 3 8       :" (euclid 3 8)
 print "swing 0.3        :" (map (swing (list (ev 0 0.5 print) (ev 0.5 0.5 print)) 0.3) ev-beat) "(off-beat eighths later)"
 print "kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums"
+print "techno kit       : tkick rumble that tohat tclap perc sub hoover tstab tpad zap; (techno-kit); duck, sweep, accents"
+print "sig              :" (length (sig (zeros 100) 440)) "(a constant as a signal, so an instrument works offline and streamed)"
+print "user helpers     : a synth function may call your own functions; they are inlined into the graph"
 var kit (house-kit)
 print "drums, melody    :" (length (drums kit "bd ~ sn ~ bd bd sn ~" 4)) "drum events;" (length (melody (synth acid) "a1 ~ a1 c2" 4 (list))) "notes"
 print "poly, chord-ev   :" (length (poly stab 3)) "voices for chords"

@@ -134,8 +134,11 @@ inline void put_double(std::ostream& os, double d) {
     if (std::isfinite(d) && std::fabs(d) < 1e15 && d == std::floor(d)) os << (long long)d;
     else os << std::setprecision(15) << d;
 }
+inline int& str_of_depth() { static int d = 0; return d; }
 inline std::string str_of(const vptr& v) {
     if (!v) return "nil";
+    struct guard { guard() { str_of_depth()++; } ~guard() { str_of_depth()--; } } g;
+    if (str_of_depth() > 200) return "...";              // a list that contains itself (a closure holding its environment) prints as ...
     std::ostringstream os;
     switch (v->t) {
     case Value::NIL: return "nil";
@@ -235,13 +238,20 @@ struct Parser {
         char* e = nullptr; double d = std::strtod(w.c_str(), &e);
         return (e && *e == '\0' && e != w.c_str()) ? v_num(d) : v_sym(std::move(w));
     }
+    // At the top level an indented line continues the command above it (a function's body on
+    // the next line, a long call split over several); inside { } lines are separate commands.
+    bool continues_here() {
+        size_t p = pos;                                   // just after a newline: indentation, then something that is not a blank line or a comment
+        while (p < src.size() && (src[p] == ' ' || src[p] == '\t')) p++;
+        return p > pos && p < src.size() && src[p] != '\n' && src[p] != '\r' && src[p] != '#' && src[p] != '}' && src[p] != ')';
+    }
     vptr read_line(char term = 0) {
         skip_h();
         int ln = line;
         vlist out;
         while (!eof()) {
             char c = peek();
-            if (c == '\n') { pos++; line++; break; }
+            if (c == '\n') { pos++; line++; if (term == 0 && !out.empty() && continues_here()) { skip_h(); continue; } break; }
             if (c == term) break;
             if (c == ')' || (c == '}' && term != '}')) err(line, std::string("unexpected ") + c);
             out.push_back(read());
@@ -444,6 +454,7 @@ inline vptr expr_parse(vlist& w, size_t& p, int min_p, Interp& i, eptr e) {
 // (break) (continue) leave or restart the innermost loop
 // (try body catch e handler) run body; on an error bind its message to e and run handler
 // (expr (a op b ...)) infix arithmetic: + - * / % < > <= >= == != && ||; ( ) groups, (f x) calls
+// (parse "text") read Musil source into a form: (do line ...), the same reading a file gets; (eval (parse s)) runs it
 // (eval form) evaluate a form (code built as data) in the global environment
 // (apply f list) call f with the elements of list as arguments
 inline vptr fn_quote   (vlist&, Interp&) { return v_nil(); }
@@ -877,6 +888,7 @@ inline vptr fn_error(vlist& a, Interp& i) { std::string m; for (auto& x : a) m+=
 inline vptr fn_clock(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 inline vptr fn_load(vlist& a, Interp& i) { i.load(i.str(a[0])); return v_nil(); }
 // (find-file "name") the path load would use for name, searched the same way, or nil
+inline vptr fn_parse(vlist& a, Interp& i) { Parser p(i.str(a[0]), std::make_shared<std::string>("<parse>")); return p.program(); }
 inline vptr fn_find_file(vlist& a, Interp& i) { std::string p = i.find_file(i.str(a[0])); return p.empty() ? v_nil() : v_str(p); }
 // help is a special form (its argument is not evaluated): (help range) works, and so does (help "range").
 inline void print_help(Interp& i, const std::string& name) {
@@ -947,7 +959,7 @@ inline Interp::Interp() {
     a("print", fn_print, 0, N); a("type", fn_type, 1, 1); a("str", fn_str, 1, 1); a("sym", fn_sym, 1, 1); a("num", fn_num, 1, 1);
     a("copy", fn_copy, 1, 1); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
     a("defined?", fn_definedp, 1, 1); a("vars", fn_vars, 0, 0); a("exit", fn_exit, 0, 1);
-    a("find-file", fn_find_file, 1, 1); a("help", fn_help, 1, 1);
+    a("find-file", fn_find_file, 1, 1); a("help", fn_help, 1, 1); a("parse", fn_parse, 1, 1);
 }
 inline Interp::~Interp() {
     for (auto& w : tracked_envs) if (auto e = w.lock()) e->vars.clear();

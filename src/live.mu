@@ -291,11 +291,14 @@ function chord-ev (beat dur ids midis pairs) (ev beat dur (function (t d) {
     })
 }))
 
+# (sig gate v)             the constant v as a signal as long as gate: (osc sr (sig gate 190) table) is a fixed
+#                          190 Hz both offline (a vector) and streamed (a node); plain 190 would be one sample offline
+function sig (gate v) (+ v (* 0 gate))
 # --- a house kit: instruments as functions (call them for a buffer, synth them to play) -------------
 # (kick gate)              a sine with a pitch drop and a click, saturated
 function kick (gate) (tanh (* 1.5 (adsr sr gate 0.001 0.28 0 0.05) (osc sr (+ 48 (* 140 (adsr sr gate 0 0.045 0 0.01))) sine-table)))
 # (snare gate)             bright noise and a short 190 Hz tone
-function snare (gate) (+ (* 0.6 (adsr sr gate 0.001 0.13 0 0.05) (highpass (noise gate) sr 1800 1)) (* 0.5 (adsr sr gate 0.001 0.07 0 0.03) (osc sr 190 sine-table)))
+function snare (gate) (+ (* 0.6 (adsr sr gate 0.001 0.13 0 0.05) (highpass (noise gate) sr 1800 1)) (* 0.5 (adsr sr gate 0.001 0.07 0 0.03) (osc sr (sig gate 190) sine-table)))
 # (clap gate)              band-limited noise with a spread attack
 function clap (gate) (* 0.8 (+ (adsr sr gate 0.001 0.02 0 0.01) (adsr sr gate 0.012 0.15 0 0.08)) (bandpass (noise gate) sr 1400 1.2))
 # (hat gate) (ohat gate)   closed and open hi-hats: highpassed noise, short and long
@@ -313,7 +316,7 @@ function house-kit () (list (list "kick" (synth kick)) (list "snare" (synth snar
 function kit-get (kit name) (opt kit (str name) nil)
 # (drums kit pattern-string beats)   events for a kit from a pattern whose tokens are bd sn cp hh oh
 function drums (kit s beats) (pat-events (pat s beats) (function (tok) {
-    var id (kit-get kit (opt (list (list "bd" "kick") (list "sn" "snare") (list "cp" "clap") (list "hh" "hat") (list "oh" "ohat")) tok tok))
+    var id (kit-get kit (opt (list (list "bd" "kick") (list "sn" "snare") (list "cp" "clap") (list "hh" "hat") (list "oh" "ohat") (list "rm" "rumble") (list "pc" "perc")) tok tok))
     return (function (t d) (if (not (equal? (type id) "nil")) { note-at t id 0.05 }))
 }))
 # (melody id pattern-string beats pairs)   notes for a synth from a pattern of note names (a2 c3 ...) and rests
@@ -322,3 +325,46 @@ function melody (id s beats pairs) (pat-events (pat s beats) (function (tok) (fu
     each pairs (function (q) (set-param id (head q) (last q) 0 t))
     note-at t id (* d 0.8)
 })))
+
+# --- a techno kit: harder, darker, with tails and ducking ---------------------------------
+# (tkick gate)             a hard kick: deep pitch drop, click transient, saturated
+function tkick (gate) (tanh (* 2.2 (+ (* (adsr sr gate 0.0005 0.4 0 0.06) (osc sr (+ 42 (* 220 (adsr sr gate 0 0.03 0 0.005))) sine-table)) (* 0.5 (adsr sr gate 0.0005 0.006 0 0.003) (noise gate)))))
+# (rumble gate)            the kick's tail: a low sine with a long decay through a comb, lowpassed
+function rumble (gate) (* 0.5 (adsr sr gate 0.01 0.9 0 0.2) (lowpass (comb (osc sr (sig gate 44) sine-table) 337 0.6) sr 120 0.7))
+# (that gate) (tohat gate) metallic hats: ring-modulated squares through a highpass
+function that (gate) (* 0.3 (adsr sr gate 0.0005 0.03 0 0.015) (highpass (* (osc sr (sig gate 3371) square-table) (osc sr (sig gate 5713) square-table)) sr 7500 0.7))
+function tohat (gate) (* 0.28 (adsr sr gate 0.0005 0.3 0 0.1) (highpass (* (osc sr (sig gate 3371) square-table) (osc sr (sig gate 5713) square-table)) sr 6500 0.7))
+# (tclap gate)             a wide clap: noise through a resonant bandpass with two attacks
+function tclap (gate) (* 0.9 (+ (adsr sr gate 0.001 0.015 0 0.01) (adsr sr gate 0.015 0.2 0 0.15)) (bandpass (noise gate) sr 1100 2))
+# (perc gate freq)         a tuned percussion: noise burst plus a pitch-dropping tone
+function perc (gate freq) (* 0.7 (+ (* (adsr sr gate 0.001 0.1 0 0.05) (osc sr (* freq (+ 1 (* 2 (adsr sr gate 0 0.02 0 0.01)))) sine-table)) (* 0.3 (adsr sr gate 0.001 0.03 0 0.01) (bandpass (noise gate) sr (* 4 freq) 3))))
+# (sub gate freq)          a sub bass: a sine an octave under freq, with a hint of the fundamental
+function sub (gate freq) (* 0.8 (adsr sr gate 0.005 0.1 0.8 0.08) (+ (osc sr (sig gate (* 0.5 freq)) sine-table) (* 0.2 (osc sr (sig gate freq) sine-table))))
+# (hoover gate freq cutoff glide)   detuned saws with portamento (the frequency is lagged by glide seconds), a dark lowpass
+function hoover (gate freq cutoff glide) (* 0.25 (adsr sr gate 0.02 0.3 0.5 0.3) (lowpass (+ (osc sr (lag freq sr glide) saw-table) (osc sr (* 1.01 (lag freq sr glide)) saw-table) (osc sr (* 0.99 (lag freq sr glide)) saw-table) (* 0.7 (osc sr (* 0.5 (lag freq sr glide)) square-table))) sr cutoff 1.2))
+# (tstab gate freq cutoff) a dark stab: squares through a lowpass with a fast decay
+function tstab (gate freq cutoff) (* 0.3 (adsr sr gate 0.003 0.12 0.15 0.1) (lowpass (+ (osc sr freq square-table) (osc sr (* 1.007 freq) square-table)) sr cutoff 2))
+# (tpad gate freq cutoff amp)   a pad with an amp parameter, for ducking (duck)
+function tpad (gate freq cutoff amp) (* 0.22 amp (adsr sr gate 0.8 0.5 0.8 1.2) (lowpass (+ (osc sr freq saw-table) (osc sr (* freq 1.003) saw-table) (osc sr (* freq 0.5) saw-table)) sr cutoff 0.8))
+# (zap gate freq)          a fast downward sweep: saw with a pitch envelope, for accents
+function zap (gate freq) (* 0.4 (adsr sr gate 0.001 0.12 0 0.05) (osc sr (* freq (+ 0.2 (* 6 (adsr sr gate 0 0.05 0 0.01)))) saw-table))
+# (techno-kit)             synths for kick rumble hat ohat clap perc, as (list (list 'kick id) ...); tokens for drums:
+#                          bd rm hh oh cp pc
+function techno-kit () (list (list "kick" (synth tkick)) (list "rumble" (synth rumble)) (list "hat" (synth that)) (list "ohat" (synth tohat)) (list "clap" (synth tclap)) (list "perc" (synth perc)))
+# (drums kit s beats) also understands rm (rumble) and pc (perc) tokens
+# (duck ids beats depth)   ducking events on the beats: every beat the amp parameter of each id drops to depth
+#                          and comes back in a quarter beat (the pad's "pumping" under the kick)
+function duck (ids beats depth) (map (vec->list (range beats)) (function (b) (ev b 0.25 (function (t d) {
+    each ids (function (id) {
+        set-param id 'amp depth 0.005 t
+        set-param id 'amp 1 (* d 1.2) (+ t 0.01)
+    })
+}))))
+# (sweep id name from to beats)   ramp a parameter from one value to another over beats (returns at once)
+function sweep (id name from to beats) {
+    set-param id name from
+    set-param id name to (* beats (/ 60 (bpm)))
+    return nil
+}
+# (accents events amount)  push every event a little later except the ones on the beat (a lazy feel)
+function accents (events amount) (map events (function (e) (ev (if (near? (mod (ev-beat e) 1) 0 0.01) (ev-beat e) (+ (ev-beat e) amount)) (ev-dur e) (ev-thunk e))))

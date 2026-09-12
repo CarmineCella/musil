@@ -508,24 +508,45 @@ inline const std::map<std::string, ugen_spec>& ugen_table() {
     };
     return t;
 }
+// User functions whose body uses only streamable builtins are inlined: (sig gate 190), a helper
+// that wraps a filter chain, an oscillator with its own envelope... each call's arguments are
+// bound to the function's parameter names (in the caller's scope) and the body is compiled.
 struct synth_compiler {
     Interp& I; eptr env; const std::vector<std::string>& params; synth_instance& out; double sr; int block;
     std::map<std::string, int> param_nodes;
+    struct binding { vptr form; size_t scope; int node = -1; };
+    std::vector<std::map<std::string, binding>> scopes{ {} }; size_t cur = 0; int depth = 0;
     synth_compiler(Interp& i, eptr e, const std::vector<std::string>& p, synth_instance& o, double s, int b) : I(i), env(e), params(p), out(o), sr(s), block(b) {}
     [[noreturn]] void fail(const std::string& m) { I.bad(m); }
-    bool is_param(const vptr& f) { return f->t == Value::SYM && std::find(params.begin(), params.end(), f->s) != params.end(); }
+    binding* bound(const std::string& name) { for (size_t k = cur + 1; k-- > 0;) { auto it = scopes[k].find(name); if (it != scopes[k].end()) return &it->second; } return nullptr; }
+    bool is_param(const vptr& f) { return f->t == Value::SYM && !bound(f->s) && std::find(params.begin(), params.end(), f->s) != params.end(); }
+    vptr user_fn(const vptr& head) {                      // a Musil function bound to this symbol (not a builtin, not a ugen name)
+        if (head->t != Value::SYM || ugen_table().count(head->s) || bound(head->s)) return nullptr;
+        vptr v = env->find(head->s); return v && v->t == Value::FN && !v->op ? v : nullptr;
+    }
     bool uses_signal(const vptr& f) {                     // does this form depend on a parameter or a ugen?
         if (is_param(f)) return true;
+        if (f->t == Value::SYM) { binding* b = bound(f->s); if (b) { size_t saved = cur; cur = b->scope; bool r = uses_signal(b->form); cur = saved; return r; } return false; }
         if (f->t != Value::LIST || f->l.empty()) return false;
         if (f->l[0]->t == Value::SYM && ugen_table().count(f->l[0]->s) && f->l[0]->s != "+" && f->l[0]->s != "-" && f->l[0]->s != "*" && f->l[0]->s != "/" && f->l[0]->s != "list") return true;
+        if (vptr fn = user_fn(f->l[0])) { vptr body = fn->body; if (body->t == Value::LIST && !body->l.empty() && body->l[0]->t == Value::SYM && body->l[0]->s == "do" && body->l.size() == 2) body = body->l[1];
+            if (++depth > 32) { depth = 0; fail("synth: functions nested too deep (recursion?) in " + f->l[0]->s); }
+            std::map<std::string, binding> sc; for (size_t k = 0; k < fn->params.size() && k + 1 < f->l.size(); k++) sc[fn->params[k]] = { f->l[k + 1], cur };
+            scopes.push_back(sc); size_t saved = cur; cur = scopes.size() - 1; bool r = uses_signal(body); cur = saved; scopes.pop_back(); depth--; return r; }
         for (auto& e : f->l) if (uses_signal(e)) return true;
         return false;
     }
     int add(gnode* n) { out.nodes.emplace_back(n); return (int)out.nodes.size() - 1; }
-    vptr constant(const vptr& f) { return I.eval(f, env); }   // a build-time constant: evaluated like any Musil expression
+    vptr substitute(const vptr& f) {                      // bound names replaced by their argument forms, so a constant can be evaluated
+        if (f->t == Value::SYM) { binding* b = bound(f->s); if (b) { size_t saved = cur; cur = b->scope; vptr r = substitute(b->form); cur = saved; return r; } return f; }
+        if (f->t != Value::LIST) return f;
+        vptr out = v_list({}); for (auto& e : f->l) out->l.push_back(substitute(e)); return out;
+    }
+    vptr constant(const vptr& f) { return I.eval(substitute(f), env); }   // a build-time constant: evaluated like any Musil expression
     std::vector<double> vec_of(const vptr& v, const char* what) { if (v->t != Value::NUM) fail(std::string(what) + ": expected a number or vector"); return std::vector<double>(std::begin(v->num), std::end(v->num)); }
     int compile(const vptr& f) {
         if (f->t == Value::NUM) { if (f->num.size() != 1) fail("a vector constant cannot be a signal"); return add(new const_node(f->num[0])); }
+        if (f->t == Value::SYM) { binding* b = bound(f->s); if (b) { if (b->node >= 0) return b->node; size_t saved = cur; cur = b->scope; int k = compile(b->form); cur = saved; b->node = k; return k; } }
         if (is_param(f)) {
             auto it = param_nodes.find(f->s); if (it != param_nodes.end()) return it->second;
             int k = add(new param_node(f->s, 0)); param_nodes[f->s] = k; out.params.push_back(k); return k;
@@ -534,7 +555,17 @@ struct synth_compiler {
         if (f->t != Value::LIST || f->l.empty() || f->l[0]->t != Value::SYM) fail("cannot stream " + str_of(f));
         const std::string& h = f->l[0]->s; vlist args(f->l.begin() + 1, f->l.end());
         auto it = ugen_table().find(h);
-        if (it == ugen_table().end()) fail("not streamable: " + h + " (see (streamable))");
+        if (it == ugen_table().end()) {
+            vptr fn = user_fn(f->l[0]);
+            if (!fn) fail("not streamable: " + h + " (see (streamable))");
+            if (++depth > 32) fail("synth: functions nested too deep (recursion?) in " + h);
+            if (fn->params.size() != args.size()) fail(h + ": expected " + std::to_string(fn->params.size()) + " arguments");
+            vptr body = fn->body; if (body->t == Value::LIST && !body->l.empty() && body->l[0]->t == Value::SYM && body->l[0]->s == "do" && body->l.size() == 2) body = body->l[1];
+            std::map<std::string, binding> sc; for (size_t k = 0; k < fn->params.size(); k++) sc[fn->params[k]] = { args[k], cur };
+            scopes.push_back(sc); size_t saved = cur; cur = scopes.size() - 1;
+            int k = compile(body);
+            cur = saved; scopes.pop_back(); depth--; return k;
+        }
         // inputs are compiled (and so added) before the node that reads them: the node list is its own evaluation order
         if (h == "+" || h == "-" || h == "*" || h == "/") { std::vector<int> ins; for (auto& a : args) ins.push_back(compile(a)); arith_node* n = new arith_node(h[0]); n->in = ins; return add(n); }
         if (h == "list") { std::vector<int> ins; for (auto& a : args) ins.push_back(compile(a)); list_node* n = new list_node(); n->in = ins; return add(n); }

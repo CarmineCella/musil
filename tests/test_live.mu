@@ -118,7 +118,7 @@ free s
 sleep 0.05
 check (not (contains? (synths) s)) "free"
 function bad (freq) (pvoc-stretch (osc sr freq table) 2)
-check (contains? (error-of (function () (synth bad))) "not streamable: pvoc-stretch") "synth: refuses a non-streamable body, naming it"
+check (contains? (error-of (function () (synth bad))) "not streamable: pvoc") "synth: refuses a non-streamable body, naming the builtin (pvoc-stretch is inlined down to pvoc)"
 check (contains? (error-of (function () (synth sin))) "Musil function") "synth: needs a Musil function"
 var f (synth (function (freq index) (osc sr (+ freq (* index freq (osc sr (* 2 freq) table))) table)))
 set-params f (list (list 'freq 220) (list 'index 0.5))
@@ -217,13 +217,30 @@ check (== (length (sometimes 0 (function (x) (list)) e)) 2) "sometimes: p = 0 ne
 check (== (length (sometimes 1 (function (x) (list)) e)) 0) "sometimes: p = 1 always applies"
 var g (vec (ones 200) (zeros 8000))
 check (> (rms (kick g)) 0.05) "kick: renders offline"
-check (> (rms (snare g)) 0.02) "snare: renders offline"
+check (> (rms (snare g)) 0.1) "snare: renders offline (its tone through sig)"
 check (> (rms (clap g)) 0.01) "clap: renders offline (noise as long as the gate)"
 check (> (rms (hat g)) 0.01) "hat"
 check (> (rms (ohat g)) 0.01) "ohat"
 check (contains? (error-of (function () (acid g (+ (zeros 8200) 55) 800 4))) "streaming feature") "acid: its cutoff envelope is a streaming feature (offline says so)"
 check (> (rms (synth-render acid (list (list 'gate g) (list 'freq 55) (list 'cutoff 800) (list 'res 4)) 0.18)) 0.05) "acid: renders through the graph"
 check (== (length (noise g)) (length g)) "noise: as long as a signal"
+# the techno kit, and user functions inlined by the compiler
+each (list (list "tkick" tkick) (list "rumble" rumble) (list "that" that) (list "tohat" tohat) (list "tclap" tclap)) (function (p) (check (> (rms ((last p) g)) 0.01) (concat (head p) ": renders offline")))
+check (> (rms (perc g 220)) 0.05) "perc"
+check (> (rms (sub g 110)) 0.05) "sub (a constant frequency through sig)"
+check (== (length (sig g 5)) (length g)) "sig: a constant as long as a signal"
+check (near? (synth-render sub (list (list 'gate g) (list 'freq 110)) (/ (length g) sr)) (sub g 110) 1e-5) "sub: the graph inlines sig and equals the call"
+function voice (gate freq) (* (adsr sr gate 0.01 0.1 0.5 0.1) (lowpass (osc sr (sig gate freq) saw-table) sr 1200 1))
+function layered (gate freq) (+ (voice gate freq) (* 0.5 (voice gate (* 2 freq))))
+check (near? (synth-render layered (list (list 'gate g) (list 'freq 110)) (/ (length g) sr)) (layered g 110) 1e-5) "user helper functions are inlined into the graph"
+function bad2 (gate) (bad2 gate)
+check (contains? (error-of (function () (synth-render bad2 (list) 0.1))) "too deep") "recursion in a synth function is refused"
+check (> (rms (synth-render hoover (list (list 'gate g) (list 'freq 110) (list 'cutoff 700) (list 'glide 0.05)) 0.2)) 0.02) "hoover: portamento through lag"
+var tk (techno-kit)
+check (== (length tk) 6) "techno-kit: six synths"
+check (== (length (drums tk "[bd rm] hh pc cp" 4)) 5) "drums: rm and pc tokens"
+check (== (length (duck (poly tpad 2) 4 0.2)) 4) "duck: one event per beat"
+check (equal? (map (accents (list (ev 0 1 print) (ev 0.5 1 print)) 0.05) ev-beat) (list 0 0.55)) "accents"
 var kit (house-kit)
 check (== (length kit) 5) "house-kit: five synths"
 check (equal? (type (kit-get kit 'kick)) "scalar") "kit-get"

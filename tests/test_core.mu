@@ -417,6 +417,20 @@ check (== (uses-eval '(+ 1 1)) 2) "eval: in tail position of a function"
 check (equal? (type (find-file "std.mu")) "string") "find-file: found"
 check (equal? (type (find-file "no-such-file.mu")) "nil") "find-file: missing is nil"
 check (equal? (type (help range)) "nil") "help: prints and returns nil"
+check (equal? (parse "print 1\nvar q 2") (list 'do (list 'print 1) (list 'var 'q 2))) "parse: text to forms"
+check (== (eval (parse "(* 6 7)")) 42) "eval of a parsed form"
+check (contains? (error-of (function () (parse "(1 2"))) "missing )") "parse: a reader error"
+function cont (x)
+    (* x 3)
+check (== (cont 4) 12) "an indented line continues the definition above it"
+var joined (list 1 2
+                 3)
+check (== (length joined) 3) "an indented line continues a call"
+if 1 {
+    var inside-a 1
+    var inside-b 2
+}
+check (== (+ inside-a inside-b) 3) "inside braces, indented lines are separate commands"
 check (equal? (type (help "nope")) "nil") "help: unknown name is not an error"
 check (== (defined? 'square) 1) "defined?: yes"
 check (== (defined? "nope") 0) "defined?: no"

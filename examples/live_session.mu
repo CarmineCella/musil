@@ -21,7 +21,7 @@ load "live.mu"
 if (opt (audio-status) "open" 0) { audio-quit }
 audio-init
 var sr (audio-sr)
-function lead (gate freq cutoff res) \
+function lead (gate freq cutoff res)
     (pan (* (adsr sr gate 0.01 0.2 0.5 0.4) (lowpass (osc sr freq saw-table) sr cutoff res)) 0)
 var a (synth lead)
 set-params a (list (list 'freq 110) (list 'cutoff 1200) (list 'res 3))

@@ -151,6 +151,8 @@ while (< x 20) { var x (+ x 1) }
 for (var i 0) (< i 3) (var i (+ i 1)) { print i }      # break / continue inside blocks: { break }
 
 function sq (n) (* n n)        # named function, one-expression body
+function cube (n)              # an indented line continues the command above it
+    (* n n n)
 function fact (n) {            # block body; return exits early
     if (< n 2) { return 1 }
     return (* n (fact (- n 1)))
@@ -178,6 +180,7 @@ load "std.mu"                  # the Musil half of the standard library, from ~/
 var code '(+ 1 2)              # code is data
 (eval code)                    # => 3
 (apply + (list 1 2 3))         # => 6
+(eval (parse "(* 6 7)"))       # text -> form -> value; examples/bootstrap.mu is an evaluator written in Musil
 
 try (error "boom") catch e (print "caught:" e)
 assert (== (+ 2 2) 4) "arithmetic works"

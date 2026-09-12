@@ -37,7 +37,7 @@ note             : gate on now, off in 0.1 s (scheduled)
 free             : synths 0
 play-synth       : id 11 (compile, set, gate on)
 synth-render     : the graph offline; equals the call within 1
-not streamable   : reference_live.mu:99: synth: not streamable: pvoc-stretch (see (streamable))
+not streamable   : reference_live.mu:99: synth: not streamable: pvoc (see (streamable))
 tables           : sine-table saw-table square-table triangle-table, for osc
 
 --- loops ---
@@ -58,6 +58,9 @@ pat              : ((0 1 bd) (2 1 sn))   bd [hh hh] sn: (0 1 1.5 2)   hh*4: (0 0
 euclid 3 8       : (1 nil nil 1 nil nil 1 nil)
 swing 0.3        : (0 0.65) (off-beat eighths later)
 kit              : kick snare clap hat ohat acid stab pad are synth functions; (house-kit) makes the drums
+techno kit       : tkick rumble that tohat tclap perc sub hoover tstab tpad zap; (techno-kit); duck, sweep, accents
+sig              : 100 (a constant as a signal, so an instrument works offline and streamed)
+user helpers     : a synth function may call your own functions; they are inlined into the graph
 drums, melody    : 5 drum events; 3 notes
 poly, chord-ev   : 3 voices for chords
 
