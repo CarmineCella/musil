@@ -220,6 +220,7 @@ if(MUSIL_TESTS)
   set(NEEDS_live_techno "${D}/skip-in-tests")
   set(NEEDS_live_trance "${D}/skip-in-tests")
   set(NEEDS_make_hpss_demo "${D}/skip-in-tests")   # writes into examples/data
+  set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")
     set(NEEDS_iris_plot "${D}/no-fltk")
