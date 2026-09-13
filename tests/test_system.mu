@@ -98,4 +98,5 @@ remove wav
 remove f
 check (== (remove dir) 1) "remove: empty directory"
 
+check (== (interactive?) (interactive?)) "interactive?: answers (0 under the test suite, 1 at a terminal)"
 report "test_system"

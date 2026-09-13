@@ -20,6 +20,7 @@ var times (/ (* (range (length flux)) hop) sr)
 # 2. the onsets: peaks of the flux above a fraction of its maximum, at least one window apart
 var t-on (onsets x sr n hop 0.25)
 print (length t-on) "onsets:" (fixed t-on 3)
+print "adaptive:" (fixed (onsets-adaptive x sr n hop 3 9) 3) "(a peak counts when it exceeds 3x the flux's moving median: for material whose loudness drifts)"
 
 # 3. picture: the waveform with the onsets marked, and the flux with its threshold
 var fig (figure "onsets by spectral flux")

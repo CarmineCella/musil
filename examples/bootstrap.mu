@@ -126,7 +126,9 @@ print "while           :" (run "var i 0\nvar acc 0\nwhile (< i 5) { set acc (+ a
 print "an error        :" (try (run "(nope 1)") catch e e)
 
 # --- a REPL: the host reads and parses, the evaluator written above evaluates -----------------
-if (== (length args) 0) {
+# (only when someone is at the keyboard: not under the test suite or a pipe)
+load "system.mu"
+if (and (== (length args) 0) (interactive?)) {
     print ""
     print "meta> is Musil evaluated by meval; type Musil, or exit"
     function done? (l) (if (equal? (type l) "nil") 1 (equal? (trim l) "exit"))   # (or evaluates both arguments)

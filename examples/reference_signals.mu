@@ -133,7 +133,8 @@ var mixed (+ (* 0.5 (sine sr 220 0.5)) (vec (zeros 2000) (* 0.8 (noise 100)) (ze
 var parts (hpss mixed 512 128 17)
 print "hpss             : harmonic rms" (fixed (rms (head parts)) 3) "percussive rms" (fixed (rms (last parts)) 3) "; they add up to the input within" (fixed (max (abs (- (+ (head parts) (last parts)) mixed))) 3)
 print "onset-strength   :" (length (onset-strength mixed 512 128)) "values (the spectral flux per frame)"
-print "onsets           :" (onsets mixed sr 512 128 0.3) "(seconds)"
+print "onsets           :" (onsets mixed sr 512 128 0.3) "(seconds; 0 first)"
+print "onsets-adaptive  :" (onsets-adaptive mixed sr 512 128 3 9) "(threshold on a moving median of the flux)"
 print "segments         :" (map (segments mixed sr (onsets mixed sr 512 128 0.3)) length) "(the pieces between onsets)"
 
 # --- 7. Resampling and channels --------------------------------------------------

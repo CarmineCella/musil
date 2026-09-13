@@ -30,6 +30,14 @@ inline vptr sys_exec(vlist& a, Interp& i) {
 // (getenv "NAME") => value or nil
 inline vptr sys_getenv(vlist& a, Interp& i) { const char* v = std::getenv(i.str(a[0]).c_str()); return v ? v_str(v) : v_nil(); }
 // (sleep seconds)
+// (interactive?) => is the standard input a terminal? (a script asks before prompting for input)
+inline vptr sys_interactive(vlist&, Interp&) {
+#ifndef _WIN32
+    return v_bool(isatty(0));
+#else
+    return v_bool(true);
+#endif
+}
 inline vptr sys_sleep(vlist& a, Interp& i) {   // in slices, so a stop request and background work (live loops) get through
     double secs = i.scalar(a[0]); auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(secs);
     while (true) {
@@ -154,7 +162,7 @@ inline vptr sys_udp_receive(vlist& a, Interp& i) {
 #endif
 
 inline void add_system(Interp& i) {
-    i.def("exec", sys_exec, 1, 1); i.def("getenv", sys_getenv, 1, 1); i.def("sleep", sys_sleep, 1, 1); i.def("now", sys_now, 0, 0);
+    i.def("exec", sys_exec, 1, 1); i.def("getenv", sys_getenv, 1, 1); i.def("sleep", sys_sleep, 1, 1); i.def("interactive?", sys_interactive, 0, 0); i.def("now", sys_now, 0, 0);
     i.def("cwd", sys_cwd, 0, 0); i.def("ls", sys_ls, 0, 1); i.def("mkdir", sys_mkdir, 1, 1); i.def("remove", sys_remove, 1, 1); i.def("stat", sys_stat, 1, 1);
     i.def("read-csv", sys_read_csv, 1, 1);
     i.def("read-wav", sys_read_wav, 1, 1); i.def("write-wav", sys_write_wav, 3, 4);

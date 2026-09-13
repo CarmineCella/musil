@@ -531,8 +531,11 @@ picking and gather are C++; generators, windows, convolution, the STFT and its
 inverse, cepstral envelopes, the phase vocoder, the spectral and temporal descriptors,
 the RBJ biquads, comb and allpass sections and the Schroeder reverb are Musil, as
 compositions of vector operations. \musil{hpss} (harmonic/percussive separation by median
-filters over the spectrogram) is C++; \musil{onset-strength}, \musil{onsets} and
-\musil{segments} build onset detection from the spectral flux in Musil.
+filters over the spectrogram) is C++; \musil{onset-strength}, \musil{onsets} (a global
+threshold), \musil{onsets-adaptive} (a threshold on the flux's moving median, for
+material whose loudness drifts) and \musil{segments} build onset detection from the
+spectral flux in Musil; onsets always start with 0 and are placed at the sample where
+the energy rises.
 
 \begin{lstlisting}
 load "signals.mu"

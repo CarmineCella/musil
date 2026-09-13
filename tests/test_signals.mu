@@ -221,15 +221,19 @@ check (< (max (abs (- (+ (head hp) (last hp)) mixed2))) 0.02) "hpss: the parts a
 check (contains? (error-of (function () (hpss mixed2 500 128 17))) "power of 2") "hpss: n must be a power of 2"
 check (contains? (error-of (function () (hpss mixed2 512 128 2))) ">= 3") "hpss: kernel"
 var on (onsets mixed2 sr 512 128 0.3)
-check (== (length on) 3) "onsets: three clicks after the first (which has no previous frame)"
-check (near? on (vec 0.5 1.0 1.5) 0.01) "onsets: at the samples where the hits start (refined inside the frame)"
+check (== (length on) 4) "onsets: 0 first, then the three later clicks"
+check (near? on (vec 0 0.5 1.0 1.5) 0.01) "onsets: at the samples where the hits start (refined inside the frame)"
 var close-clicks (+ tone2 (vec (zeros 4000) (* 0.8 (noise 200)) (zeros 100) (* 0.8 (noise 200)) (zeros 11500)))
-check (== (length (onsets close-clicks sr 512 128 0.3)) 1) "onsets: a second peak within n samples of the previous onset is not a new onset"
-check (and (>= (length (onsets mixed2 sr 512 128 0.98)) 1) (< (length (onsets mixed2 sr 512 128 0.98)) 3)) "onsets: the threshold is relative to the flux maximum (0.98 keeps the strongest peak(s) only)"
+check (== (length (onsets close-clicks sr 512 128 0.3)) 2) "onsets: a second peak within n samples of the previous onset is not a new onset"
+check (and (>= (length (onsets mixed2 sr 512 128 0.98)) 2) (< (length (onsets mixed2 sr 512 128 0.98)) 4)) "onsets: the threshold is relative to the flux maximum (0.98 keeps the strongest peak(s) only, after 0)"
 check (== (length (onset-strength mixed2 512 128)) (length (stft mixed2 512 128))) "onset-strength: one value per frame"
-check (equal? (onsets (zeros 4000) sr 512 128 0.3) (vec)) "onsets: silence has none"
-check (== (length (segments mixed2 sr on)) 3) "segments: one per onset, to the end"
-check (== (sum (vec (map (segments mixed2 sr on) length))) (- 16000 (floor (* (head on) sr)))) "segments: tile the sound from the first onset"
+check (equal? (onsets (zeros 4000) sr 512 128 0.3) (vec 0)) "onsets: silence has only the start"
+var quiet-loud (+ tone2 (vec (zeros 4000) (* 0.1 (noise 200)) (zeros 3800) (* 0.9 (noise 200)) (zeros 7800)))
+check (== (length (onsets quiet-loud sr 512 128 0.3)) 2) "onsets: a global threshold misses the quiet hit"
+check (== (length (onsets-adaptive quiet-loud sr 512 128 3 9)) 3) "onsets-adaptive: the local median finds it"
+check (equal? (onsets-adaptive (zeros 4000) sr 512 128 3 9) (vec 0)) "onsets-adaptive: silence"
+check (== (length (segments mixed2 sr on)) 4) "segments: one per onset, from 0 to the end"
+check (== (sum (vec (map (segments mixed2 sr on) length))) 16000) "segments: tile the whole sound"
 
 # --- resampling ---
 var slow (sine sr 100 0.02)

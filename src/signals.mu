@@ -252,19 +252,31 @@ function onset-strength (x n hop) {
     }
     return (vec flux)
 }
-# (onsets x sr n hop threshold)   onset times in seconds: the peaks of the spectral flux (local maxima)
-#                          above threshold x the flux's maximum, at least n samples apart; each is then
-#                          placed at the sample where the energy jumps inside its frame (64-sample blocks:
-#                          the block with the largest rise), so a hit is found where it starts, not a
-#                          window early
+# (onsets x sr n hop threshold)   onset times in seconds, always starting with 0 (so the segments cover the
+#                          sound from its beginning): then the peaks of the spectral flux (local maxima) above
+#                          threshold x the flux's maximum, at least n samples apart from the previous onset, each
+#                          placed at the sample where the energy jumps inside its frame (64-sample blocks: the
+#                          block with the largest rise), so a hit is found where it starts, not a window early
 function onsets (x sr n hop threshold) {
     var flux (onset-strength x n hop)
-    if (< (length flux) 3) { return (vec) }
-    var level (* threshold (max flux))
-    var out (list)
-    var last (- 0 n)
+    return (onsets-of-flux x sr n hop flux (+ (zeros (length flux)) (* threshold (max flux))))
+}
+# (onsets-adaptive x sr n hop threshold width)   the same with a threshold that follows the material: a peak
+#                          counts when it exceeds threshold x the moving median of the flux over width frames
+#                          (odd, e.g. 9); for sounds whose loudness drifts, where a global level misses the
+#                          quiet hits or admits the loud sustain
+function onsets-adaptive (x sr n hop threshold width) {
+    var flux (onset-strength x n hop)
+    if (< (length flux) 3) { return (vec 0) }
+    return (onsets-of-flux x sr n hop flux (* threshold (+ (median-filter flux width) (* 0.01 (max flux)))))
+}
+# (onsets-of-flux x sr n hop flux level)   the shared picker: peaks of flux above level (a vector), spaced and refined
+function onsets-of-flux (x sr n hop flux level) {
+    var out (list 0)
+    if (< (length flux) 3) { return (vec out) }
+    var last 0
     each (vec->list (local-maxima flux)) (function (k) {
-        if (> (getidx flux k) level) {
+        if (> (getidx flux k) (getidx level k)) {
             var sample (onset-refine x (* k hop) n)
             if (>= (- sample last) n) {
                 push out (/ sample sr)

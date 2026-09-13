@@ -83,8 +83,9 @@ robotize, whisperize, denoise: lengths 4096 4032 4096
 --- hpss and onsets ---
 hpss             : harmonic rms 0.349 percussive rms 0.069 ; they add up to the input within 0
 onset-strength   : 28 values (the spectral flux per frame)
-onsets           : 0.248 (seconds)
-segments         : (2016) (the pieces between onsets)
+onsets           : (0 0.248) (seconds; 0 first)
+onsets-adaptive  : (0 0.248) (threshold on a moving median of the flux)
+segments         : (1984 2016) (the pieces between onsets)
 
 --- resampling and channels ---
 resample x2      : 320 samples
