@@ -137,6 +137,29 @@ print "onsets           :" (onsets mixed sr 512 128 0.3) "(seconds; 0 first)"
 print "onsets-adaptive  :" (onsets-adaptive mixed sr 512 128 3 9) "(threshold on a moving median of the flux)"
 print "segments         :" (map (segments mixed sr (onsets mixed sr 512 128 0.3)) length) "(the pieces between onsets)"
 
+# --- 6c2. Separation by NMF -----------------------------------------------------------------
+print ""
+print "--- nmf-separate ---"
+seed 3
+var two (+ (* (bpf 0 (list (list 2000 1) (list 2000 0))) (sine sr 220 0.5)) (* (bpf 1 (list (list 2000 0) (list 2000 1))) (sine sr 330 0.5)))
+var sep (nmf-separate two 512 128 2 40)
+print "nmf-separate     :" (length (head sep)) "sources of" (length (head (head sep))) "samples; W" (mat-shape (getidx sep 1)) "H" (mat-shape (getidx sep 2)) "; they add up to the input within" (fixed (max (abs (- (+ (head (head sep)) (last (head sep))) two))) 6)
+
+# --- 6d. Spatial ----------------------------------------------------------------------------
+print ""
+print "--- spatial (azimuth 0 in front, positive to the left; elevation up) ---"
+print "pan-azimuth 45   : stereo levels" (fixed (vec (map (pan-azimuth s 45) rms)) 3)
+print "ambi-gains 1 30 0:" (fixed (ambi-gains 1 30 0) 3) "(W Y Z X, SN3D)"
+print "ambi-encode      :" (length (ambi-encode s 2 30 0)) "channels at second order"
+print "ambi-rotate      : a left source turned by -90 is in front:" (< (max (abs (- (getidx (ambi-rotate (ambi-encode s 1 90 0) -90) 3) (getidx (ambi-encode s 1 0 0) 3)))) 1e-9)
+print "speaker-ring 4   :" (speaker-ring 4)
+print "ambi-decode      : levels of a source at 45 on that ring" (fixed (vec (map (ambi-decode (ambi-encode s 1 45 0) (speaker-ring 4)) rms)) 3)
+print "pan-n            : levels on a ring of 8, source at 100" (fixed (vec (map (pan-n s (speaker-ring 8) 100) rms)) 3)
+print "hrir 90 0        : two ears," (length (head (hrir 90 0 sr))) "samples; the far ear later and quieter;" (hrtf-loaded) "measured KEMAR directions loaded (hrtf-unload: the spherical model)"
+print "binaural         : a left click, ear levels" (fixed (vec (map (binaural (vec (noise 400) (zeros 2000)) 90 0 sr) rms)) 3)
+print "binaural-decode  : B-format for headphones; a front source" (fixed (vec (map (binaural-decode (ambi-encode s 1 0 0) sr) rms)) 3)
+print "moving-source, ambi-render, channel, stereo-add, normalize-peak-stereo: see spatial.mu"
+
 # --- 7. Resampling and channels --------------------------------------------------
 print ""
 print "--- resampling and channels ---"

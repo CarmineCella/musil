@@ -27,7 +27,7 @@ play-file        : voice 8 (any sample rate: the voice resamples)
 play-file-with   : voice 9
 
 --- synths ---
-streamable       : (* + - / abs adsr allpass bandpass clip comb conv cos dc-block delay exp floor highpass highshelf iir lag list lowpass lowshelf max min noise notch osc pan peak-eq pow sin sqrt tanh)
+streamable       : (* + - / abs adsr allpass ambi-decode ambi-encode ambi-rotate bandpass channel clip comb conv cos dc-block delay exp floor highpass highshelf iir lag list lowpass lowshelf max min noise notch osc pan pan-azimuth peak-eq pow sin sqrt tanh)
 offline call     : 2 channels of 8820 samples
 synth            : id 10 , parameters (gate freq cutoff)
 note-on          : sounding 1

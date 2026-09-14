@@ -87,6 +87,22 @@ onsets           : (0 0.248) (seconds; 0 first)
 onsets-adaptive  : (0 0.248) (threshold on a moving median of the flux)
 segments         : (1984 2016) (the pieces between onsets)
 
+--- nmf-separate ---
+nmf-separate     : 2 sources of 4000 samples; W (257 2) H (2 36) ; they add up to the input within 0
+
+--- spatial (azimuth 0 in front, positive to the left; elevation up) ---
+pan-azimuth 45   : stereo levels (0.616 0.356)
+ambi-gains 1 30 0: (1 0.5 0 0.866) (W Y Z X, SN3D)
+ambi-encode      : 9 channels at second order
+ambi-rotate      : a left source turned by -90 is in front: 1
+speaker-ring 4   : (0 90 180 -90)
+ambi-decode      : levels of a source at 45 on that ring (0.267 0.267 0.089 0.089)
+pan-n            : levels on a ring of 8, source at 100 (0 0 0.684 0.195 0 0 0 0)
+hrir 90 0        : two ears, 23 samples; the far ear later and quieter; 710 measured KEMAR directions loaded (hrtf-unload: the spherical model)
+binaural         : a left click, ear levels (0.29 0.142)
+binaural-decode  : B-format for headphones; a front source (0.658 0.658)
+moving-source, ambi-render, channel, stereo-add, normalize-peak-stereo: see spatial.mu
+
 --- resampling and channels ---
 resample x2      : 320 samples
 resample-to 4000 : 80 samples

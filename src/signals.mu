@@ -163,12 +163,13 @@ function stft (x n hop) {
 function istft (frames n hop) {
     if (== (length frames) 0) { return (vec) }
     var w (hann n)
-    var gain (/ (sum (* w w)) hop)
     var out (zeros (+ (* hop (- (length frames) 1)) n))
+    var wsum (zeros (length out))
     for (var k 0) (< k (length frames)) (var k (+ k 1)) {
         add-at! out (* k hop) (* (take (ifft (getidx frames k)) n) w)
+        add-at! wsum (* k hop) (* w w)
     }
-    return (/ out gain)
+    return (/ out (max wsum 1e-6))                     # exact where the windows overlap fully, and at the edges too
 }
 # (stft-magnitudes frames)   list of positive-frequency magnitude vectors, one per frame
 function stft-magnitudes (frames) (map frames (function (s) (take (magnitudes s) (/ (length (head s)) 2))))
@@ -469,3 +470,140 @@ function envelope-follow (x n) {
 }
 # (envelope-from-values v hop)   piecewise-linear signal through successive values, hop samples apart
 function envelope-from-values (v hop) (bpf (head v) (map (vec->list (drop v 1)) (function (e) (list hop e))))
+
+# --- spatial: stereo, speaker rings, ambisonics, binaural --------------------------------
+# Conventions (AmbiX): azimuth in degrees, 0 in front, positive to the left; elevation positive up.
+# A multichannel signal is a list of channel vectors (what write-wav and play take).
+# (pan-azimuth x az)       a mono signal to (list left right), equal power from its azimuth (-90 right .. 90 left;
+#                          behind is folded onto the front)
+function pan-azimuth (x az) {
+    var a (- 0 (max -90 (min 90 (if (> az 90) (- 180 az) (if (< az -90) (- -180 az) az)))))   # to pan's -1..1: left is negative
+    return (pan x (/ a 90))
+}
+# (speaker-ring n)         n speakers evenly around, as azimuths starting in front and going left
+function speaker-ring (n) (- (* (range n) (/ 360 n)) (* 360 (floor (/ (* (range n) (/ 360 n)) 180.0001))))
+# (pan-n x speakers az)    a mono signal onto a horizontal ring of speakers (a list of azimuths) by amplitude
+#                          panning between the two nearest speakers (VBAP in 2D); => a list of n channels
+function pan-n (x speakers az) {
+    var n (length speakers)
+    var best (map speakers (function (s) (abs (princarg-deg (- az s)))))
+    var i1 (argmin (vec best))
+    var d1 (getidx best i1)
+    var others (map (vec->list (range n)) (function (k) (if (== k i1) 1e9 (getidx best k))))
+    var i2 (argmin (vec others))
+    var d2 (getidx others i2)
+    var g1 (if (< (+ d1 d2) 1e-9) 1 (/ d2 (+ d1 d2)))
+    var g2 (- 1 g1)
+    var norm (sqrt (+ (* g1 g1) (* g2 g2)))
+    return (map (vec->list (range n)) (function (k) (* x (if (== k i1) (/ g1 norm) (if (== k i2) (/ g2 norm) 0)))))
+}
+# (princarg-deg a)         an angle wrapped to -180..180
+function princarg-deg (a) (- a (* 360 (round (/ a 360))))
+# (ambi-encode x order az el)   a mono signal at a direction as B-format: (order+1)^2 channels (ACN, SN3D)
+function ambi-encode (x order az el) (map (vec->list (ambi-gains order az el)) (function (g) (* g x)))
+# (ambi-add a b)           two B-format signals of the same order summed
+function ambi-add (a b) (map (zip a b) (function (p) (+ (head p) (last p))))
+# (ambi-decode B speakers)   B-format to a list of speakers, each (list az el) or a bare azimuth, by sampling
+#                          the sound field at every speaker direction (the basic decoder), with max-rE weights
+#                          per order for a smoother field off-centre
+function ambi-decode (B speakers) {
+    var order (- (round (sqrt (length B))) 1)
+    var w (max-re-weights order)
+    var sps (if (equal? (type speakers) "vec") (vec->list speakers) speakers)
+    return (map sps (function (sp) {
+        var az (if (equal? (type sp) "list") (head sp) sp)
+        var el (if (equal? (type sp) "list") (last sp) 0)
+        var g (* (ambi-gains order az el) w)
+        var acc (* 0 (head B))
+        each (zip (vec->list g) B) (function (p) (set acc (+ acc (* (head p) (last p)))))
+        return (/ acc (length sps))
+    }))
+}
+# (max-re-weights order)   the per-channel max-rE weights of an order (Zotter & Frank): concentrates the energy vector
+function max-re-weights (order) {
+    var out (list)
+    for (var n 0) (<= n order) (var n (+ n 1)) {
+        var wn (cos (/ (* n pi) (+ (* 2 order) 2)))
+        each (range (+ (* 2 n) 1)) (function (k) (push out wn))
+    }
+    return (vec out)
+}
+# (binaural x az el sr)    a mono signal at a direction for headphones: convolved with the two ears' impulse
+#                          responses of a spherical head (hrir); => (list left right)
+function binaural (x az el sr) {
+    var h (hrir az el sr)
+    return (list (conv x (head h)) (conv x (last h)))
+}
+# (channel sig k)          one channel of a multichannel signal (a list of vectors); a vector is its own channel
+function channel (sig k) (if (equal? (type sig) "list") (getidx sig k) sig)
+# (stereo-add a b) (stereo-scale a g)   stereo signals summed, scaled (written with channel, so they stream)
+function stereo-add (a b) (list (+ (channel a 0) (channel b 0)) (+ (channel a 1) (channel b 1)))
+function stereo-scale (a g) (list (* g (channel a 0)) (* g (channel a 1)))
+# (binaural-decode B sr)   B-format for headphones: decoded to eight virtual speakers around the listener
+#                          and two above, each rendered binaurally with the spherical head, summed;
+#                          => (list left right). One expression, so it streams in a synth too.
+var binaural-speakers (list (list 0 0) (list 45 0) (list 90 0) (list 135 0) (list 180 0) (list -135 0) (list -90 0) (list -45 0) (list 90 45) (list -90 45))
+function bin-feed (feeds k az el sr) (list (conv (channel feeds k) (head (hrir az el sr))) (conv (channel feeds k) (last (hrir az el sr))))
+function binaural-feeds (f sr) (stereo-scale (stereo-add (stereo-add (stereo-add (stereo-add (bin-feed f 0 0 0 sr) (bin-feed f 1 45 0 sr)) (stereo-add (bin-feed f 2 90 0 sr) (bin-feed f 3 135 0 sr))) (stereo-add (stereo-add (bin-feed f 4 180 0 sr) (bin-feed f 5 -135 0 sr)) (stereo-add (bin-feed f 6 -90 0 sr) (bin-feed f 7 -45 0 sr)))) (stereo-add (bin-feed f 8 90 45 sr) (bin-feed f 9 -90 45 sr))) 1.35)
+function binaural-decode (B sr) (binaural-feeds (ambi-decode B binaural-speakers) sr)
+# (normalize-peak-stereo s)   a stereo (or any multichannel) signal scaled so its loudest sample is 1
+function normalize-peak-stereo (s) {
+    var peak (max-of (map s (function (c) (max (abs c)))))
+    return (map s (function (c) (/ c (max peak 1e-9))))
+}
+# (ambi-render sources order)   several (list x az el) placed and summed as one B-format signal
+function ambi-render (sources order) {
+    var acc nil
+    each sources (function (s) {
+        var b (ambi-encode (head s) order (getidx s 1) (last s))
+        set acc (if (equal? (type acc) "nil") b (ambi-add acc b))
+    })
+    return acc
+}
+# (moving-source x order az-curve el-curve blocks)   a signal whose direction changes: encoded block by block
+#                          (blocks samples each) at the azimuth and elevation curves (vectors, one value per block)
+function moving-source (x order azs els blocks) {
+    var nb (length azs)
+    var out (map (vec->list (range (* (+ order 1) (+ order 1)))) (function (k) (zeros (length x))))
+    each (range nb) (function (b) {
+        var seg (slice x (* b blocks) blocks)
+        if (> (length seg) 0) {
+            var enc (ambi-encode (* seg (hann-fade seg)) order (getidx azs b) (getidx els b))
+            each (zip out enc) (function (p) (add-at! (head p) (* b blocks) (last p)))
+        }
+    })
+    return out
+}
+function hann-fade (seg) (ones (length seg))
+
+# --- source separation by NMF --------------------------------------------------------------
+# (nmf-separate x n hop k iterations)   x split into k sources: NMF of its magnitude spectrogram
+#                          (V = magnitudes, bins x frames) into k parts, then a Wiener mask per part
+#                          (its share of W H at every bin and frame) applied to the complex spectra
+#                          and inverted; => (list (list source-1 ... source-k) W H). The sources add
+#                          up to the input. Which part is which sound is for the caller to decide
+#                          (their spectral shapes W and activations H say).
+function nmf-separate (x n hop k iterations) {
+    var frames (stft (vec (zeros n) x (zeros n)) n hop)                    # padded, so the ends are covered by full windows
+    var bins (+ (/ n 2) 1)
+    var mags (map frames (function (f) (take (magnitudes f) bins)))      # frames x bins
+    var V (transpose mags)                                                # bins x frames
+    var fac (nmf V k iterations)
+    var W (head fac)
+    var H (last fac)
+    var WH (mat-shift (mat-mul W H) 1e-9)
+    var sources (map (vec->list (range k)) (function (j) {
+        var Wj (list->mat (list (mat-col W j)))                            # 1 x bins
+        var Hj (list->mat (list (getidx H j)))                             # 1 x frames
+        var part (mat-mul (transpose Wj) Hj)                              # bins x frames
+        var mask (transpose (mat-div part WH))                            # frames x bins
+        var masked (map (zip frames mask) (function (p) {
+            var m (last p)
+            var full (vec m (reverse (slice m 1 (- bins 2))))             # the mask mirrored onto the negative frequencies
+            return (list (* (head (head p)) full) (* (last (head p)) full))
+        }))
+        var y (drop (istft masked n hop) n)
+        return (take (vec y (zeros (max 0 (- (length x) (length y))))) (length x))
+    }))
+    return (list sources W H)
+}

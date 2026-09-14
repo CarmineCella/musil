@@ -17,6 +17,7 @@
 
 #pragma once
 #include "core.h"
+#include <map>
 
 namespace musil {
 
@@ -141,10 +142,8 @@ inline vptr sig_delay(vlist& a, Interp& i) {
 
 // (resample x factor) => x with its length multiplied by factor, by windowed-sinc interpolation
 // (any ratio; when downsampling the sinc is also the anti-aliasing lowpass)
-inline vptr sig_resample(vlist& a, Interp& i) {
-    const varr& x = i.num(a[0]); double factor = i.scalar(a[1]);
-    if (factor <= 0) i.bad("factor must be > 0");
-    size_t in = x.size(); if (in == 0) return v_arr(varr());
+inline varr resample_sinc(const varr& x, double factor) {
+    size_t in = x.size(); if (in == 0) return varr();
     size_t out_len = std::max<size_t>(1, (size_t)std::floor(in * factor + 0.5));
     const int half = 24; const double pi = 3.14159265358979323846;
     double fc = factor < 1 ? factor : 1.0;                 // cutoff relative to the input Nyquist
@@ -160,7 +159,12 @@ inline vptr sig_resample(vlist& a, Interp& i) {
         }
         out[k] = wsum != 0 ? acc / wsum : 0;         // weights normalised to one: a constant stays a constant
     }
-    return v_arr(std::move(out));
+    return out;
+}
+inline vptr sig_resample(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); double factor = i.scalar(a[1]);
+    if (factor <= 0) i.bad("factor must be > 0");
+    return v_arr(resample_sinc(x, factor));
 }
 
 // (autocorr x) => biased autocorrelation (sum / n) for lags 0 .. n/2 - 1; it decays with lag, which
@@ -476,6 +480,138 @@ inline vptr sig_hpss(vlist& a, Interp& i) {
     return v_list({ v_arr(std::move(ho)), v_arr(std::move(po)) });
 }
 
+// --- spatial: spherical harmonics, rotation, a spherical-head HRIR --------------------------
+// Conventions (AmbiX): azimuth in degrees, 0 in front, positive to the LEFT (counter-clockwise seen
+// from above); elevation in degrees, positive up. Channels in ACN order with SN3D normalisation.
+inline double deg2rad(double d) { return d * 3.14159265358979323846 / 180.0; }
+// the real spherical harmonics up to `order` at (az, el): (order+1)^2 gains, ACN order, SN3D
+inline std::vector<double> sh_gains(int order, double az, double el) {
+    double a = deg2rad(az), e = deg2rad(el); double x = std::cos(e) * std::cos(a), y = std::cos(e) * std::sin(a), z = std::sin(e);
+    std::vector<double> g((size_t)(order + 1) * (order + 1));
+    // associated Legendre P_n^m(z) without Condon-Shortley phase, then SN3D: sqrt((2-d_m0) (n-|m|)!/(n+|m|)!)
+    auto fact = [](int n) { double f = 1; for (int k = 2; k <= n; k++) f *= k; return f; };
+    double r = std::sqrt(x * x + y * y);          // cos(elevation)
+    for (int n = 0; n <= order; n++) for (int m = -n; m <= n; m++) {
+        int am = std::abs(m);
+        // P_n^|m|(z) by recurrence
+        double pmm = 1; for (int k = 1; k <= am; k++) pmm *= (2 * k - 1) * r;      // P_m^m = (2m-1)!! (1-z^2)^(m/2)
+        double p;
+        if (n == am) p = pmm;
+        else { double p1 = z * (2 * am + 1) * pmm; if (n == am + 1) p = p1; else { double pk2 = pmm, pk1 = p1; for (int k = am + 2; k <= n; k++) { p = ((2 * k - 1) * z * pk1 - (k + am - 1) * pk2) / (k - am); pk2 = pk1; pk1 = p; } } }
+        double norm = std::sqrt((m == 0 ? 1.0 : 2.0) * fact(n - am) / fact(n + am));
+        double azf = m > 0 ? std::cos(m * a) : m < 0 ? std::sin(am * a) : 1.0;
+        g[(size_t)(n * n + n + m)] = norm * p * azf;
+    }
+    return g;
+}
+// (ambi-gains order az el) => the (order+1)^2 encoding gains (SN3D, ACN) of a direction
+inline vptr sig_ambi_gains(vlist& a, Interp& i) {
+    int order = (int)i.scalar(a[0]); if (order < 0 || order > 7) i.bad("order must be 0..7");
+    auto g = sh_gains(order, i.scalar(a[1]), i.scalar(a[2])); varr v(g.size()); for (size_t k = 0; k < g.size(); k++) v[k] = g[k]; return v_arr(std::move(v));
+}
+// (ambi-rotate B yaw) => B turned by yaw degrees about the vertical axis (positive to the left):
+//   within each order, the pair (m, -m) rotates by m yaw, exactly; B is a list of (order+1)^2 channel vectors
+inline vptr sig_ambi_rotate(vlist& a, Interp& i) {
+    vlist& B = i.list(a[0]); double yaw = deg2rad(i.scalar(a[1]));
+    size_t n = B.size(); int order = (int)std::lround(std::sqrt((double)n)) - 1;
+    if ((size_t)(order + 1) * (order + 1) != n) i.bad("a B-format signal has (order+1)^2 channels");
+    vlist out(n);
+    for (int l = 0; l <= order; l++) {
+        out[(size_t)(l * l + l)] = B[(size_t)(l * l + l)];
+        for (int m = 1; m <= l; m++) {
+            const varr& cp = i.num(B[(size_t)(l * l + l + m)]); const varr& cm = i.num(B[(size_t)(l * l + l - m)]);
+            if (cp.size() != cm.size()) i.bad("channels must have the same length");
+            double c = std::cos(m * yaw), s2 = std::sin(m * yaw);
+            varr rp(cp.size()), rm(cp.size());
+            for (size_t k = 0; k < cp.size(); k++) { rp[k] = c * cp[k] - s2 * cm[k]; rm[k] = s2 * cp[k] + c * cm[k]; }
+            out[(size_t)(l * l + l + m)] = v_arr(std::move(rp)); out[(size_t)(l * l + l - m)] = v_arr(std::move(rm));
+        }
+    }
+    return v_list(std::move(out));
+}
+// --- measured HRTFs: a table of directions with the two ears' impulse responses ---
+// (hrtf-load path) load a set from a CSV: each row azimuth, elevation, then the left ear's samples and the right's
+//   (as src/hrtf_kemar.csv, the MIT KEMAR compact set at 44100 Hz, found on the load path); => the number of directions.
+//   Once a set is loaded, hrir takes the nearest measured direction (resampled to the requested rate);
+//   (hrtf-unload) goes back to the spherical-head model; (hrtf-loaded) => directions loaded, 0 for the model.
+struct hrtf_set { std::vector<double> az, el; std::vector<varr> left, right; double sr = 44100; };
+inline bool& hrtf_unloaded_by_user() { static bool b = false; return b; }
+inline hrtf_set& hrtf() { static hrtf_set h; return h; }
+inline vptr sig_hrtf_load(vlist& a, Interp& i) {
+    std::string path = i.find_file(i.str(a[0])); if (path.empty()) path = i.read_path(i.str(a[0]));
+    std::ifstream f(path); if (!f) i.bad("cannot open " + i.str(a[0]));
+    hrtf_set h; std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::vector<double> v; std::stringstream ss(line); std::string cell; while (std::getline(ss, cell, ',')) v.push_back(std::atof(cell.c_str()));
+        if (v.size() < 4 || (v.size() - 2) % 2) continue;
+        size_t n = (v.size() - 2) / 2; varr L(n), R(n); for (size_t k = 0; k < n; k++) { L[k] = v[2 + k]; R[k] = v[2 + n + k]; }
+        h.az.push_back(v[0]); h.el.push_back(v[1]); h.left.push_back(std::move(L)); h.right.push_back(std::move(R));
+    }
+    if (h.az.empty()) i.bad("no directions in " + path);
+    // normalised so that a source in front has unit energy at each ear (the set's overall level is arbitrary)
+    size_t front = 0; double bd = 1e9; for (size_t k = 0; k < h.az.size(); k++) { double d = std::fabs(h.az[k]) + std::fabs(h.el[k]); if (d < bd) { bd = d; front = k; } }
+    double e = 0; for (double v : h.left[front]) e += v * v; for (double v : h.right[front]) e += v * v; e = std::sqrt(e / 2); if (e <= 0) e = 1;
+    for (auto& v : h.left) v /= e; for (auto& v : h.right) v /= e;
+    hrtf() = std::move(h); hrtf_unloaded_by_user() = false; return v_num((double)hrtf().az.size());
+}
+inline vptr sig_hrtf_unload(vlist&, Interp&) { hrtf() = hrtf_set(); hrtf_unloaded_by_user() = true; return v_nil(); }
+inline bool hrtf_try_default(Interp& i);
+inline vptr sig_hrtf_loaded(vlist&, Interp& i) { hrtf_try_default(i); return v_num((double)hrtf().az.size()); }
+inline bool hrtf_try_default(Interp& i) {         // the first request loads the bundled set if it is on the load path
+    static bool tried = false; if (!hrtf().az.empty()) return true;
+    if (tried || hrtf_unloaded_by_user()) return false;
+    tried = true; std::string p = i.find_file("hrtf_kemar.csv"); if (p.empty()) return false;
+    vlist a = { v_str("hrtf_kemar.csv") }; try { sig_hrtf_load(a, i); } catch (...) { return false; } return true;
+}
+// (hrir-model az el sr) => the spherical-head model, whatever is loaded (below)
+// (hrir az el sr) => (list left right): the nearest measured direction of the loaded set (the MIT KEMAR set is loaded
+//   from the load path on first use), resampled to sr; the spherical-head model when no set is available
+//   for each ear a head-shadow filter, whose high-frequency roll-off grows with the angle from that ear, and the
+//   interaural delay (Woodworth). No measured data: the model externalises and lateralises well enough to work with;
+//   real HRTFs can replace it (a WAV pair per direction convolved the same way).
+inline vptr sig_hrir_model(vlist& a, Interp& i) {
+    double az = deg2rad(i.scalar(a[0])), el = deg2rad(i.scalar(a[1])), sr = i.scalar(a[2]);
+    const double head = 0.0875, c = 343.0, w0 = c / head, len_s = 0.003; size_t len = (size_t)(len_s * sr) + 16;
+    double x = std::cos(el) * std::cos(az), y = std::cos(el) * std::sin(az);
+    vlist ears;
+    for (int ear = 0; ear < 2; ear++) {
+        double ey = ear == 0 ? 1.0 : -1.0;                 // left ear at +y
+        double cos_theta = std::max(-1.0, std::min(1.0, y * ey)); double theta = std::acos(cos_theta);   // angle from the ear axis
+        double alpha = 1.05 + 0.95 * std::cos(std::min(theta / deg2rad(150.0), 1.0) * 3.14159265358979323846);   // 2 at the near ear, 0.1 at the far one
+        double delay = theta < 3.14159265358979323846 / 2 ? -head / c * std::cos(theta) : head / c * (theta - 3.14159265358979323846 / 2);
+        delay += head / c;                                  // shifted so every delay is positive
+        // the shadow filter H(s) = (alpha s + 2 w0) / (s + 2 w0), bilinear transform at fs = sr
+        double K = 2 * sr, b0 = (alpha * K + 2 * w0), b1 = (2 * w0 - alpha * K), a0 = (K + 2 * w0), a1 = (2 * w0 - K);
+        b0 /= a0; b1 /= a0; a1 /= a0;
+        varr ir(0.0, len); double d = delay * sr; size_t i0 = (size_t)d; double fr = d - i0;
+        std::vector<double> imp(len, 0.0); if (i0 < len) imp[i0] += 1 - fr; if (i0 + 1 < len) imp[i0 + 1] += fr;
+        double x1 = 0, y1 = 0; for (size_t k = 0; k < len; k++) { double yk = b0 * imp[k] + b1 * x1 - a1 * y1; x1 = imp[k]; y1 = yk; ir[k] = yk; }
+        double e = 0; for (double v : ir) e += v * v; e = std::sqrt(e); if (e > 0) for (auto& v : ir) v /= e;   // unit energy per ear, like a loaded set
+        ears.push_back(v_arr(std::move(ir)));
+    }
+    (void)x; return v_list(std::move(ears));
+}
+inline vptr sig_hrir(vlist& a, Interp& i) {
+    if (!hrtf_try_default(i)) return sig_hrir_model(a, i);
+    double az = i.scalar(a[0]), el = i.scalar(a[1]), sr = i.scalar(a[2]); hrtf_set& h = hrtf();
+    // nearest direction on the sphere
+    double ca = deg2rad(az), ce = deg2rad(el); double x = std::cos(ce) * std::cos(ca), y = std::cos(ce) * std::sin(ca), z = std::sin(ce);
+    size_t best = 0; double bd = -2;
+    for (size_t k = 0; k < h.az.size(); k++) { double a2 = deg2rad(h.az[k]), e2 = deg2rad(h.el[k]); double d = x * std::cos(e2) * std::cos(a2) + y * std::cos(e2) * std::sin(a2) + z * std::sin(e2); if (d > bd) { bd = d; best = k; } }
+    varr L = h.left[best], R = h.right[best];
+    if (std::fabs(sr - h.sr) > 1) {
+        double f = sr / h.sr; L = resample_sinc(L, f); R = resample_sinc(R, f);
+        // resampling to a lower rate drops the band above its Nyquist and with it energy: renormalise so that
+        // the front direction keeps unit energy at this rate (computed once per rate)
+        static std::map<long, double> scale; long key = (long)sr;
+        if (!scale.count(key)) { size_t fr = 0; double bd = 1e9; for (size_t k = 0; k < h.az.size(); k++) { double d = std::fabs(h.az[k]) + std::fabs(h.el[k]); if (d < bd) { bd = d; fr = k; } }
+            varr fl = resample_sinc(h.left[fr], f), frr = resample_sinc(h.right[fr], f); double e = 0; for (double v : fl) e += v * v; for (double v : frr) e += v * v; scale[key] = std::sqrt(e / 2); }
+        double sc = scale[key] > 0 ? scale[key] : 1; L /= sc; R /= sc;
+    }
+    return v_list({ v_arr(std::move(L)), v_arr(std::move(R)) });
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
@@ -485,6 +621,8 @@ inline void add_signals(Interp& i) {
     i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
     i.def("pvoc", sig_pvoc, 2, 2);
     i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3); i.def("hpss", sig_hpss, 4, 4);
+    i.def("ambi-gains", sig_ambi_gains, 3, 3); i.def("ambi-rotate", sig_ambi_rotate, 2, 2); i.def("hrir", sig_hrir, 3, 3); i.def("hrir-model", sig_hrir_model, 3, 3);
+    i.def("hrtf-load", sig_hrtf_load, 1, 1); i.def("hrtf-unload", sig_hrtf_unload, 0, 0); i.def("hrtf-loaded", sig_hrtf_loaded, 0, 0);
 }
 
 } // namespace musil

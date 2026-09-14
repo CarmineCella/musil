@@ -156,7 +156,7 @@ endif()
 #                                      headers -> ${CMAKE_INSTALL_PREFIX}/include/musil
 #                                      *.mu    -> ~/.musil   (searched last by load)
 #   cmake --install build --prefix ~/.local     to avoid sudo
-file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt)
+file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt ${CMAKE_CURRENT_SOURCE_DIR}/src/hrtf_kemar.csv)
 file(GLOB MUSIL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 install(TARGETS musil RUNTIME DESTINATION bin)
 if(MUSIL_FLTK)
@@ -219,6 +219,10 @@ if(MUSIL_TESTS)
   set(NEEDS_live_house "${D}/skip-in-tests")       # a minute of music: run it, don't test it
   set(NEEDS_live_techno "${D}/skip-in-tests")
   set(NEEDS_live_trance "${D}/skip-in-tests")
+  set(NEEDS_live_spatial "${D}/skip-in-tests")
+  set(NEEDS_spatial "${D}/Vox.wav")
+  set(NEEDS_nmf "${D}/hpss_demo.wav")
+  set(NEEDS_flyby "${D}/skip-in-tests")            # 14 s of binaural rendering: run it, don't test it
   set(NEEDS_make_hpss_demo "${D}/skip-in-tests")   # writes into examples/data
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)

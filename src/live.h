@@ -286,6 +286,45 @@ struct pan_node : gnode {                                 // (pan x pos): mono i
         for (int k = 0; k < n; k++) { out[0][k] = (float)(x[k] * gl); out[1][k] = (float)(x[k] * gr); }
     }
 };
+struct channel_node : gnode {                             // (channel sig k): one channel of a multichannel signal
+    int k; channel_node(int kk) : k(kk) {}
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override { size(n); gnode& s = *g[in[0]]; const float* x = s.out[std::min(k, s.channels - 1)].data(); for (int j = 0; j < n; j++) out[0][j] = x[j]; }
+};
+struct pan_az_node : gnode {                              // (pan-azimuth x az): stereo from an azimuth (control), as pan-azimuth in signals.mu
+    pan_az_node() { channels = 2; }
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
+        size(n); const float* x = sig(g, 0); double az = ctrl(g, 1);
+        if (az > 90) az = 180 - az; if (az < -90) az = -180 - az; az = std::max(-90.0, std::min(90.0, az));
+        double p = -az / 90.0, gl = std::sqrt(0.5 * (1 - p)), gr = std::sqrt(0.5 * (1 + p));
+        for (int k = 0; k < n; k++) { out[0][k] = (float)(x[k] * gl); out[1][k] = (float)(x[k] * gr); }
+    }
+};
+struct ambi_encode_node : gnode {                         // (ambi-encode x order az el): az and el are controls
+    int order; ambi_encode_node(int o) : order(o) { channels = (o + 1) * (o + 1); }
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
+        size(n); const float* x = sig(g, 0); auto gains = sh_gains(order, ctrl(g, 1), ctrl(g, 2));
+        for (int c = 0; c < channels; c++) for (int k = 0; k < n; k++) out[c][k] = (float)(x[k] * gains[c]);
+    }
+};
+struct matrix_node : gnode {                              // (ambi-decode B speakers): a fixed gain matrix, rows = outputs
+    std::vector<std::vector<double>> M;
+    matrix_node(std::vector<std::vector<double>> m) : M(std::move(m)) { channels = (int)M.size(); }
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
+        size(n); gnode& b = *g[in[0]];
+        for (int r = 0; r < channels; r++) { std::fill(out[r].begin(), out[r].end(), 0.0f); for (size_t c = 0; c < M[r].size() && (int)c < b.channels; c++) { const float* x = b.out[c].data(); double w = M[r][c]; for (int k = 0; k < n; k++) out[r][k] += (float)(x[k] * w); } }
+    }
+};
+struct ambi_rotate_node : gnode {                         // (ambi-rotate B yaw): yaw is a control
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
+        gnode& b = *g[in[0]]; channels = b.channels; size(n); double yaw = ctrl(g, 1) * 3.14159265358979323846 / 180.0;
+        int order = (int)std::lround(std::sqrt((double)channels)) - 1;
+        for (int l = 0; l <= order; l++) {
+            int c0 = l * l + l; for (int k = 0; k < n; k++) out[c0][k] = b.out[c0][k];
+            for (int m = 1; m <= l; m++) { double c = std::cos(m * yaw), s2 = std::sin(m * yaw); const float* cp = b.out[c0 + m].data(); const float* cm = b.out[c0 - m].data();
+                for (int k = 0; k < n; k++) { out[c0 + m][k] = (float)(c * cp[k] - s2 * cm[k]); out[c0 - m][k] = (float)(s2 * cp[k] + c * cm[k]); } }
+        }
+    }
+};
 struct list_node : gnode {                                // (list a b ...): one channel per input
     void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
         channels = (int)in.size(); size(n);
@@ -501,6 +540,11 @@ inline const std::map<std::string, ugen_spec>& ugen_table() {
         { "comb",     { { 's', 'c', 's' } } }, { "allpass", { { 's', 'c', 's' } } },   // (comb x d g)
         { "conv",     { { 's', 'c' } } },                // (conv x ir)
         { "pan",      { { 's', 's' } } },                // (pan x pos) -> stereo
+        { "pan-azimuth", { { 's', 's' } } },             // (pan-azimuth x az) -> stereo
+        { "channel",  { { 's', 'c' } } },                // (channel sig k): one channel of a multichannel signal
+        { "ambi-encode", { { 's', 'c', 's', 's' } } },   // (ambi-encode x order az el) -> (order+1)^2 channels
+        { "ambi-decode", { { 's', 'c' } } },             // (ambi-decode B speakers) -> one channel per speaker
+        { "ambi-rotate", { { 's', 's' } } },             // (ambi-rotate B yaw)
         { "list",     { {} } },                          // (list a b ...) -> one channel each
         { "+", { {} } }, { "-", { {} } }, { "*", { {} } }, { "/", { {} } },
         { "abs", { { 's' } } }, { "tanh", { { 's' } } }, { "sin", { { 's' } } }, { "cos", { { 's' } } }, { "exp", { { 's' } } }, { "sqrt", { { 's' } } }, { "floor", { { 's' } } },
@@ -588,6 +632,23 @@ struct synth_compiler {
         else if (h == "allpass") { long d = (long)consts[0]->num[0]; if (d < 1) fail("allpass: delay must be >= 1"); n = new allpass_node((size_t)d); }
         else if (h == "conv") { auto ir = vec_of(consts[0], "conv ir"); if (ir.empty()) fail("conv: empty impulse response"); n = new conv_node(ir, (size_t)block); }
         else if (h == "pan") n = new pan_node();
+        else if (h == "pan-azimuth") n = new pan_az_node();
+        else if (h == "channel") n = new channel_node((int)consts[0]->num[0]);
+        else if (h == "ambi-encode") { int o = (int)consts[0]->num[0]; if (o < 0 || o > 7) fail("ambi-encode: order 0..7"); n = new ambi_encode_node(o); }
+        else if (h == "ambi-rotate") n = new ambi_rotate_node();
+        else if (h == "ambi-decode") {
+            // the decoding matrix as ambi-decode in signals.mu computes it: max-rE weighted sampling at the speakers
+            vptr spk = consts[0]; if (spk->t != Value::LIST && spk->t != Value::NUM) fail("ambi-decode: speakers is a list of (list az el) or azimuths");
+            std::vector<std::pair<double, double>> dirs;
+            if (spk->t == Value::NUM) for (double v : spk->num) dirs.push_back({ v, 0 });
+            else for (auto& e : spk->l) { if (e->t == Value::LIST && e->l.size() >= 2) dirs.push_back({ e->l[0]->num[0], e->l[1]->num[0] }); else dirs.push_back({ e->num[0], 0 }); }
+            int bch = out.nodes[sigs[0]]->channels; int order = (int)std::lround(std::sqrt((double)bch)) - 1;
+            std::vector<std::vector<double>> M;
+            for (auto& d : dirs) { auto gg = sh_gains(order, d.first, d.second); std::vector<double> row(gg.size());
+                for (int l = 0; l <= order; l++) { double wl = std::cos(l * 3.14159265358979323846 / (2 * order + 2)); for (int m = -l; m <= l; m++) row[(size_t)(l * l + l + m)] = gg[(size_t)(l * l + l + m)] * wl / dirs.size(); }
+                M.push_back(row); }
+            n = new matrix_node(M);
+        }
         else if (h == "lowpass" || h == "highpass" || h == "bandpass" || h == "notch" || h == "peak-eq" || h == "lowshelf" || h == "highshelf") n = new biquad_node(h, sr);
         else n = new math_node(h);
         int k = add(n); n->in = sigs; return k;

@@ -268,3 +268,42 @@ function shuffle (L) {
     }
     return out
 }
+
+# --- non-negative matrix factorization ------------------------------------------------------
+# (nmf V k iterations)     V (r x c, non-negative) ~ W H with W r x k and H k x c, both non-negative:
+#                          Lee & Seung's multiplicative updates for the KL divergence (the usual choice
+#                          for magnitude spectrograms); => (list W H). Columns of W are the parts
+#                          (spectral shapes), rows of H their activations over time.
+function nmf (V k iterations) {
+    var r (nrows V)
+    var c (ncols V)
+    var W (mat-map (mat-rand r k) (function (x) (+ 0.5 (* 0.5 (abs x)))))
+    var H (mat-map (mat-rand k c) (function (x) (+ 0.5 (* 0.5 (abs x)))))
+    var eps 1e-9
+    var ones-rc (mat-fill r c 1)
+    for (var it 0) (< it iterations) (var it (+ it 1)) {
+        var WH (mat-shift (mat-mul W H) eps)
+        var Q (mat-div V WH)
+        set H (hadamard H (mat-div (mat-mul (transpose W) Q) (mat-shift (mat-mul (transpose W) ones-rc) eps)))
+        set WH (mat-shift (mat-mul W H) eps)
+        set Q (mat-div V WH)
+        set W (hadamard W (mat-div (mat-mul Q (transpose H)) (mat-shift (mat-mul ones-rc (transpose H)) eps)))
+        # normalise the parts to unit sum, moving the scale into H, so parts are comparable
+        var sums (vec (map (transpose W) sum))
+        set W (transpose (map (zip (transpose W) (vec->list sums)) (function (p) (/ (head p) (max (last p) eps)))))
+        set H (map (zip H (vec->list sums)) (function (p) (* (head p) (max (last p) eps))))
+    }
+    return (list W H)
+}
+# (mat-min M) (mat-max M)  the smallest and the largest element
+function mat-min (M) (min-of (map M min))
+function mat-max (M) (max-of (map M max))
+# (mat-div A B)            elementwise quotient
+function mat-div (A B) (map (zip A B) (function (p) (/ (head p) (last p))))
+# (nmf-error V W H)        the KL divergence between V and W H (what the updates decrease)
+function nmf-error (V W H) {
+    var WH (mat-shift (mat-mul W H) 1e-9)
+    var Vs (mat-shift V 1e-9)
+    var terms (mat-sub (mat-add (hadamard Vs (mat-map (mat-div Vs WH) (function (q) (log q)))) WH) Vs)
+    return (sum (vec (map terms sum)))
+}

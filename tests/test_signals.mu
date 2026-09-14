@@ -235,6 +235,75 @@ check (equal? (onsets-adaptive (zeros 4000) sr 512 128 3 9) (vec 0)) "onsets-ada
 check (== (length (segments mixed2 sr on)) 4) "segments: one per onset, from 0 to the end"
 check (== (sum (vec (map (segments mixed2 sr on) length))) 16000) "segments: tile the whole sound"
 
+# --- nmf separation ---
+seed 3
+var env1 (bpf 0 (list (list 4000 1) (list 4000 0) (list 4000 1) (list 4000 0)))
+var env2 (bpf 1 (list (list 8000 0) (list 8000 1)))
+var pa (* env1 (+ (sin (* tau 220 (/ (range 16000) sr))) (* 0.5 (sin (* tau 440 (/ (range 16000) sr))))))
+var pb (* env2 (+ (sin (* tau 330 (/ (range 16000) sr))) (* 0.5 (sin (* tau 990 (/ (range 16000) sr))))))
+var sep (nmf-separate (+ pa pb) 512 128 2 60)
+var srcs (head sep)
+check (== (length srcs) 2) "nmf-separate: k sources"
+check (== (length (head srcs)) 16000) "nmf-separate: as long as the input"
+check (< (max (abs (- (+ (head srcs) (last srcs)) (+ pa pb)))) 1e-6) "nmf-separate: the sources add up to the input"
+function corr (p q) (/ (dot p q) (* (norm p) (norm q)))
+var c1 (max (corr (head srcs) pa) (corr (last srcs) pa))
+var c2 (max (corr (head srcs) pb) (corr (last srcs) pb))
+check (and (> c1 0.8) (> c2 0.8)) "nmf-separate: each source matches one of the two mixed sounds"
+check (equal? (mat-shape (getidx sep 1)) (list 257 2)) "nmf-separate: W is bins x k"
+check (== (nrows (getidx sep 2)) 2) "nmf-separate: H is k x frames"
+
+# --- spatial ---
+check (equal? (fixed (ambi-gains 1 0 0) 6) (vec 1 0 0 1)) "ambi-gains: front is (W 0 0 X)"
+check (equal? (fixed (ambi-gains 1 90 0) 6) (vec 1 1 0 0)) "ambi-gains: left is Y"
+check (equal? (fixed (ambi-gains 1 0 90) 6) (vec 1 0 1 0)) "ambi-gains: up is Z"
+check (== (length (ambi-gains 3 20 10)) 16) "ambi-gains: (order+1)^2 channels"
+check (near? (ambi-gains 1 30 20) (vec 1 (* (cos (/ (* 20 pi) 180)) (sin (/ (* 30 pi) 180))) (sin (/ (* 20 pi) 180)) (* (cos (/ (* 20 pi) 180)) (cos (/ (* 30 pi) 180)))) 1e-9) "ambi-gains: SN3D first order is (1 y z x)"
+check (contains? (error-of (function () (ambi-gains 9 0 0))) "0..7") "ambi-gains: order bounds"
+var sx (sine sr 440 0.05)
+check (== (length (ambi-encode sx 2 30 0)) 9) "ambi-encode: second order, nine channels"
+check (near? (getidx (ambi-rotate (ambi-encode sx 1 90 0) -90) 3) (getidx (ambi-encode sx 1 0 0) 3) 1e-9) "ambi-rotate: turning a left source by -90 puts it in front"
+check (near? (getidx (ambi-rotate (ambi-encode sx 3 40 15) 25) 9) (getidx (ambi-encode sx 3 65 15) 9) 1e-9) "ambi-rotate: exact at third order"
+check (contains? (error-of (function () (ambi-rotate (list sx sx sx) 10))) "(order+1)^2") "ambi-rotate: channel count"
+check (equal? (speaker-ring 4) (vec 0 90 180 -90)) "speaker-ring"
+var dec (vec (map (ambi-decode (ambi-encode sx 1 45 0) (speaker-ring 4)) rms))
+check (and (near? (getidx dec 0) (getidx dec 1) 1e-6) (> (getidx dec 0) (* 2 (getidx dec 2)))) "ambi-decode: a source at 45 feeds the front and left speakers equally, the others less"
+var pn (vec (map (pan-n sx (speaker-ring 8) 100) rms))
+check (and (> (getidx pn 2) (getidx pn 3)) (== (getidx pn 0) 0) (== (getidx pn 5) 0)) "pan-n: between the two nearest speakers only"
+check (near? (vec (map (pan-azimuth sx 90) rms)) (vec (rms sx) 0) 1e-6) "pan-azimuth: 90 is the left"
+check (near? (vec (map (pan-azimuth sx -90) rms)) (vec 0 (rms sx)) 1e-6) "pan-azimuth: -90 is the right"
+check (near? (vec (map (pan-azimuth sx 0) rms)) (* (rms sx) (vec 0.7071 0.7071)) 1e-3) "pan-azimuth: front is equal power"
+var h (hrir 90 0 sr)
+check (== (hrtf-loaded) 710) "hrtf: the bundled KEMAR set loads on first use (710 directions)"
+check (== (length h) 2) "hrir: two ears"
+check (== (length (head (hrir 30 0 44100))) 128) "hrir: 128 taps at 44100"
+check (== (length (head (hrir 30 0 48000))) 139) "hrir: resampled to another rate"
+check (> (rms (head h)) (* 2 (rms (last h)))) "hrir: a left source is louder at the left ear"
+check (> (argmax (abs (last h))) (argmax (abs (head h)))) "hrir: and arrives later at the right ear"
+var hm (hrir-model 90 0 sr)
+check (near? (* 1000 (/ (- (argmax (abs (last hm))) (argmax (abs (head hm)))) sr)) 0.66 0.15) "hrir-model: the interaural delay is about 0.65 ms"
+var hf (magnitude-spectrum (head (hrir 0 0 44100)))
+var hb (magnitude-spectrum (head (hrir 180 0 44100)))
+var fr (take (spectrum-freqs 128 44100) (length hf))
+check (> (spectral-centroid hf fr) (* 1.15 (spectral-centroid hb fr))) "hrtf: behind is duller than in front (the pinna): a cue the model cannot give"
+check (not (equal? (head (hrir 0 0 44100)) (head (hrir 0 60 44100)))) "hrtf: elevation changes the response"
+hrtf-unload
+check (== (hrtf-loaded) 0) "hrtf-unload: back to the model"
+check (> (length (head (hrir 90 0 44100))) 128) "hrir: the model when nothing is loaded"
+check (== (hrtf-load "hrtf_kemar.csv") 710) "hrtf-load: explicit"
+check (contains? (error-of (function () (hrtf-load "nope.csv"))) "cannot open") "hrtf-load: missing file"
+var click (vec (noise 400) (zeros 2000))
+var bl (vec (map (binaural click 90 0 sr) rms))
+check (> (getidx bl 0) (* 2 (getidx bl 1))) "binaural: a left click is much louder in the left ear"
+var bf (vec (map (binaural-decode (ambi-encode sx 1 0 0) sr) rms))
+check (and (near? (getidx bf 0) (getidx bf 1) 1e-6) (near? (getidx bf 0) (rms sx) 0.05)) "binaural-decode: a front source is equal and at its level"
+var br (vec (map (binaural-decode (ambi-encode click 1 -90 0) sr) rms))
+check (> (getidx br 1) (* 1.5 (getidx br 0))) "binaural-decode: a right source is louder at the right ear"
+check (== (length (moving-source sx 1 (vec 0 90 180) (vec 0 0 0) 800)) 4) "moving-source: B-format"
+check (equal? (channel (list sx (* 2 sx)) 1) (* 2 sx)) "channel"
+check (equal? (channel sx 1) sx) "channel: a vector is its own channel"
+check (== (max (head (normalize-peak-stereo (list (* 3 sx) sx)))) 1) "normalize-peak-stereo"
+
 # --- resampling ---
 var slow (sine sr 100 0.02)
 check (== (length (resample slow 2)) 320) "resample: length"

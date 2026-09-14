@@ -160,6 +160,22 @@ check (near? (linreg-predict X b) y 1e-12) "linreg-predict"
 check (near? (linreg-residuals X y b) (zeros 4) 1e-12) "linreg-residuals"
 check (equal? (add-intercept (list (vec 5) (vec 6))) (list (vec 1 5) (vec 1 6))) "add-intercept"
 
+# --- nmf ---
+seed 5
+var Wt (list->mat (list (vec 1 0) (vec 1 0) (vec 0 1) (vec 0 1)))
+var Ht (list->mat (list (vec 1 2 3 0) (vec 0 1 0 2)))
+var Vt (mat-mul Wt Ht)
+var f (nmf Vt 2 200)
+check (== (nrows (head f)) 4) "nmf: W rows"
+check (equal? (mat-shape (last f)) (list 2 4)) "nmf: H shape"
+check (>= (mat-min (head f)) 0) "nmf: W non-negative"
+check (>= (mat-min (last f)) 0) "nmf: H non-negative"
+check (< (mat-max (mat-map (mat-sub (mat-mul (head f) (last f)) Vt) abs)) 0.05) "nmf: W H reconstructs V"
+check (< (nmf-error Vt (head f) (last f)) 0.05) "nmf-error: small after 200 iterations"
+check (> (nmf-error Vt (head (nmf Vt 2 1)) (last (nmf Vt 2 1))) (nmf-error Vt (head f) (last f))) "nmf: the error decreases with iterations"
+check (near? (vec (map (transpose (head f)) sum)) (vec 1 1) 1e-6) "nmf: the parts have unit sum (the scale is in H)"
+check (equal? (mat-div (list->mat (list (vec 2 4))) (list->mat (list (vec 2 2)))) (list (vec 1 2))) "mat-div"
+
 # --- display ---
 check (equal? (mat-round (list (vec 1.234 5.678)) 1) (list (vec 1.2 5.7))) "mat-round"
 check (equal? (mat-str A 1) "1.0  2.0\n3.0  4.0") "mat-str"

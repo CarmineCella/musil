@@ -99,5 +99,7 @@ cmake --build build --target uninstall
 4. **Generators**: random score generator, orchestral granulator.
 5. **C++ ports**, each as a C++ core + Musil surface returning events: sound types, Maple (matching
    pursuit), Orchidea (assisted orchestration).
-6. Later: `visual`, a separate raylib process driven by OSC (never a raylib window inside FLTK);
+6. Spatial is done in `signals` (ambi-encode/rotate/decode, pan-n, binaural on a spherical head)
+   and streams in `live`; the score's `render` layouts use it.
+7. Later: `visual`, a separate raylib process driven by OSC (never a raylib window inside FLTK);
    the `in` ugen (device input); `grains`; a mini-notation parser for patterns.

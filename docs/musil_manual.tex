@@ -507,7 +507,7 @@ Linear algebra, statistics and machine learning. A matrix is a list of row vecto
 \musil{(list (vec 1 2) (vec 3 4))} is $2\times2$; \musil{(getidx M i)} is a row.
 Products, transposition, elimination (\musil{det}, \musil{inv}, \musil{solve}), the
 symmetric eigensolver, k-means and KNN are C++; construction, elementwise arithmetic,
-statistics along an axis, covariance, PCA, regression and the model helpers are Musil.
+statistics along an axis, covariance, PCA, regression, NMF and the model helpers are Musil.
 
 \begin{lstlisting}
 load "scientific.mu"
@@ -536,6 +536,33 @@ threshold), \musil{onsets-adaptive} (a threshold on the flux's moving median, fo
 material whose loudness drifts) and \musil{segments} build onset detection from the
 spectral flux in Musil; onsets always start with 0 and are placed at the sample where
 the energy rises.
+
+\textbf{Separation by NMF.} \musil{nmf V k iterations} (in \texttt{scientific}, fifteen
+lines of Musil on the C++ matrix product: Lee and Seung's multiplicative updates for the
+KL divergence) factors a non-negative matrix into k parts; \musil{nmf-separate x n hop k
+iterations} applies it to the magnitude spectrogram and splits the sound into k sources by
+Wiener masks that add up to the input; \texttt{examples/nmf.mu} sorts the parts into
+percussive and sustained by the spikiness of their activations.
+
+\textbf{Spatial.} Conventions as in AmbiX: azimuth in degrees, 0 in front, positive to
+the left; elevation up; a multichannel signal is a list of channel vectors, which
+\musil{write-wav} and \musil{play} take. \musil{pan-azimuth} is stereo from a direction;
+\musil{pan-n} feeds a ring of speakers (amplitude panning between the two nearest);
+\musil{ambi-encode} places a mono signal as B-format ((order+1)$^2$ channels, ACN/SN3D,
+orders 0--7) with \musil{ambi-gains} the spherical harmonics behind it; \musil{ambi-rotate}
+turns a whole field exactly; \musil{ambi-decode} samples the field at a speaker layout
+(max-rE weighted); \musil{ambi-render} places several sources, \musil{moving-source} one
+that moves. For headphones, \musil{hrir} gives the two ears' impulse responses of a direction from
+the measured MIT KEMAR set (710 directions, full sphere, 128 taps; shipped as
+\texttt{hrtf\_kemar.csv} with the libraries, loaded on first use, resampled to the
+session's rate) or, with \musil{hrtf-unload} or when the file is absent, from a
+spherical-head model (\musil{hrir-model}: interaural delay and head shadow only, so left
+and right but no front/back or height, which are cues of the pinna that only measured
+responses carry); \musil{hrtf-load} takes another set in the same CSV layout.
+\musil{binaural} renders a source through it, \musil{binaural-decode} renders B-format
+through ten virtual speakers. Every one
+of these streams in a synth as well (\musil{live}), so a sound can turn around the listener
+live; \texttt{examples/spatial.mu} and \texttt{live\_spatial.mu} do both.
 
 \begin{lstlisting}
 load "signals.mu"
@@ -752,6 +779,8 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
 \texttt{live\_house.mu}, \texttt{live\_techno.mu}, \texttt{live\_trance.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
 \texttt{onsets.mu}, \texttt{transients.mu}, \texttt{make\_hpss\_demo.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
+\texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter over and around the head), B-format and speaker rings; a sound turning around the head live \\
+\texttt{nmf.mu} & source separation by non-negative matrix factorization \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

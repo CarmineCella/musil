@@ -140,6 +140,16 @@ seed 1
 var split (train-test-split (shuffle training) 0.5)
 print "train-test-split:" (map split length) "(after shuffle)"
 
+# --- 9b. Non-negative matrix factorization -----------------------------------------------------
+print ""
+print "--- nmf ---"
+seed 5
+var Vn (mat-mul (list->mat (list (vec 1 0) (vec 1 0) (vec 0 1) (vec 0 1))) (list->mat (list (vec 1 2 3 0) (vec 0 1 0 2))))
+var fac (nmf Vn 2 200)
+print "nmf V 2 200      : W" (mat-shape (head fac)) "H" (mat-shape (last fac)) "; W H reconstructs V within" (fixed (mat-max (mat-map (mat-sub (mat-mul (head fac) (last fac)) Vn) abs)) 3)
+print "nmf-error        :" (fixed (nmf-error Vn (head fac) (last fac)) 3) "(the KL divergence the updates decrease)"
+print "mat-min, mat-max :" (mat-min Vn) (mat-max Vn) " mat-div:" (mat-div (list (vec 2 4)) (list (vec 2 2)))
+
 # --- 10. Display ---------------------------------------------------------------
 print ""
 print "--- display ---"

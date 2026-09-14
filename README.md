@@ -111,9 +111,11 @@ or the operating system and a `.mu` file for what is better written in Musil its
 
 - **std**: vectors and statistics, sequences, strings, files, `map`/`filter`/`reduce`;
 - **system**: processes, directories, CSV and WAV files, UDP and OSC;
-- **scientific**: matrices, decompositions, regression, PCA, k-means, KNN;
+- **scientific**: matrices, decompositions, regression, PCA, NMF, k-means, KNN;
 - **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
-  descriptors, filters and reverb;
+  descriptors, filters and reverb, onsets, harmonic/percussive and NMF separation, and space:
+  ambisonics (encode, rotate, decode), speaker rings, binaural for headphones with the
+  measured KEMAR HRTFs (MIT Media Lab, shipped);
 - **live**: real-time sound: an audio device, a sample-accurate clock, voices that play
   buffers and files scheduled ahead of time, and synths: an instrument is an ordinary
   function of its parameters (oscillators, envelopes, filters, delays, convolution, pan),

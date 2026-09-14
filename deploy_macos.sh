@@ -80,8 +80,8 @@ strip "$DIST/musil" "$DIST/musil-ide" 2>/dev/null || true
 
 # --- 3. resources: font, libraries, help, manual -------------------------------------------
 echo "==> Copying resources"
-cp src/*.mu src/help.txt "$APP/Contents/Resources/lib/"
-cp src/*.mu src/help.txt "$DIST/lib/"
+cp src/*.mu src/help.txt src/hrtf_kemar.csv "$APP/Contents/Resources/lib/"
+cp src/*.mu src/help.txt src/hrtf_kemar.csv "$DIST/lib/"
 echo "==> Copying the examples (dist, and the bundle's Resources: the IDE's Help > Examples menu)"
 mkdir -p "$DIST/examples" && cp -R examples/. "$DIST/examples/" && find "$DIST/examples" -name '.DS_Store' -delete
 mkdir -p "$APP/Contents/Resources/examples" && cp -R examples/. "$APP/Contents/Resources/examples/" && find "$APP/Contents/Resources/examples" -name '.DS_Store' -delete

@@ -258,6 +258,21 @@ check (== (length (gater gp "x ~ x x" 4 0.1)) 4) "gater: one event per token"
 check (== (length (roll (synth clap) 4 24)) 24) "roll: n hits"
 check (< (ev-beat (getidx (roll (synth clap) 4 24) 23)) 4) "roll: within the beats"
 check (== (length (trance-kit)) 4) "trance-kit"
+# spatial nodes: encode, decode, rotate, pan-azimuth, and binaural-decode inlined from signals.mu
+function turning (gate az) (ambi-encode (osc sr (sig gate 440) sine-table) 1 az 0)
+var enc (synth-render turning (list (list 'gate g) (list 'az 90)) (/ (length g) sr))
+check (== (length enc) 4) "ambi-encode streamed: four channels"
+check (near? (getidx enc 1) (getidx (ambi-encode (osc sr (+ (zeros (length g)) 440) sine-table) 1 90 0) 1) 1e-5) "ambi-encode streamed equals offline"
+function quad (gate az) (ambi-decode (ambi-encode (osc sr (sig gate 440) sine-table) 1 az 0) (speaker-ring 4))
+check (near? (head (synth-render quad (list (list 'gate g) (list 'az 45)) (/ (length g) sr))) (head (ambi-decode (ambi-encode (osc sr (+ (zeros (length g)) 440) sine-table) 1 45 0) (speaker-ring 4))) 1e-5) "ambi-decode streamed equals offline"
+function turn2 (gate yaw) (ambi-rotate (ambi-encode (osc sr (sig gate 440) sine-table) 1 0 0) yaw)
+check (near? (getidx (synth-render turn2 (list (list 'gate g) (list 'yaw 90)) (/ (length g) sr)) 1) (getidx (ambi-rotate (ambi-encode (osc sr (+ (zeros (length g)) 440) sine-table) 1 0 0) 90) 1) 1e-5) "ambi-rotate streamed equals offline"
+function pa (gate az) (pan-azimuth (osc sr (sig gate 440) sine-table) az)
+check (near? (vec (map (synth-render pa (list (list 'gate g) (list 'az 90)) 0.1) rms)) (vec 0.7071 0) 1e-3) "pan-azimuth streamed"
+function bin (gate az) (binaural-decode (ambi-encode (osc sr (sig gate 440) sine-table) 1 az 0) sr)
+var bs (synth-render bin (list (list 'gate g) (list 'az 90)) (/ (length g) sr))
+var bo (binaural-decode (ambi-encode (osc sr (+ (zeros (length g)) 440) sine-table) 1 90 0) sr)
+check (near? (take (head bs) 7000) (take (head bo) 7000) 1e-4) "binaural-decode streamed (inlined, 20 convolutions) equals offline"
 var kit (house-kit)
 check (== (length kit) 5) "house-kit: five synths"
 check (equal? (type (kit-get kit 'kick)) "scalar") "kit-get"

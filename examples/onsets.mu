@@ -7,7 +7,7 @@ load "system.mu"
 load "signals.mu"
 load "plot.mu"
 
-var w (read-wav (if (> (length args) 0) (getidx args 0) "data/120-xx-Speed.wav"))
+var w (read-wav (if (> (length args) 0) (getidx args 0) "data/drums.wav"))
 var sr (head w)
 var x (head (getidx w 1))
 var n 1024
