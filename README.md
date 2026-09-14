@@ -90,7 +90,7 @@ A complete release, from a clean tree (this is what the release assets are made 
 
 ```sh
 ./clean.sh                    # fresh-clone state: no build directories, no generated documentation
-./build.sh --test             # configure (regenerates help.txt and the VS Code grammar), build, run every test
+./build.sh --test             # configure (regenerates help.txt, the VS Code grammar and the version files), build, run every test
 ./build.sh --docs             # the manual: docs/musil_manual.pdf (needs pdflatex)
 ./deploy_macos.sh --clean     # macOS: dist/Musil.app, dist/musil, dist/musil-ide, dist/lib, dist/examples, dist/musil_manual.pdf,
                               #        dist/musil-<version>.vsix (when npx is present), dist/Musil-<version>-macos.zip
@@ -98,8 +98,12 @@ A complete release, from a clean tree (this is what the release assets are made 
 git tag -a v<version> -m "Musil <version>" && git push --tags   # then attach the zip, the tarball and the PDF to the GitHub release
 ```
 
-`docs/PRACTICES.md` says how to write Musil that reads well (loops, records, files) and how
-to add a library with its tests and documentation; `docs/ROADMAP.md` is the design record.
+The version number lives in one place, `MUSIL_VERSION` in `src/core.h`; CMake, the deploy
+scripts, the VS Code extension and the manual read it from there.
+
+The manual's "Programming practices" section says how to write Musil that reads well
+(loops, records, files) and how to add a library with its tests and documentation;
+`docs/ROADMAP.md` is the design record.
 
 Nothing is loaded automatically: a program that wants the Musil halves of the
 libraries says `load "std.mu"` (or `load "system.mu"`, which loads std.mu itself),

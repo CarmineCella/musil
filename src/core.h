@@ -45,7 +45,7 @@
 #include <unistd.h>
 #endif
 
-#define MUSIL_VERSION "0.7"
+#define MUSIL_VERSION "0.7.2"   // the one place the version is set: CMake, the deploy scripts and the manual read it here
 
 namespace musil {
 namespace fs = std::filesystem;

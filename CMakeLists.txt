@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
-project(Musil VERSION 0.7 LANGUAGES CXX)
+# the version is defined once, in src/core.h (MUSIL_VERSION); everything else reads it from there
+file(STRINGS src/core.h MUSIL_VERSION_LINE REGEX "#define MUSIL_VERSION \"")
+string(REGEX REPLACE ".*MUSIL_VERSION \"([^\"]+)\".*" "\\1" MUSIL_VERSION "${MUSIL_VERSION_LINE}")
+project(Musil VERSION ${MUSIL_VERSION} LANGUAGES CXX)
+message(STATUS "Musil ${MUSIL_VERSION}")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -224,7 +228,7 @@ if(MUSIL_TESTS)
   set(NEEDS_nmf "${D}/stems_demo.wav")
   set(NEEDS_flyby "${D}/skip-in-tests")            # 15 s of binaural rendering: run it, don't test it
   set(NEEDS_flyby_controls "${D}/skip-in-tests")
-  set(NEEDS_make_audio_demos "${D}/skip-in-tests") # writes into examples/data
+  set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")

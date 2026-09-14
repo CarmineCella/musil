@@ -20,11 +20,11 @@ script). Host and port are settings (`musil.host`, `musil.port`).
 
 ## Installing
 
-During development: copy or link this folder to `~/.vscode/extensions/musil-0.7.0`
-(`ln -s "$PWD" ~/.vscode/extensions/musil-0.7.0`) and reload the window.
+During development: copy or link this folder to `~/.vscode/extensions/musil-<version>`
+(`ln -s "$PWD" ~/.vscode/extensions/musil-<version>`) and reload the window.
 
-For distribution: `npx @vscode/vsce package` in this folder makes `musil-0.7.0.vsix`;
-install it with *Extensions: Install from VSIX*, or `code --install-extension musil-0.7.0.vsix`.
+For distribution: `npx @vscode/vsce package` in this folder makes `musil-<version>.vsix`;
+install it with *Extensions: Install from VSIX*, or `code --install-extension musil-<version>.vsix`.
 
 From a shell: `musil --send 7770 block.mu`, or `echo '(+ 1 2)' | musil --send 7770`
 (plain `nc` also works, but macOS's `nc` needs the message to end with a Ctrl-D byte:

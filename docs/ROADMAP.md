@@ -23,11 +23,15 @@ ide/main.cpp          the IDE (FLTK): editor, console, variables, help, plots/co
 tests/                one test_<lib>.mu per library (self-checking), goldens of the references
 examples/             reference_<lib>.mu tours + programs; examples/data/ recordings and iris
 tools/gendoc.py       help.txt, docs/generated/*.tex and the VS Code grammar, from doc comments
-docs/musil_manual.tex the manual (pdflatex); docs/PRACTICES.md how to write and extend Musil;
+docs/musil_manual.tex the manual (pdflatex), with the programming practices and how to extend Musil;
                       editors/vscode/musil the VS Code extension
 ```
 
-## Rules that every change follows
+## Rules that every change follows (the manual's "Programming practices" has the full text)
+
+- **The version** is set once, in `src/core.h` (`MUSIL_VERSION`): CMake, the deploy scripts, the VS Code
+  extension and the manual read it from there (gendoc writes `docs/generated/version.tex` and the
+  extension's `package.json`).
 
 - **A library is a set**: `name.h` (C++ half) + `name.mu` (Musil half) + `tests/test_name.mu` +
   `examples/reference_name.mu` (+ its golden in `tests/golden/`). Register the C++ half in

@@ -2,9 +2,9 @@
 # built is on record and can be changed. Run from the examples directory:
 #     musil make_audio_demos.mu            makes them all
 #     musil make_audio_demos.mu small      only the small 8 kHz test sounds (to /tmp)
-#     musil make_audio_demos.mu hpss       data/hpss_demo.wav   (chords under drums)
-#     musil make_audio_demos.mu stems      data/stems_demo.wav  (drums, bass, chords, melody: four stems,
-#                                          and each stem alone as data/stems_<name>.wav)
+#     musil make_audio_demos.mu hpss       /tmp/hpss_demo.wav   (chords under drums)
+#     musil make_audio_demos.mu stems      /tmp/stems_demo.wav  (drums, bass, chords, melody: four stems,
+#                                          and each stem alone as /tmp/stems_<name>.wav)
 # The data/ files are committed; running this rewrites them.
 load "live.mu"
 load "plot.mu"
@@ -89,8 +89,8 @@ if (wanted? "hpss") {
     var harmonic-ref (take (vec (mix layers) (zeros n)) n)
     var drum-ref (take (vec (drum-track 120 4) (zeros n)) n)
     var mixed (+ harmonic-ref (* 0.5 drum-ref))
-    write-wav "data/hpss_demo.wav" sr (* 0.9 (normalize-peak mixed))
-    print "hpss: wrote data/hpss_demo.wav" secs "s"
+    write-wav "/tmp/hpss_demo.wav" sr (* 0.9 (normalize-peak mixed))
+    print "hpss: wrote /tmp/hpss_demo.wav" secs "s"
     each (list 17 31) (function (k) {
         var parts (hpss mixed 2048 512 k)
         print "  kernel" k ": harmonic ~ chords" (fixed (corr (head parts) harmonic-ref) 3) "| percussive ~ drums" (fixed (corr (last parts) (* 0.5 drum-ref)) 3)
@@ -138,7 +138,7 @@ if (wanted? "stems") {
     var stems (list (list "drums" (* 0.9 drums-t)) (list "bass" (* 0.9 bass-t)) (list "chords" (* 0.7 chords-t)) (list "melody" (* 0.5 melody-t)))
     var mixed (reduce stems (function (acc s) (+ acc (last s))) (zeros n))
     var peak (max (abs mixed))
-    write-wav "data/stems_demo.wav" sr (* (/ 0.9 peak) mixed)
-    each stems (function (s) (write-wav (concat "data/stems_" (head s) ".wav") sr (* (/ 0.9 peak) (last s))))
-    print "stems: wrote data/stems_demo.wav (" (fixed (/ n sr) 1) "s at" bpm "bpm) and data/stems_drums.wav, _bass, _chords, _melody"
+    write-wav "/tmp/stems_demo.wav" sr (* (/ 0.9 peak) mixed)
+    each stems (function (s) (write-wav (concat "/tmp/stems_" (head s) ".wav") sr (* (/ 0.9 peak) (last s))))
+    print "stems: wrote /tmp/stems_demo.wav (" (fixed (/ n sr) 1) "s at" bpm "bpm) and /tmp/stems_drums.wav, _bass, _chords, _melody"
 }

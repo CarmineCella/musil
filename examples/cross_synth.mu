@@ -25,7 +25,7 @@ write-wav "/tmp/musil_cross_2_flattener.wav" sr (normalize-peak m2)
 var m3 (pvoc orchestra (list (list "cross" (list 3 0 1 voice))))   # a morph from the orchestra to the voice over the file
 write-wav "/tmp/musil_cross_3_morph.wav" sr (normalize-peak m3)
 # denoising the voice first removes its noise floor from the product
-var m1d (pvoc voice (list (list "threshold" 0.01) (list "cross" (list 1 1 orchestra))))
+var m1d (pvoc voice (list (list "threshold" 0.001) (list "cross" (list 1 1 orchestra))))
 write-wav "/tmp/musil_cross_1_denoised.wav" sr (normalize-peak m1d)
 print "mode 1:" (fixed (rms m1) 4) " mode 2:" (fixed (rms m2) 4) " mode 3:" (fixed (rms m3) 4) " mode 1 denoised:" (fixed (rms m1d) 4)
 print "written to /tmp/musil_cross_*.wav"
