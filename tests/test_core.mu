@@ -78,7 +78,11 @@ check (not (equal? (vec 1 2) (vec 1 2 3))) "equal?: size differs"
 check (equal? (list 1 (list 2 "x")) (list 1 (list 2 "x"))) "equal?: nested"
 check (== (not 0) 1) "not"
 check (== (and 1 1 0) 0) "and"
-check (== (or 0 0 3) 1) "or"
+check (== (or 0 0 3) 3) "or: the last argument is returned as it is"
+check (equal? (or 0 (list 7)) (list 7)) "or: a value, not just 1"
+check (== (and 1 2) 2) "and: the last argument as it is"
+check (== (and (> 0 1) (getidx (list) 5)) 0) "and: short-circuits (the second argument would fail)"
+check (== (or 1 (getidx (list) 5)) 1) "or: short-circuits"
 check (== (and) 1) "and: empty is true"
 check (not (if 0 1)) "truthiness: 0 is false"
 check (not (if "" 1)) "truthiness: empty string is false"
@@ -362,7 +366,6 @@ var L (list 1 "two" 3)
 check (== (length L) 3) "list: length"
 check (== (head L) 1) "list: head"
 check (equal? (tail L) (list "two" 3)) "list: tail"
-check (equal? (cons 0 L) (list 0 1 "two" 3)) "cons"
 check (equal? (append L 4 5) (list 1 "two" 3 4 5)) "append"
 var M (list)
 push M 1
@@ -414,8 +417,6 @@ function uses-eval (x) (eval x)
 check (== (uses-eval '(+ 1 1)) 2) "eval: in tail position of a function"
 
 # --- meta ----------------------------------------------------------------
-check (equal? (type (find-file "std.mu")) "string") "find-file: found"
-check (equal? (type (find-file "no-such-file.mu")) "nil") "find-file: missing is nil"
 check (equal? (type (help range)) "nil") "help: prints and returns nil"
 check (equal? (parse "print 1\nvar q 2") (list 'do (list 'print 1) (list 'var 'q 2))) "parse: text to forms"
 check (== (eval (parse "(* 6 7)")) 42) "eval of a parsed form"

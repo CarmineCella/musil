@@ -295,6 +295,22 @@ function nmf (V k iterations) {
     }
     return (list W H)
 }
+# (nmf-with-parts V W iterations)   the activations H of known parts W (their columns), V ~ W H with W fixed:
+#                          supervised NMF, when the parts were learnt from examples of each source
+function nmf-with-parts (V W iterations) {
+    var r (nrows V)
+    var c (ncols V)
+    var k (ncols W)
+    var H (mat-map (mat-rand k c) (function (x) (+ 0.5 (* 0.5 (abs x)))))
+    var eps 1e-9
+    var Wt (transpose W)
+    var denom (mat-shift (mat-mul Wt (mat-fill r c 1)) eps)
+    for (var it 0) (< it iterations) (var it (+ it 1)) {
+        var Q (mat-div V (mat-shift (mat-mul W H) eps))
+        set H (hadamard H (mat-div (mat-mul Wt Q) denom))
+    }
+    return H
+}
 # (mat-min M) (mat-max M)  the smallest and the largest element
 function mat-min (M) (min-of (map M min))
 function mat-max (M) (max-of (map M max))

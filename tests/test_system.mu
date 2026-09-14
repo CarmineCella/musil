@@ -99,4 +99,6 @@ remove f
 check (== (remove dir) 1) "remove: empty directory"
 
 check (== (interactive?) (interactive?)) "interactive?: answers (0 under the test suite, 1 at a terminal)"
+check (ends-with? (find-file "std.mu") "std.mu") "find-file: resolves on the load path"
+check (equal? (find-file "no-such-file.mu") "") "find-file: not found is the empty string"
 report "test_system"

@@ -128,7 +128,6 @@ print "--- lists ---"
 var L (list 1 "two" 3.0 (vec 4 5))
 print "L            :" L
 print "list 1 2 3   :" (list 1 2 3)
-print "cons 0 ...   :" (cons 0 (list 1 2 3))
 print "append       :" (append (list 1 2) 3 4)
 
 # Mutation

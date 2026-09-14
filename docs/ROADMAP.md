@@ -11,12 +11,11 @@ without re-deriving the design.
 ```
 src/core.h            the language: reader, evaluator (tail calls), value model, builtins, REPL
 src/std.h  std.mu     vectors, statistics, sequences, strings, files, map/filter/reduce
-src/system.h  .mu     processes, directories, CSV, WAV, UDP; sleep
-src/scientific.h .mu  matrices (a list of row vectors), decompositions, PCA, k-means, KNN
+src/system.h  .mu     processes, directories, CSV, WAV, UDP; sleep; the evaluation port (serve)
+src/scientific.h .mu  matrices (a list of row vectors), decompositions, PCA, NMF, k-means, KNN
 src/signals.h  .mu    generators, FFT/STFT, phase vocoder (pvoc), descriptors, filters, reverb
 src/live.h  live.mu   audio device (miniaudio), voices, synths (functions compiled to graphs),
                       scheduler (loops in beats), controls, OSC; src/live/miniaudio.h vendored
-src/serve.h           the evaluation port (TCP): editors send code, the session evaluates it
 src/plot.h  plot.mu   figures (FLTK windows, PNG export), subplots; src/controls.h the controls window
 src/musil.h           umbrella: make_env registers every library
 cli/main.cpp          musil [-i] [-e code] [--serve PORT] [--send PORT [file]] files...
@@ -24,7 +23,8 @@ ide/main.cpp          the IDE (FLTK): editor, console, variables, help, plots/co
 tests/                one test_<lib>.mu per library (self-checking), goldens of the references
 examples/             reference_<lib>.mu tours + programs; examples/data/ recordings and iris
 tools/gendoc.py       help.txt, docs/generated/*.tex and the VS Code grammar, from doc comments
-docs/musil_manual.tex the manual (pdflatex); editors/vscode/musil the VS Code extension
+docs/musil_manual.tex the manual (pdflatex); docs/PRACTICES.md how to write and extend Musil;
+                      editors/vscode/musil the VS Code extension
 ```
 
 ## Rules that every change follows

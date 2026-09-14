@@ -177,12 +177,6 @@ function stft-magnitudes (frames) (map frames (function (s) (take (magnitudes s)
 # --- phase vocoder --------------------------------------------------------------
 # (princarg x)             wrap a phase to (-pi, pi]
 function princarg (x) (- x (* tau (round (/ x tau))))
-# (opt opts key default)   the value of key in a list of (list key value) options, or default
-function opt (opts key default) {
-    var found (filter opts (function (o) (equal? (head o) key)))
-    if (== (length found) 0) { return default }
-    return (last (head found))
-}
 # (ramp v)                 a parameter given as a number or as (list start end) -> (list start end)
 function ramp (v) (if (equal? (type v) "list") v (list v v))
 # (fftshift v)             rotate a vector by half its length (zero-phase windowing)
@@ -585,17 +579,23 @@ function hann-fade (seg) (ones (length seg))
 #                          (their spectral shapes W and activations H say).
 function nmf-separate (x n hop k iterations) {
     var frames (stft (vec (zeros n) x (zeros n)) n hop)                    # padded, so the ends are covered by full windows
-    var bins (+ (/ n 2) 1)
-    var mags (map frames (function (f) (take (magnitudes f) bins)))      # frames x bins
-    var V (transpose mags)                                                # bins x frames
+    var V (nmf-spectrogram frames n)
     var fac (nmf V k iterations)
     var W (head fac)
     var H (last fac)
+    var groups (map (vec->list (range k)) (function (j) (list j)))         # every part its own source
+    return (list (nmf-sources x frames n hop W H groups) W H)
+}
+# (nmf-spectrogram frames n)   the magnitude spectrogram of stft frames as a bins x frames matrix
+function nmf-spectrogram (frames n) (transpose (map frames (function (f) (take (magnitudes f) (+ (/ n 2) 1)))))
+# (nmf-sources x frames n hop W H groups)   the sources of a factorization: groups is a list of lists of part
+#                          indices, one source per group (a source may be several parts); Wiener masks, ISTFT
+function nmf-sources (x frames n hop W H groups) {
+    var bins (+ (/ n 2) 1)
     var WH (mat-shift (mat-mul W H) 1e-9)
-    var sources (map (vec->list (range k)) (function (j) {
-        var Wj (list->mat (list (mat-col W j)))                            # 1 x bins
-        var Hj (list->mat (list (getidx H j)))                             # 1 x frames
-        var part (mat-mul (transpose Wj) Hj)                              # bins x frames
+    return (map groups (function (grp) {
+        var part (mat-fill bins (ncols H) 0)
+        each grp (function (j) (set part (mat-add part (mat-mul (transpose (list->mat (list (mat-col W j)))) (list->mat (list (getidx H j)))))))
         var mask (transpose (mat-div part WH))                            # frames x bins
         var masked (map (zip frames mask) (function (p) {
             var m (last p)
@@ -605,5 +605,20 @@ function nmf-separate (x n hop k iterations) {
         var y (drop (istft masked n hop) n)
         return (take (vec y (zeros (max 0 (- (length x) (length y))))) (length x))
     }))
-    return (list sources W H)
+}
+# (nmf-learn-parts examples n hop k iterations)   supervised separation, step one: for each example sound
+#                          (a list of vectors, one per source) learn k spectral parts by NMF; => W with
+#                          k columns per source, and the groups (which columns belong to which source)
+function nmf-learn-parts (examples n hop k iterations) {
+    var Ws (map examples (function (ex) (head (nmf (nmf-spectrogram (stft (vec (zeros n) ex (zeros n)) n hop) n) k iterations))))
+    var W (transpose (reduce Ws (function (acc w) (concat-list acc (transpose w))) (list)))
+    var groups (map (vec->list (range (length examples))) (function (s) (vec->list (+ (* s k) (range k)))))
+    return (list W groups)
+}
+# (nmf-separate-with x n hop W groups iterations)   supervised separation, step two: the mix x against known
+#                          parts W (nmf-with-parts learns only the activations), one source per group
+function nmf-separate-with (x n hop W groups iterations) {
+    var frames (stft (vec (zeros n) x (zeros n)) n hop)
+    var H (nmf-with-parts (nmf-spectrogram frames n) W iterations)
+    return (list (nmf-sources x frames n hop W H groups) H)
 }

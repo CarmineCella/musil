@@ -273,6 +273,11 @@ function bin (gate az) (binaural-decode (ambi-encode (osc sr (sig gate 440) sine
 var bs (synth-render bin (list (list 'gate g) (list 'az 90)) (/ (length g) sr))
 var bo (binaural-decode (ambi-encode (osc sr (+ (zeros (length g)) 440) sine-table) 1 90 0) sr)
 check (near? (take (head bs) 7000) (take (head bo) 7000) 1e-4) "binaural-decode streamed (inlined, 20 convolutions) equals offline"
+function bdir (gate az el) (binaural (osc sr (sig gate 440) sine-table) az el sr)
+var bd (synth-render bdir (list (list 'gate g) (list 'az 90) (list 'el 0)) (/ (length g) sr))
+check (near? (take (head bd) 7000) (take (head (binaural (osc sr (+ (zeros (length g)) 440) sine-table) 90 0 sr)) 7000) 1e-4) "binaural node: a fixed direction equals the offline convolution"
+var bmv (synth-render bdir (list (list 'gate g) (list 'az (vec (+ (zeros 4000) 90) (+ (zeros 4000) -90))) (list 'el 0)) (/ (length g) sr))
+check (and (> (rms (take (head bmv) 3500)) (rms (take (last bmv) 3500))) (< (rms (drop (head bmv) 4500)) (rms (drop (last bmv) 4500)))) "binaural node: a moving direction, left then right"
 var kit (house-kit)
 check (== (length kit) 5) "house-kit: five synths"
 check (equal? (type (kit-get kit 'kick)) "scalar") "kit-get"

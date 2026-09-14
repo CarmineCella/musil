@@ -221,9 +221,10 @@ if(MUSIL_TESTS)
   set(NEEDS_live_trance "${D}/skip-in-tests")
   set(NEEDS_live_spatial "${D}/skip-in-tests")
   set(NEEDS_spatial "${D}/Vox.wav")
-  set(NEEDS_nmf "${D}/hpss_demo.wav")
-  set(NEEDS_flyby "${D}/skip-in-tests")            # 14 s of binaural rendering: run it, don't test it
-  set(NEEDS_make_hpss_demo "${D}/skip-in-tests")   # writes into examples/data
+  set(NEEDS_nmf "${D}/stems_demo.wav")
+  set(NEEDS_flyby "${D}/skip-in-tests")            # 15 s of binaural rendering: run it, don't test it
+  set(NEEDS_flyby_controls "${D}/skip-in-tests")
+  set(NEEDS_make_audio_demos "${D}/skip-in-tests") # writes into examples/data
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")

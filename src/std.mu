@@ -244,6 +244,82 @@ function fmt-fixed (x d) {
 function fmt-pct (x d) (concat (fmt-fixed (* x 100) d) "%")
 
 # --- functions -------------------------------------------------------------
+# --- records: association lists, (list (list key value) ...), the shape of options, events and rows ---
+# (opt rec key default)    the value of key in a record, or default; keys compare with equal? (symbols and strings alike)
+function opt (rec key default) {
+    var found (filter rec (function (o) (equal? (head o) key)))
+    if (== (length found) 0) { return default }
+    return (last (head found))
+}
+# (get rec key)            the value of key; an error when absent
+function get (rec key) {
+    var found (filter rec (function (o) (equal? (head o) key)))
+    if (== (length found) 0) { error "get: no key " key }
+    return (last (head found))
+}
+# (has? rec key)           is the key present?
+function has? (rec key) (any? rec (function (o) (equal? (head o) key)))
+# (put! rec key value)     set a key in place (replacing an existing pair, or adding one); returns the record
+function put! (rec key value) {
+    var found (filter rec (function (o) (equal? (head o) key)))
+    if (> (length found) 0) { setidx (head found) 1 value } { push rec (list key value) }
+    return rec
+}
+# (put rec key value)      a new record with the key set, the original untouched
+function put (rec key value) (put! (map rec (function (o) (list (head o) (last o)))) key value)
+# (keys rec) (values rec)  the keys, the values, in order
+function keys (rec) (map rec head)
+function values (rec) (map rec last)
+# (record key value ...)   a record from alternating keys and values: (record 'freq 440 'dur 0.5)
+function record (kv) {
+    var out (list)
+    for (var k 0) (< k (length kv)) (var k (+ k 2)) { push out (list (getidx kv k) (getidx kv (+ k 1))) }
+    return out
+}
+
+# --- lists by a key: sorting, grouping, searching ---
+# (sort-by L f)            the elements ordered by f (a number or string per element), stable
+function sort-by (L f) {
+    var keyed (map L (function (x) (list (f x) x)))
+    var out (list)
+    each keyed (function (p) {                     # insertion: after every element whose key is not larger
+        var k (length out)
+        var j 0
+        while (< j (length out)) {
+            if (> (head (getidx out j)) (head p)) { set k j
+                                                    set j (length out) } { set j (+ j 1) }
+        }
+        set out (concat-list (concat-list (take out k) (list p)) (drop out k))
+    })
+    return (map out last)
+}
+# (group-by L f)           a record from key to the list of elements with that key, in first-seen order
+function group-by (L f) {
+    var out (list)
+    each L (function (x) {
+        var k (f x)
+        if (has? out k) { push (get out k) x } { push out (list k (list x)) }
+    })
+    return out
+}
+# (find-first L f)         the first element for which f holds, or nil
+function find-first (L f) {
+    var hit (filter L f)
+    return (if (> (length hit) 0) (head hit) nil)
+}
+# (reject L f)             the elements for which f does not hold
+function reject (L f) (filter L (function (x) (not (f x))))
+# (min-by L f) (max-by L f)   the element with the smallest / largest f
+function min-by (L f) (getidx L (argmin (vec (map L f))))
+function max-by (L f) (getidx L (argmax (vec (map L f))))
+# (sum-by L f)             the sum of f over the elements
+function sum-by (L f) (sum (vec (map L f)))
+# (partition L f)          (list those-for-which-f-holds the-others)
+function partition (L f) (list (filter L f) (reject L f))
+# (remove-at L k) (insert-at L k x)   a new list without / with an element at k
+function remove-at (L k) (concat-list (take L k) (drop L (+ k 1)))
+function insert-at (L k x) (concat-list (concat-list (take L k) (list x)) (drop L k))
+
 # (identity x)
 function identity (x) x
 # (compose f g)        the function x -> (f (g x))

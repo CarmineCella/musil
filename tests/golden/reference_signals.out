@@ -89,6 +89,7 @@ segments         : (1984 2016) (the pieces between onsets)
 
 --- nmf-separate ---
 nmf-separate     : 2 sources of 4000 samples; W (257 2) H (2 36) ; they add up to the input within 0
+nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)
 
 --- spatial (azimuth 0 in front, positive to the left; elevation up) ---
 pan-azimuth 45   : stereo levels (0.616 0.356)

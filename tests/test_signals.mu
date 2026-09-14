@@ -252,6 +252,14 @@ var c2 (max (corr (head srcs) pb) (corr (last srcs) pb))
 check (and (> c1 0.8) (> c2 0.8)) "nmf-separate: each source matches one of the two mixed sounds"
 check (equal? (mat-shape (getidx sep 1)) (list 257 2)) "nmf-separate: W is bins x k"
 check (== (nrows (getidx sep 2)) 2) "nmf-separate: H is k x frames"
+var learnt (nmf-learn-parts (list pa pb) 512 128 2 40)
+check (equal? (mat-shape (head learnt)) (list 257 4)) "nmf-learn-parts: two parts per example, side by side"
+check (equal? (last learnt) (list (list 0 1) (list 2 3))) "nmf-learn-parts: the groups"
+var sup (nmf-separate-with (+ pa pb) 512 128 (head learnt) (last learnt) 40)
+check (== (length (head sup)) 2) "nmf-separate-with: one source per group"
+check (and (> (corr (head (head sup)) pa) 0.85) (> (corr (last (head sup)) pb) 0.85)) "nmf-separate-with: supervised, each source is its instrument"
+check (< (max (abs (- (+ (head (head sup)) (last (head sup))) (+ pa pb)))) 1e-6) "nmf-separate-with: the sources add up to the mix"
+check (== (nrows (last sup)) 4) "nmf-separate-with: the activations, one row per part"
 
 # --- spatial ---
 check (equal? (fixed (ambi-gains 1 0 0) 6) (vec 1 0 0 1)) "ambi-gains: front is (W 0 0 X)"

@@ -460,6 +460,8 @@ inline vptr expr_parse(vlist& w, size_t& p, int min_p, Interp& i, eptr e) {
 inline vptr fn_quote   (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_do      (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_if      (vlist&, Interp&) { return v_nil(); }
+inline vptr fn_and     (vlist& a, Interp&) { for (auto& x : a) if (!truthy(x)) return v_bool(false); return v_bool(true); }   // (apply and ...) still works
+inline vptr fn_or      (vlist& a, Interp&) { for (auto& x : a) if (truthy(x))  return v_bool(true); return v_bool(false); }
 inline vptr fn_while   (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_for     (vlist&, Interp&) { return v_nil(); }
 inline vptr fn_var     (vlist&, Interp&) { return v_nil(); }
@@ -557,6 +559,12 @@ try {
             if (l.size() == 1) { cleanup(); return v_nil(); }
             for (size_t i=1; i+1<l.size(); i++) eval(l[i], e);
             expr = l.back(); continue;
+        }
+        if (op == fn_and || op == fn_or) {                    // short-circuit: arguments are evaluated left to right, only as far as needed
+            bool is_and = op == fn_and;
+            if (l.size() == 1) { cleanup(); return v_bool(is_and); }
+            for (size_t i = 1; i + 1 < l.size(); i++) { bool t = truthy(eval(l[i], e)); if (is_and && !t) { cleanup(); return v_bool(false); } if (!is_and && t) { cleanup(); return v_bool(true); } }
+            expr = l.back(); continue;                         // the last argument decides, in tail position
         }
         if (op == fn_if) {
             if (l.size() < 3 || l.size() > 4) err("if: expected (if cond then [else])");
@@ -765,10 +773,11 @@ UN(fn_sin, std::sin) UN(fn_cos, std::cos) UN(fn_tan, std::tan) UN(fn_asin, std::
 UN(fn_sqrt, std::sqrt) UN(fn_exp, std::exp) UN(fn_log, std::log) UN(fn_log2, std::log2) UN(fn_log10, std::log10)
 UN(fn_abs, std::fabs) UN(fn_flr, std::floor) UN(fn_cei, std::ceil) UN(fn_rnd, std::round) UN(fn_tanh, std::tanh)
 BIN(fn_mod, std::fmod) BIN(fn_pow, std::pow) BIN(fn_atan2, std::atan2)
-// (not x) (and a b ...) (or a b ...) logic on truth values; and/or return 1 or 0 and evaluate every argument
+// (not x) the negation of a truth value
 inline vptr fn_not(vlist& a, Interp& i) { return v_bool(!truthy(a[0])); }
-inline vptr fn_and(vlist& a, Interp&) { for (auto& x : a) if (!truthy(x)) return v_bool(false); return v_bool(true); }
-inline vptr fn_or (vlist& a, Interp&) { for (auto& x : a) if (truthy(x))  return v_bool(true); return v_bool(false); }
+// (and a b ...) (or a b ...) short-circuit, left to right: (and) stops at the first false value, (or) at the first true one;
+//   the last argument is returned as it is, so (or x default) is x when x is true. Special forms: later arguments are
+//   not evaluated when the answer is known, so (and (> k 0) (getidx v k)) is safe.
 // min/max: one vector argument => reduction; several arguments => elementwise.
 // (min v) (max v) smallest or largest element of one vector; with several arguments, elementwise over them
 inline vptr fn_min(vlist& a, Interp& i) {
@@ -784,10 +793,9 @@ inline vptr fn_max(vlist& a, Interp& i) {
     return v_arr(std::move(r));
 }
 // (list x ...) a list of anything
-// (cons x L) a new list with x in front; (append L x ...) a new list with x ... at the end
+// (append L x ...) a new list with x ... at the end
 // (push L x) append in place, returning the list; (pop L) remove and return the last element
 inline vptr fn_list(vlist& a, Interp&) { return v_list(a); }
-inline vptr fn_cons(vlist& a, Interp& i) { vlist& t = i.list(a[1]); vlist r; r.reserve(t.size()+1); r.push_back(a[0]); for (auto& x : t) r.push_back(x); return v_list(std::move(r)); }
 // (append L x ...) a new list with x ... added at the end
 inline vptr fn_append(vlist& a, Interp& i) { vlist r = i.list(a[0]); for (size_t k=1; k<a.size(); k++) r.push_back(a[k]); return v_list(std::move(r)); }
 inline vptr fn_push(vlist& a, Interp& i) { i.list(a[0]).push_back(a[1]); return a[0]; }
@@ -857,7 +865,7 @@ inline vptr fn_exit(vlist& a, Interp& i) { throw Exit_signal{ a.empty() ? 0 : (i
 // (error x ...) raise an error with the arguments as message
 // (clock) seconds from a monotonic clock, for timing
 // (load "file.mu") run a file once, searched next to the loading file, in the current directory,
-//   in MUSIL_PATH and in ~/.musil; (find-file "name") the path load would use, or nil
+//   in MUSIL_PATH and in ~/.musil
 // (defined? 'name) is name bound?
 // (vars) the global names, sorted
 // (help name) print the documentation of a builtin or library function (from help.txt)
@@ -887,9 +895,7 @@ inline vptr fn_copy(vlist& a, Interp& i) {
 inline vptr fn_error(vlist& a, Interp& i) { std::string m; for (auto& x : a) m+=str_of(x); i.err(m.empty() ? "error" : m); }
 inline vptr fn_clock(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 inline vptr fn_load(vlist& a, Interp& i) { i.load(i.str(a[0])); return v_nil(); }
-// (find-file "name") the path load would use for name, searched the same way, or nil
 inline vptr fn_parse(vlist& a, Interp& i) { Parser p(i.str(a[0]), std::make_shared<std::string>("<parse>")); return p.program(); }
-inline vptr fn_find_file(vlist& a, Interp& i) { std::string p = i.find_file(i.str(a[0])); return p.empty() ? v_nil() : v_str(p); }
 // help is a special form (its argument is not evaluated): (help range) works, and so does (help "range").
 inline void print_help(Interp& i, const std::string& name) {
     std::string path = i.find_file("help.txt");
@@ -952,14 +958,14 @@ inline Interp::Interp() {
     a("atan2", fn_atan2, 2, 2); a("pow", fn_pow, 2, 2); a("mod", fn_mod, 2, 2);
     a("and", fn_and, 0, N); a("or", fn_or, 0, N); a("min", fn_min, 1, N); a("max", fn_max, 1, N);
     // Lists and vectors
-    a("list", fn_list, 0, N); a("cons", fn_cons, 2, 2); a("append", fn_append, 1, N); a("push", fn_push, 2, 2); a("pop", fn_pop, 1, 1);
+    a("list", fn_list, 0, N); a("append", fn_append, 1, N); a("push", fn_push, 2, 2); a("pop", fn_pop, 1, 1);
     a("length", fn_length, 1, 1); a("head", fn_head, 1, 1); a("tail", fn_tail, 1, 1); a("empty?", fn_emptyp, 1, 1);
     a("getidx", fn_getidx, 2, 2); a("setidx", fn_setidx, 3, 3); a("vec", fn_vec, 0, N); a("sum", fn_sum, 1, 1);
     // Meta and I/O
     a("print", fn_print, 0, N); a("type", fn_type, 1, 1); a("str", fn_str, 1, 1); a("sym", fn_sym, 1, 1); a("num", fn_num, 1, 1);
     a("copy", fn_copy, 1, 1); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
     a("defined?", fn_definedp, 1, 1); a("vars", fn_vars, 0, 0); a("exit", fn_exit, 0, 1);
-    a("find-file", fn_find_file, 1, 1); a("help", fn_help, 1, 1); a("parse", fn_parse, 1, 1);
+    a("help", fn_help, 1, 1); a("parse", fn_parse, 1, 1);
 }
 inline Interp::~Interp() {
     for (auto& w : tracked_envs) if (auto e = w.lock()) e->vars.clear();

@@ -325,6 +325,31 @@ struct ambi_rotate_node : gnode {                         // (ambi-rotate B yaw)
         }
     }
 };
+struct binaural_node : gnode {                            // (binaural x az el sr): direct HRIR rendering with hot az and el;
+    Interp* I; double sr; std::vector<float> hist;        // the responses crossfade over a block when the direction changes
+    std::vector<double> curL, curR; double cur_az = 1e9, cur_el = 1e9; size_t hpos = 0;
+    binaural_node(Interp* i, double s) : I(i), sr(s) { channels = 2; hist.assign(4096, 0.0f); }
+    void fetch(double az, double el, std::vector<double>& L, std::vector<double>& R) {
+        vlist a = { v_num(az), v_num(el), v_num(sr) }; vptr h = sig_hrir(a, *I);
+        const varr& l = h->l[0]->num; const varr& r = h->l[1]->num;
+        L.assign(std::begin(l), std::end(l)); R.assign(std::begin(r), std::end(r));
+    }
+    void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
+        size(n); const float* x = sig(g, 0); double az = ctrl(g, 1), el = ctrl(g, 2);
+        bool changed = std::fabs(az - cur_az) > 0.5 || std::fabs(el - cur_el) > 0.5;
+        std::vector<double> newL, newR; if (changed) { fetch(az, el, newL, newR); if (curL.empty()) { curL = newL; curR = newR; changed = false; } }
+        size_t mask = hist.size() - 1;
+        for (int k = 0; k < n; k++) {
+            hist[hpos & mask] = x[k];
+            double accL = 0, accR = 0, nL = 0, nR = 0;
+            for (size_t j = 0; j < curL.size(); j++) { float xv = hist[(hpos - j) & mask]; accL += curL[j] * xv; accR += curR[j] * xv; }
+            if (changed) { for (size_t j = 0; j < newL.size(); j++) { float xv = hist[(hpos - j) & mask]; nL += newL[j] * xv; nR += newR[j] * xv; }
+                double w = (double)(k + 1) / n; accL = accL * (1 - w) + nL * w; accR = accR * (1 - w) + nR * w; }
+            out[0][k] = (float)accL; out[1][k] = (float)accR; hpos++;
+        }
+        if (changed) { curL = newL; curR = newR; cur_az = az; cur_el = el; }
+    }
+};
 struct list_node : gnode {                                // (list a b ...): one channel per input
     void process(std::vector<std::unique_ptr<gnode>>& g, int n) override {
         channels = (int)in.size(); size(n);
@@ -545,6 +570,7 @@ inline const std::map<std::string, ugen_spec>& ugen_table() {
         { "ambi-encode", { { 's', 'c', 's', 's' } } },   // (ambi-encode x order az el) -> (order+1)^2 channels
         { "ambi-decode", { { 's', 'c' } } },             // (ambi-decode B speakers) -> one channel per speaker
         { "ambi-rotate", { { 's', 's' } } },             // (ambi-rotate B yaw)
+        { "binaural",    { { 's', 's', 's', 'c' } } },   // (binaural x az el sr): direct HRIR rendering, az and el hot
         { "list",     { {} } },                          // (list a b ...) -> one channel each
         { "+", { {} } }, { "-", { {} } }, { "*", { {} } }, { "/", { {} } },
         { "abs", { { 's' } } }, { "tanh", { { 's' } } }, { "sin", { { 's' } } }, { "cos", { { 's' } } }, { "exp", { { 's' } } }, { "sqrt", { { 's' } } }, { "floor", { { 's' } } },
@@ -636,6 +662,7 @@ struct synth_compiler {
         else if (h == "channel") n = new channel_node((int)consts[0]->num[0]);
         else if (h == "ambi-encode") { int o = (int)consts[0]->num[0]; if (o < 0 || o > 7) fail("ambi-encode: order 0..7"); n = new ambi_encode_node(o); }
         else if (h == "ambi-rotate") n = new ambi_rotate_node();
+        else if (h == "binaural") n = new binaural_node(&I, consts[0]->num[0]);
         else if (h == "ambi-decode") {
             // the decoding matrix as ambi-decode in signals.mu computes it: max-rE weighted sampling at the speakers
             vptr spk = consts[0]; if (spk->t != Value::LIST && spk->t != Value::NUM) fail("ambi-decode: speakers is a list of (list az el) or azimuths");
@@ -948,7 +975,8 @@ inline void add_live(Interp& i) {
     i.def("controls-list", live_controls_list, 0, 0); i.def("bind-control", live_bind_control, 3, 3); i.def("unbind-control", live_unbind_control, 1, 1); i.def("clear-controls", live_clear_controls, 0, 0);
     i.def("osc-send", live_osc_send, 3, -1); i.def("osc-listen", live_osc_listen, 1, 1); i.def("osc-map", live_osc_map, 2, 2); i.def("osc-stop", live_osc_stop, 0, 0);
     i.def("osc-encode", live_osc_encode, 1, -1); i.def("osc-decode", live_osc_decode, 1, 1);
-    i.idle_fn = [&i]() { live_idle(i); };
+    auto prev = i.idle_fn;
+    i.idle_fn = [&i, prev]() { if (prev) prev(); live_idle(i); };   // chained: the port (system) was hooked first
 }
 
 } // namespace musil

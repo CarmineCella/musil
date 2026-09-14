@@ -175,6 +175,9 @@ check (< (nmf-error Vt (head f) (last f)) 0.05) "nmf-error: small after 200 iter
 check (> (nmf-error Vt (head (nmf Vt 2 1)) (last (nmf Vt 2 1))) (nmf-error Vt (head f) (last f))) "nmf: the error decreases with iterations"
 check (near? (vec (map (transpose (head f)) sum)) (vec 1 1) 1e-6) "nmf: the parts have unit sum (the scale is in H)"
 check (equal? (mat-div (list->mat (list (vec 2 4))) (list->mat (list (vec 2 2)))) (list (vec 1 2))) "mat-div"
+var Hs (nmf-with-parts Vt Wt 100)
+check (equal? (mat-shape Hs) (list 2 4)) "nmf-with-parts: H for known parts"
+check (< (mat-max (mat-map (mat-sub (mat-mul Wt Hs) Vt) abs)) 0.05) "nmf-with-parts: reconstructs V with W fixed"
 
 # --- display ---
 check (equal? (mat-round (list (vec 1.234 5.678)) 1) (list (vec 1.2 5.7))) "mat-round"

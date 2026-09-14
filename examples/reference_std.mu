@@ -113,6 +113,21 @@ print "identity, compose:" (identity 7) ((compose sq (function (x) (+ x 1))) 3)
 function add (a b) (+ a b)
 print "map with a partial:" (map (vec 1 2 3) (add 100))
 
+# --- 5b. Records (association lists) and lists by a key ----------------------------------------
+print ""
+print "--- records ---"
+var ev (record (list 'freq 440 'dur 0.5))
+print "record          :" ev
+print "get, opt, has?  :" (get ev 'freq) (opt ev 'amp 1) (has? ev 'dur)
+put! ev 'amp 0.3
+print "put!            :" ev "  put (a copy):" (put ev 'amp 0.9) "original kept:" (get ev 'amp)
+print "keys, values    :" (keys ev) (values ev)
+print "sort-by         :" (sort-by (list "pear" "fig" "apple") length)
+print "group-by        :" (group-by (list 1 2 3 4 5 6) odd?)
+print "find-first      :" (find-first (list 1 4 9) (function (x) (> x 3))) " reject:" (reject (list 1 2 3 4) odd?)
+print "min-by, max-by  :" (min-by (list "aaa" "b" "cc") length) (max-by (list "aaa" "b" "cc") length) " sum-by:" (sum-by (list 1 2 3) (function (x) (* x x)))
+print "partition       :" (partition (list 1 2 3 4) odd?) " remove-at:" (remove-at (list 1 2 3) 1) " insert-at:" (insert-at (list 1 3) 1 2)
+
 # --- 6. Files and console ------------------------------------------
 print ""
 print "--- files ---"

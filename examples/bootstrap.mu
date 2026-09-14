@@ -131,7 +131,7 @@ load "system.mu"
 if (and (== (length args) 0) (interactive?) (equal? (type (getenv "MUSIL_NOSHOW")) "nil")) {
     print ""
     print "meta> is Musil evaluated by meval; type Musil, or exit"
-    function done? (l) (if (equal? (type l) "nil") 1 (equal? (trim l) "exit"))   # (or evaluates both arguments)
+    function done? (l) (or (equal? (type l) "nil") (equal? (trim l) "exit"))
     var line (input "meta> ")
     while (not (done? line)) {
         if (> (length (trim line)) 0) {

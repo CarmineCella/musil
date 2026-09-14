@@ -134,7 +134,7 @@ inline vptr fn_existsp(vlist& a, Interp& i) { return v_bool(fs::exists(i.read_pa
 inline vptr fn_input(vlist& a, Interp& i) { if (!a.empty()) { *i.out << i.str(a[0]) << std::flush; } std::string s; if (!std::getline(std::cin, s)) return v_nil(); return v_str(std::move(s)); }
 
 // higher-order
-// (map x f) f applied to every element of a list (any results) or vector (numeric results)
+// (map x f) f applied to every element: a list for a list; for a vector, a vector when every result is a number, a list otherwise
 inline vptr fn_map(vlist& a, Interp& i) {
     i.fn(a[1]);
     if (a[0]->t==Value::LIST) {
@@ -142,10 +142,11 @@ inline vptr fn_map(vlist& a, Interp& i) {
         for (auto& x : a[0]->l) { vlist arg={x}; out.push_back(i.call_fn(a[1], arg)); }
         return v_list(std::move(out));
     }
-    if (a[0]->t==Value::NUM) {
-        varr r(a[0]->num.size());
-        for (size_t k=0; k<r.size(); k++) { vlist arg={v_num(a[0]->num[k])}; r[k]=i.scalar(i.call_fn(a[1], arg)); }
-        return v_arr(std::move(r));
+    if (a[0]->t==Value::NUM) {                       // a vector in: a vector out when every result is a number, else a list
+        vlist out; out.reserve(a[0]->num.size()); bool numeric = true;
+        for (size_t k=0; k<a[0]->num.size(); k++) { vlist arg={v_num(a[0]->num[k])}; vptr r = i.call_fn(a[1], arg); if (r->t != Value::NUM || r->num.size() != 1) numeric = false; out.push_back(r); }
+        if (!numeric) return v_list(std::move(out));
+        varr r(out.size()); for (size_t k=0; k<out.size(); k++) r[k]=out[k]->num[0]; return v_arr(std::move(r));
     }
     i.err(std::string("map: expected list or number, got ") + type_name(a[0]));
 }

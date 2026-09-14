@@ -541,8 +541,12 @@ the energy rises.
 lines of Musil on the C++ matrix product: Lee and Seung's multiplicative updates for the
 KL divergence) factors a non-negative matrix into k parts; \musil{nmf-separate x n hop k
 iterations} applies it to the magnitude spectrogram and splits the sound into k sources by
-Wiener masks that add up to the input; \texttt{examples/nmf.mu} sorts the parts into
-percussive and sustained by the spikiness of their activations.
+Wiener masks that add up to the input. Supervised separation, when examples of each source
+exist: \musil{nmf-learn-parts} learns a few parts from each example alone,
+\musil{nmf-separate-with} learns only the activations on the mix (\musil{nmf-with-parts})
+and returns one source per instrument; \texttt{examples/nmf.mu} does both on a four-stem
+mix (drums, bass, chords, melody, with each stem alone to score against; made, like every
+synthetic demo sound, by \texttt{make\_audio\_demos.mu}).
 
 \textbf{Spatial.} Conventions as in AmbiX: azimuth in degrees, 0 in front, positive to
 the left; elevation up; a multichannel signal is a list of channel vectors, which
@@ -560,9 +564,12 @@ spherical-head model (\musil{hrir-model}: interaural delay and head shadow only,
 and right but no front/back or height, which are cues of the pinna that only measured
 responses carry); \musil{hrtf-load} takes another set in the same CSV layout.
 \musil{binaural} renders a source through it, \musil{binaural-decode} renders B-format
-through ten virtual speakers. Every one
-of these streams in a synth as well (\musil{live}), so a sound can turn around the listener
-live; \texttt{examples/spatial.mu} and \texttt{live\_spatial.mu} do both.
+through ten virtual speakers. Every one of these streams in a synth as well (\musil{live});
+\musil{binaural} as a node crossfades its responses when the direction moves, so a sound
+can be flown around the listener from two sliders. \texttt{examples/spatial.mu},
+\texttt{flyby.mu} (a helicopter in front, overhead, behind and around, also as third-order
+B-format for an external decoder such as the IEM BinauralDecoder in a DAW),
+\texttt{flyby\_controls.mu} and \texttt{live\_spatial.mu} do all of it.
 
 \begin{lstlisting}
 load "signals.mu"
@@ -689,7 +696,7 @@ and \musil{udp-receive}, for anything the conveniences do not cover. None of thi
 evaluation port below: OSC carries numbers to controls over UDP, the port carries code
 over TCP.
 
-\textbf{Editors.} \musil{(serve 7770)} (the IDE does it at start-up; the command line
+\textbf{Editors.} \musil{(serve 7770)} (in \texttt{system}; the IDE does it at start-up; the command line
 with \texttt{--serve 7770 -i}) opens a local port that evaluates the text it receives, in
 the session, as if typed. The VS Code extension in \texttt{editors/vscode/musil} sends the
 block around the cursor with Cmd-Enter (the file with Cmd-Shift-Enter) and gives
@@ -778,9 +785,9 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
 \texttt{live\_house.mu}, \texttt{live\_techno.mu}, \texttt{live\_trance.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
-\texttt{onsets.mu}, \texttt{transients.mu}, \texttt{make\_hpss\_demo.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
-\texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter over and around the head), B-format and speaker rings; a sound turning around the head live \\
-\texttt{nmf.mu} & source separation by non-negative matrix factorization \\
+\texttt{onsets.mu}, \texttt{transients.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
+\texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
+\texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

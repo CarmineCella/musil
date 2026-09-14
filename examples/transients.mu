@@ -3,7 +3,7 @@
 # for the harmonic part and along frequency for the percussive one, then soft masks), and
 # find the attacks in the percussive part.
 # Usage: musil transients.mu [sound.wav]   (defaults to data/hpss_demo.wav: chords under a drum
-# pattern, made by make_hpss_demo.mu; try data/Gambale_cut.wav for a real recording)
+# pattern, made by make_audio_demos.mu; try data/Gambale_cut.wav for a real recording)
 load "system.mu"
 load "signals.mu"
 load "plot.mu"

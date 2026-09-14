@@ -144,6 +144,7 @@ seed 3
 var two (+ (* (bpf 0 (list (list 2000 1) (list 2000 0))) (sine sr 220 0.5)) (* (bpf 1 (list (list 2000 0) (list 2000 1))) (sine sr 330 0.5)))
 var sep (nmf-separate two 512 128 2 40)
 print "nmf-separate     :" (length (head sep)) "sources of" (length (head (head sep))) "samples; W" (mat-shape (getidx sep 1)) "H" (mat-shape (getidx sep 2)) "; they add up to the input within" (fixed (max (abs (- (+ (head (head sep)) (last (head sep))) two))) 6)
+print "nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)"
 
 # --- 6d. Spatial ----------------------------------------------------------------------------
 print ""
