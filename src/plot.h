@@ -33,12 +33,15 @@
 
 namespace musil {
 
+// how a window hands a line of Musil to the interpreter: hosts set it (the IDE queues; the CLI runs it at once)
+inline std::function<void(const std::string&)>& plot_submit() { static std::function<void(const std::string&)> f; return f; }
+
 // --- figure description, validated once ---
 struct figure;
 // A roll: rows (a name and a clef: "treble", "bass" or "none") and bars (row, start, duration, a lane within the
 // row, a MIDI pitch or -1, a dynamics label) with a tooltip: a score drawn like music, note heads and duration lines
-struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; double midi = -1; std::string dyn; };
-struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows, clefs; std::vector<roll_bar> bars; };
+struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; double midi = -1; std::string dyn; int event_id = -1; };
+struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows, clefs; std::vector<roll_bar> bars; int score_id = -1; };
 struct figure {
     std::string title, xlabel, ylabel;
     std::vector<plot_layer> layers;
@@ -66,8 +69,9 @@ inline figure parse_figure(const vptr& v) {
             if (L->l.size() < 2) plot_fail("subplot: needs a figure");
             p.sub = std::make_shared<figure>(parse_figure(L->l[1]));
         } else if (p.kind == "roll") {
-            // (list "roll" rows bars): rows a list of names or (list name clef); a bar (list row start dur label tip group [lane lanes midi dyn])
+            // (list "roll" rows bars [score-id]): rows a list of names or (list name clef); a bar (list row start dur label tip group [lane lanes midi dyn event-id])
             if (L->l.size() < 3 || L->l[1]->t != Value::LIST || L->l[2]->t != Value::LIST) plot_fail("roll: needs rows and bars");
+            if (L->l.size() > 3 && L->l[3]->t == Value::NUM) p.score_id = (int)L->l[3]->num[0];
             for (auto& r : L->l[1]->l) { if (r->t == Value::LIST && r->l.size() >= 2) { p.rows.push_back(str_of(r->l[0])); p.clefs.push_back(str_of(r->l[1])); } else { p.rows.push_back(str_of(r)); p.clefs.push_back("none"); } }
             for (auto& b : L->l[2]->l) {
                 if (b->t != Value::LIST || b->l.size() < 3) plot_fail("roll: a bar is (list row start dur label tip group)");
@@ -76,6 +80,7 @@ inline figure parse_figure(const vptr& v) {
                 if (b->l.size() > 7) { bar.lane = (int)b->l[6]->num[0]; bar.lanes = std::max(1, (int)b->l[7]->num[0]); }
                 if (b->l.size() > 8 && b->l[8]->t == Value::NUM) bar.midi = b->l[8]->num[0];
                 if (b->l.size() > 9) bar.dyn = str_of(b->l[9]);
+                if (b->l.size() > 10 && b->l[10]->t == Value::NUM) bar.event_id = (int)b->l[10]->num[0];
                 p.bars.push_back(bar);
             }
         } else if (p.kind == "image" || p.kind == "surface") {
@@ -108,7 +113,7 @@ inline void figure_range(const figure& f, double& xmin, double& xmax, double& ym
     for (auto& L : f.layers) {
         if (L.kind == "image") { image = true; xmin = std::min(xmin, 0.0); xmax = std::max(xmax, (double)L.m[0].size()); ymin = std::min(ymin, 0.0); ymax = std::max(ymax, (double)L.m.size()); continue; }
         if (L.kind == "surface") continue;
-        if (L.kind == "roll") { image = true; xmin = std::min(xmin, 0.0); for (auto& b : L.bars) xmax = std::max(xmax, b.start + b.dur); ymin = 0; ymax = std::max(ymax, (double)std::max<size_t>(1, L.rows.size())); if (xmax <= 0) xmax = 1; xmax *= 1.02; continue; }
+        if (L.kind == "roll") { image = true; for (auto& b : L.bars) xmax = std::max(xmax, b.start + b.dur); ymin = 0; ymax = std::max(ymax, (double)std::max<size_t>(1, L.rows.size())); if (xmax <= 0) xmax = 1; xmin = -0.012 * xmax; xmax *= 1.02; continue; }
         for (size_t k = 0; k < L.x.size(); k++) { xmin = std::min(xmin, L.x[k]); xmax = std::max(xmax, L.x[k]); ymin = std::min(ymin, L.y[k]); ymax = std::max(ymax, L.y[k]); }
         if (L.kind == "bars") { ymin = std::min(ymin, 0.0); if (L.x.size() > 1) { double bw = L.x[1] - L.x[0]; xmin = std::min(xmin, L.x[0] - bw / 2); xmax = std::max(xmax, L.x[L.x.size()-1] + bw / 2); } }
     }
@@ -242,7 +247,7 @@ inline void render_2d(const figure& f, int ox, int oy, int w, int h, const plot_
 // --- the roll: rows of bars in time (a score), with the hovered bar's tooltip -----------------
 struct roll_geom { int left, top; double pw, ph, xmin, xmax; int rows; double row_h; int top_rows; };
 inline roll_geom roll_geometry(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
-    roll_geom g; g.left = ox + 110; g.top = oy + (f.title.empty() ? 16 : 34); g.pw = w - 110 - 20; g.ph = h - (f.title.empty() ? 16 : 34) - 44;
+    roll_geom g; g.left = ox + 110 + 36; g.top = oy + (f.title.empty() ? 16 : 34); g.pw = w - 110 - 36 - 28; g.ph = h - (f.title.empty() ? 16 : 34) - 56;   // 36 for the clefs, 28 and 12 for the scrollbars
     double ymin, ymax; figure_range(f, g.xmin, g.xmax, ymin, ymax);
     if (view.zoomed) { g.xmin = view.xmin; g.xmax = view.xmax; }
     g.rows = 1; for (auto& L : f.layers) if (L.kind == "roll") g.rows = std::max<int>(1, (int)L.rows.size());
@@ -279,17 +284,43 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
         if (r % 2) { fl_color(246, 246, 244); fl_rectf(g.left, top, (int)g.pw, (int)std::ceil(g.row_h)); }
         fl_color(120, 120, 120);
         if (st.has_staff) {
-            for (int l = 0; l < 5; l++) { int y = (int)(st.y_bottom - l * st.sp); fl_line(g.left, y, g.left + (int)g.pw, y); }
-            fl_font(FL_TIMES_BOLD_ITALIC, (int)std::max(9.0, st.sp * 2.6)); fl_color(60, 60, 60);
-            if (clef == "treble") fl_draw("G", g.left + 4, (int)(st.y_bottom - st.sp) + (int)(st.sp * 0.9));   // on the G line (the second)
-            else fl_draw("F", g.left + 4, (int)(st.y_bottom - 3 * st.sp) + (int)(st.sp * 0.9));           // on the F line (the fourth)
-        } else { int y = (int)(top + g.row_h * 0.55); fl_line(g.left, y, g.left + (int)g.pw, y); }
+            for (int l = 0; l < 5; l++) { int y = (int)(st.y_bottom - l * st.sp); fl_line(g.left - 34, y, g.left + (int)g.pw, y); }
+            fl_color(50, 50, 50); fl_line_style(FL_SOLID, std::max(1, (int)(st.sp / 4)));
+            double cx = g.left - 20;
+            if (clef == "treble") {                        // a treble clef drawn as curves: the spiral around the G line, the stem, the tail
+                double gy = st.y_bottom - st.sp, sp = st.sp;
+                fl_begin_line();
+                fl_curve(cx, gy, cx - 1.0 * sp, gy - 0.9 * sp, cx + 0.2 * sp, gy - 2.0 * sp, cx + 1.1 * sp, gy - 1.0 * sp);   // the loop around G
+                fl_curve(cx + 1.1 * sp, gy - 1.0 * sp, cx + 1.6 * sp, gy + 0.2 * sp, cx - 0.4 * sp, gy + 1.5 * sp, cx - 1.2 * sp, gy);
+                fl_curve(cx - 1.2 * sp, gy, cx - 1.6 * sp, gy - 1.6 * sp, cx + 0.6 * sp, gy - 3.6 * sp, cx + 0.6 * sp, gy - 4.8 * sp); // up the stem to the top
+                fl_curve(cx + 0.6 * sp, gy - 4.8 * sp, cx + 0.8 * sp, gy - 6.0 * sp, cx - 0.3 * sp, gy - 6.0 * sp, cx - 0.2 * sp, gy - 5.0 * sp);  // the top hook
+                fl_curve(cx - 0.2 * sp, gy - 5.0 * sp, cx - 0.1 * sp, gy - 3.0 * sp, cx + 0.5 * sp, gy, cx + 0.5 * sp, gy + 1.9 * sp);           // back down the stem
+                fl_curve(cx + 0.5 * sp, gy + 1.9 * sp, cx + 0.5 * sp, gy + 2.8 * sp, cx - 0.9 * sp, gy + 2.7 * sp, cx - 0.7 * sp, gy + 2.0 * sp);  // the tail's curl
+                fl_end_line();
+                fl_pie((int)(cx - 0.9 * sp - sp * 0.28), (int)(gy + 2.0 * sp - sp * 0.28), (int)(sp * 0.56), (int)(sp * 0.56), 0, 360);
+            } else {                                       // a bass clef: the curl from the F line, and its two dots
+                double fy = st.y_bottom - 3 * st.sp, sp = st.sp;
+                fl_begin_line();
+                fl_curve(cx - 0.9 * sp, fy, cx - 0.9 * sp, fy - 1.3 * sp, cx + 1.0 * sp, fy - 1.3 * sp, cx + 1.0 * sp, fy);
+                fl_curve(cx + 1.0 * sp, fy, cx + 1.0 * sp, fy + 1.5 * sp, cx - 0.4 * sp, fy + 2.6 * sp, cx - 1.3 * sp, fy + 3.1 * sp);
+                fl_end_line();
+                fl_pie((int)(cx - 0.9 * sp - sp * 0.3), (int)(fy - sp * 0.3), (int)(sp * 0.6), (int)(sp * 0.6), 0, 360);
+                fl_pie((int)(cx + 1.4 * sp - sp * 0.22), (int)(fy - 0.5 * sp - sp * 0.22), (int)(sp * 0.44), (int)(sp * 0.44), 0, 360);
+                fl_pie((int)(cx + 1.4 * sp - sp * 0.22), (int)(fy + 0.5 * sp - sp * 0.22), (int)(sp * 0.44), (int)(sp * 0.44), 0, 360);
+            }
+            fl_line_style(0);
+        } else { int y = (int)(top + g.row_h * 0.55); fl_line(g.left - 34, y, g.left + (int)g.pw, y); }
         if (r < (int)L.rows.size()) { fl_font(FL_HELVETICA, std::min(fs, (int)(g.row_h / 3))); fl_color(60, 60, 60); fl_draw(L.rows[r].c_str(), ox + 8, top + (int)(g.row_h / 2) + 4); }
     }
-    // the events: a head at the onset and a line for the duration; pitched ones on their staff, with ledger lines and sharps
+    // the events: a head at the onset and a line for the duration; pitched ones on their staff, with ledger lines and sharps.
+    // A duration line stops short of a following note's sharp; a dynamic is written when it changes from the previous
+    // one in its row and there is room for it (the hover shows every event's anyway)
     fl_push_clip(g.left, g.top, (int)g.pw, (int)g.ph);
-    for (size_t k = 0; k < L.bars.size(); k++) {
-        const roll_bar& b = L.bars[k]; if (b.row < 0 || b.row >= g.rows) continue;
+    std::vector<size_t> order(L.bars.size()); for (size_t k = 0; k < order.size(); k++) order[k] = k;
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b2) { return L.bars[a].row != L.bars[b2].row ? L.bars[a].row < L.bars[b2].row : L.bars[a].start < L.bars[b2].start; });
+    std::vector<std::string> last_dyn(g.rows); std::vector<int> last_dyn_x(g.rows, -100000);
+    for (size_t oi = 0; oi < order.size(); oi++) {
+        size_t k = order[oi]; const roll_bar& b = L.bars[k]; if (b.row < 0 || b.row >= g.rows) continue;
         std::string clef = b.row < (int)L.clefs.size() ? L.clefs[b.row] : "none"; staff_geom st = roll_staff(g, b.row, clef);
         bool hot = view.has_pick && (size_t)view.px == k;
         rgb c = plot_palette((size_t)b.group); if (hot) c = { 30, 30, 30 };
@@ -297,18 +328,26 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
         if (st.has_staff && b.midi >= 0) {
             int midi = (int)std::lround(b.midi); bool sharp; int step = roll_step(midi, sharp);
             double y = roll_note_y(st, midi); double head = std::max(3.0, st.sp * 0.62);
-            // ledger lines below the staff and above it, at every even step outside the five lines
+            // the next note of this row at the same height with a sharp: end the line before its accidental
+            for (size_t oj = oi + 1; oj < order.size(); oj++) { const roll_bar& n = L.bars[order[oj]]; if (n.row != b.row) break; if (n.midi < 0) continue;
+                bool nsharp; roll_step((int)std::lround(n.midi), nsharp); double ny = roll_note_y(st, (int)std::lround(n.midi));
+                if (std::fabs(ny - y) < head * 1.2) { int nx = (int)X(n.start) - (int)head - (nsharp ? (int)(st.sp * 1.6) : 2); if (nx < x1) x1 = std::max(x0 + 2, nx); break; } }
             fl_color(150, 150, 150);
             for (int sdiff = step - st.bottom_step; sdiff < 0; sdiff++) if (sdiff % 2 == 0) { int ly = (int)(st.y_bottom - sdiff * st.sp / 2); fl_line(x0 - (int)head - 3, ly, x0 + (int)head + 3, ly); }
             for (int sdiff = step - st.bottom_step; sdiff > 8; sdiff--) if (sdiff % 2 == 0) { int ly = (int)(st.y_bottom - sdiff * st.sp / 2); fl_line(x0 - (int)head - 3, ly, x0 + (int)head + 3, ly); }
-            plot_color(c); fl_line_style(FL_SOLID, std::max(2, (int)(head * 0.6))); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
+            plot_color(c); fl_line_style(FL_SOLID, std::max(1, (int)(head * 0.35))); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
             fl_pie(x0 - (int)head, (int)(y - head), (int)(2 * head), (int)(2 * head), 0, 360);
             if (sharp) { fl_font(FL_HELVETICA_BOLD, (int)std::max(8.0, st.sp * 1.6)); fl_color(60, 60, 60); fl_draw("#", x0 - (int)head - (int)(st.sp * 1.3), (int)(y + st.sp * 0.6)); }
-            if (!b.dyn.empty() && g.row_h > 60) { fl_font(FL_TIMES_BOLD_ITALIC, (int)std::max(8.0, st.sp * 1.7)); fl_color(80, 80, 80); fl_draw(b.dyn.c_str(), x0 - (int)head, (int)(g.top_rows + (b.row + 1) * g.row_h - 3)); }
+            if (!b.dyn.empty() && g.row_h > 60) {
+                fl_font(FL_TIMES_BOLD_ITALIC, (int)std::max(8.0, st.sp * 1.7)); int dw = (int)fl_width(b.dyn.c_str());
+                bool changed = b.dyn != last_dyn[b.row], room = x0 - (int)head > last_dyn_x[b.row] + 6;
+                int dx = std::max(g.left + 2, x0 - (int)head);
+                if (changed && room) { fl_color(80, 80, 80); fl_draw(b.dyn.c_str(), dx, (int)(g.top_rows + (b.row + 1) * g.row_h - 3)); last_dyn[b.row] = b.dyn; last_dyn_x[b.row] = dx + dw; }
+            }
         } else {                                              // unpitched: a square head on the row's line (lanes when they overlap)
             double lane_h = g.row_h / b.lanes; double y = g.top_rows + b.row * g.row_h + (b.lanes == 1 ? g.row_h * 0.55 : lane_h * (b.lane + 0.5));
             int head = std::max(3, (int)std::min(6.0, lane_h * 0.25));
-            plot_color(c); fl_line_style(FL_SOLID, 3); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
+            plot_color(c); fl_line_style(FL_SOLID, 2); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
             fl_rectf(x0 - head, (int)y - head, 2 * head, 2 * head);
             if (x1 - x0 > 30 && lane_h > 16) { fl_font(FL_HELVETICA, std::min(fs - 2, (int)lane_h - 4)); fl_color(80, 80, 80); fl_push_clip(x0 + head + 3, (int)y - (int)lane_h / 2, x1 - x0 - head - 4, (int)lane_h); fl_draw(b.label.c_str(), x0 + head + 4, (int)y - 4); fl_pop_clip(); }
         }
@@ -319,6 +358,16 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
     fl_pop_clip(); fl_pop_clip();
     fl_color(120, 120, 120); fl_rect(g.left, g.top, (int)g.pw, (int)g.ph);
     fl_font(FL_HELVETICA, fs); fl_color(60, 60, 60); fl_draw((f.xlabel.empty() ? "time (s)" : f.xlabel).c_str(), g.left + (int)(g.pw / 2) - 20, oy + h - 6);
+    // scrollbars, when the view is zoomed: the thumb shows the visible part (drag it, or the wheel)
+    { double fx0, fx1, fy0, fy1; figure_range(f, fx0, fx1, fy0, fy1);
+      if (view.zoomed && (g.xmax - g.xmin) < (fx1 - fx0) * 0.999) {
+          int by = g.top + (int)g.ph + fs + 8; fl_color(228, 228, 226); fl_rectf(g.left, by, (int)g.pw, 8);
+          double a = (g.xmin - fx0) / (fx1 - fx0), bb = (g.xmax - fx0) / (fx1 - fx0); a = std::max(0.0, a); bb = std::min(1.0, bb);
+          fl_color(150, 150, 150); fl_rectf(g.left + (int)(a * g.pw), by, std::max(12, (int)((bb - a) * g.pw)), 8); }
+      if (view.row_scale > 1.0001) {
+          int bx = g.left + (int)g.pw + 6; fl_color(228, 228, 226); fl_rectf(bx, g.top, 8, (int)g.ph);
+          double vis = 1.0 / view.row_scale, a = view.row_offset / g.rows; a = std::min(std::max(0.0, a), 1 - vis);
+          fl_color(150, 150, 150); fl_rectf(bx, g.top + (int)(a * g.ph), 8, std::max(12, (int)(vis * g.ph))); } }
     // the tooltip of the hovered event, and the cursor time
     fl_font(FL_HELVETICA, fs - 1);
     if (view.has_cursor) {
@@ -559,14 +608,14 @@ inline void figure_to_png_view(const figure& f, const std::string& path, int w, 
 
 // --- the window ---
 struct plot_widget : Fl_Widget {
-    figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false;
+    figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false; int dragging_bar = 0;
     static void follow_playhead(void* p) { plot_widget* w = (plot_widget*)p; if (!w->window() || !w->window()->shown()) return; if (playhead().on) w->redraw(); Fl::repeat_timeout(0.05, follow_playhead, p); }
     plot_widget(int x, int y, int w, int h, figure fig) : Fl_Widget(x, y, w, h), f(std::move(fig)) {}
     void draw() override {
         render_figure_at(f, x(), y(), w(), h() - 18, view);
         fl_color(246, 246, 244); fl_rectf(x(), y() + h() - 18, w(), 18);
         fl_font(FL_HELVETICA, 11); fl_color(150, 150, 150);
-        fl_draw(has_roll ? "A D pan   + - zoom in time   W S scroll rows   Z X zoom rows   R reset   wheel zooms   the cursor follows play-score   Esc or q closes"
+        fl_draw(has_roll ? "A D pan   + - zoom in time   W S scroll rows   Z X zoom rows   R reset   wheel scrolls (Ctrl: zooms)   double-click plays an event   Esc or q closes"
                          : "+ - zoom   W A S D pan   arrows orbit   0 or r reset   drag pans   wheel zooms   e exports a PNG   Esc or q closes", x() + 8, y() + h() - 5);
     }
     int handle(int e) override {
@@ -574,9 +623,40 @@ struct plot_widget : Fl_Widget {
         case FL_FOCUS: case FL_UNFOCUS: return 1;
         case FL_ENTER: case FL_LEAVE: return 1;
         case FL_MOVE: plot_cursor(f, view, x(), y(), w(), h() - 18, Fl::event_x(), Fl::event_y()); redraw(); return 1;
-        case FL_PUSH: lastx = Fl::event_x(); lasty = Fl::event_y(); take_focus(); return 1;
-        case FL_DRAG: plot_drag(f, view, x(), y(), w(), h() - 18, Fl::event_x() - lastx, Fl::event_y() - lasty); lastx = Fl::event_x(); lasty = Fl::event_y(); redraw(); return 1;
-        case FL_MOUSEWHEEL: plot_wheel(f, view, Fl::event_dy()); redraw(); return 1;
+        case FL_PUSH: {
+            lastx = Fl::event_x(); lasty = Fl::event_y(); take_focus(); dragging_bar = 0;
+            if (has_roll) {
+                roll_geom g = roll_geometry(f, x(), y(), w(), h() - 18, view); const int fs = 13;
+                if (lastx >= g.left && lastx <= g.left + g.pw && lasty >= g.top + g.ph + fs + 6 && lasty <= g.top + g.ph + fs + 18) dragging_bar = 1;   // the time scrollbar
+                else if (lastx >= g.left + g.pw + 4 && lastx <= g.left + g.pw + 16 && lasty >= g.top && lasty <= g.top + g.ph) dragging_bar = 2;     // the rows' scrollbar
+                else if (Fl::event_clicks() > 0 && plot_submit()) {   // a double click on an event plays it
+                    for (auto& L : f.layers) if (L.kind == "roll") { int k = roll_hit(f, L, x(), y(), w(), h() - 18, view, lastx, lasty);
+                        if (k >= 0 && L.score_id >= 0 && L.bars[(size_t)k].event_id >= 0) plot_submit()("(play-event " + std::to_string(L.score_id) + " " + std::to_string(L.bars[(size_t)k].event_id) + ")"); }
+                }
+            }
+            return 1;
+        }
+        case FL_DRAG: {
+            if (dragging_bar == 1) {                          // drag the time scrollbar's thumb
+                roll_geom g = roll_geometry(f, x(), y(), w(), h() - 18, view); double fx0, fx1, fy0, fy1; figure_range(f, fx0, fx1, fy0, fy1);
+                double dt = (Fl::event_x() - lastx) / g.pw * (fx1 - fx0); view.xmin = g.xmin + dt; view.xmax = g.xmax + dt; view.zoomed = true;
+            } else if (dragging_bar == 2) {                   // drag the rows' scrollbar's thumb
+                roll_geom g = roll_geometry(f, x(), y(), w(), h() - 18, view); double rows = (double)g.rows;
+                view.row_offset = std::min(std::max(0.0, rows - rows / std::max(1.0, view.row_scale)), std::max(0.0, view.row_offset + (Fl::event_y() - lasty) / g.ph * rows));
+            } else plot_drag(f, view, x(), y(), w(), h() - 18, Fl::event_x() - lastx, Fl::event_y() - lasty);
+            lastx = Fl::event_x(); lasty = Fl::event_y(); redraw(); return 1;
+        }
+        case FL_RELEASE: dragging_bar = 0; return 1;
+        case FL_MOUSEWHEEL: {
+            if (has_roll) {                                  // the wheel scrolls: rows vertically, time horizontally (a sideways wheel, or Shift); Ctrl zooms in time
+                int dy = Fl::event_dy(), dx = Fl::event_dx(); bool ctrl = Fl::event_state(FL_CTRL | FL_COMMAND), shift = Fl::event_state(FL_SHIFT);
+                if (ctrl) plot_wheel(f, view, dy);
+                else if (dx != 0 || shift) { int d = dx != 0 ? dx : dy; plot_key(f, view, d > 0 ? 'd' : 'a', false); }
+                else if (dy != 0) plot_key(f, view, dy > 0 ? 's' : 'w', false);
+                redraw(); return 1;
+            }
+            plot_wheel(f, view, Fl::event_dy()); redraw(); return 1;
+        }
         case FL_KEYDOWN: {
             int k = Fl::event_key(); const char* t = Fl::event_text();
             if (k == FL_Escape || (t && (t[0] == 'q'))) { window()->hide(); return 1; }
@@ -654,6 +734,7 @@ inline void add_plot(Interp& i) {
     i.def("save-png", plot_save_png, 2, 4); i.def("show", plot_show, 1, 3);
     i.def("plot-windows", plot_windows_count, 0, 0); i.def("close-plots", plot_close_all, 0, 0);
     if (!plot_needs_awake()) { auto prev = i.idle_fn; i.idle_fn = [prev]() { if (prev) prev(); if (Fl::first_window()) Fl::check(); }; }   // keep the windows alive while the interpreter waits (only once there is one: no GUI setup for plain scripts)
+    if (!plot_submit()) { Interp* ip = &i; plot_submit() = [ip](const std::string& code) { try { ip->run(code, "<window>"); } catch (std::exception& e) { *ip->out << "window: " << e.what() << "\n" << std::flush; } }; }   // a window's action runs at once (the IDE queues instead)
 }
 
 } // namespace musil

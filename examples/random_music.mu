@@ -6,23 +6,27 @@ load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 7)
 
 #var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+var db (db-load "../datasets/StaticSOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 print "database:" (db-size db) "entries;" (length (db-available db)) "sounds on disk (missing pitches are shifted from the nearest)"
 
 # --- the generator: density in notes per second, a range of durations, instruments with their pitch ranges ----
-# (random-notes db secs density instruments dyns durs)   events for a score: instruments a list of codes, dyns a
-#   list of dynamics, durs (list shortest longest); pitches uniform within each instrument's range in the database
-function random-notes (db secs density instruments dyns durs) {
+# (random-notes db secs density instruments dyns techs durs)   events for a score: instruments a list of codes, dyns a
+#   list of dynamics, techs a list of playing techniques (nil: every technique the database has for the instrument),
+#   durs (list shortest longest); pitches uniform within each instrument's range in the database
+function random-notes (db secs density instruments dyns techs durs) {
     var out (list)
     var n (floor (* secs density))
     each (range n) (function (k) {
         var instr (getidx instruments (floor (* (rand) (length instruments))))
         var range (db-range db instr)
         var midi (+ (head range) (floor (* (rand) (+ 1 (- (last range) (head range))))))
+        if (< midi 0) (set midi 0)
         var dyn (getidx dyns (floor (* (rand) (length dyns))))
+        var choices (if (equal? (type techs) "nil") (unique (map (db-query db instr nil nil nil) (function (e) (get e 'tech)))) techs)
+        var tech (getidx choices (floor (* (rand) (length choices))))
         var at (* (rand) secs)
         var dur (+ (head durs) (* (rand) (- (last durs) (head durs))))
-        push out (list at dur (note db instr (midi->pitch midi) dyn 'ord))
+        push out (list at dur (note db instr (midi->pitch midi) dyn tech))
     })
     return (sort-by out head)
 }
@@ -34,7 +38,8 @@ var here (db-instruments-available db)
 var orchestra (filter wanted (function (i) (contains? here (str i))))
 print "instruments with sounds on disk:" orchestra
 var s (score "random" 44100)
-each (random-notes db 30 3.5 orchestra (list 'pp 'p 'mf 'f 'ff) (list 0.4 2.5)) (function (n) {
+print "techniques in the database:" (db-techniques db) "(nil below: every technique an instrument has)"
+each (random-notes db 30 3.5 orchestra (list 'pp 'p 'mf 'f 'ff) nil (list 0.4 2.5)) (function (n) {
     var e (event s (head n) (getidx n 1) (last n))
     event-place! e (- (* 120 (rand)) 60) 0                  # each note somewhere between left and right
     event-gain! e (if (equal? (get e 'dyn) "pp") 0.5 (if (equal? (get e 'dyn) "mf") 0.8 1))

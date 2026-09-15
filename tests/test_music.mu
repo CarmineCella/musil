@@ -70,8 +70,12 @@ check (equal? (head (head (getidx roll 1))) "roll") "score-roll: a roll layer"
 check (== (length (getidx (head (getidx roll 1)) 2)) 7) "score-roll: one bar per event"
 check (equal? (event-lanes (list (record (list 'at 0 'dur 2)) (record (list 'at 1 'dur 1)) (record (list 'at 3 'dur 1)))) (list 0 1 0)) "event-lanes: overlaps get their own lane"
 var bar (head (getidx (head (getidx roll 1)) 2))
-check (== (length bar) 10) "score-roll: a bar is row start dur label tip group lane lanes midi dyn"
+check (== (length bar) 11) "score-roll: a bar is row start dur label tip group lane lanes midi dyn event-id"
 check (== (getidx bar 8) -1) "score-roll: an unpitched event has no pitch"
+check (== (last (head (getidx roll 1))) (register-score s)) "score-roll: carries the score's number"
+check (equal? (displayed-score (register-score s)) s) "displayed-score"
+check (equal? (type (play-event (register-score s) (get e1 'id))) "nil") "play-event: one event, alone"
+check (contains? (error-of (function () (play-event (register-score s) 999))) "no event") "play-event: unknown event"
 check (equal? (map (getidx (head (getidx roll 1)) 1) last) (list "none" "none" "none" "none")) "score-roll: unpitched rows have no clef"
 save-png roll "/tmp/musil_test_roll.png" 600 300
 check (exists? "/tmp/musil_test_roll.png") "the roll draws"

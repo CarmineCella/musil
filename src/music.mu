@@ -290,11 +290,39 @@ function score-roll (s) {
             var e (head pair)
             var kind (get e 'kind)
             var tip (if (equal? kind 'note) (concat (get e 'pitch) " " (get e 'dyn) " " (get e 'tech) (if (!= (opt e 'shift 0) 0) (concat " (shifted " (str (opt e 'shift 0)) ")") "")) (concat "az " (str (get e 'az)) " el " (str (get e 'el))))
-            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (opt e 'midi -1) (opt e 'dyn ""))
+            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (opt e 'midi -1) (opt e 'dyn "") (get e 'id))
         })
         set r (+ r 1)
     })
-    return (list (get s 'name) (list (list "roll" row-specs bars)) (list (list "xlabel" "time (s)")))
+    return (list (get s 'name) (list (list "roll" row-specs bars (register-score s))) (list (list "xlabel" "time (s)")))
+}
+# --- scores on display: a registry, so that a window can name a score and an event to play -------------------
+var displayed-scores (list)
+# (register-score s)       remember a score under a number (the roll carries it); => the number
+function register-score (s) {
+    var hit (find-first displayed-scores (function (p) (equal? (last p) s)))
+    if (not (equal? (type hit) "nil")) { return (head hit) }
+    var id (+ 1 (length displayed-scores))
+    push displayed-scores (list id s)
+    return id
+}
+# (displayed-score id)     the score registered under a number
+function displayed-score (id) (get displayed-scores id)
+# (play-event score-id event-id)   play one event of a displayed score, alone (a double-click in the roll does this)
+function play-event (score-id event-id) {
+    var s (displayed-score score-id)
+    var e (find-first (get s 'events) (function (x) (== (get x 'id) event-id)))
+    if (equal? (type e) "nil") { error "play-event: no event " event-id }
+    if (not (opt (audio-status) "open" 0)) { audio-init }
+    var sr (audio-sr)
+    if (equal? (get e 'kind) 'synth) {
+        var id (synth (get e 'source))
+        each (get e 'params) (function (p) (set-param id (head p) (last p)))
+        note id (get e 'dur)
+        return nil
+    }
+    play-buffer (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr 1 0 1 0 (+ (audio-time) 0.05)
+    return nil
 }
 # (event-lanes events)     a lane number per event such that events sharing a lane do not overlap in time
 function event-lanes (events) {

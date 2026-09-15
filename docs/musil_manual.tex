@@ -1003,13 +1003,16 @@ stream, naming the event; \musil{play} and \musil{play-file} of \texttt{live} st
 buffer or a file.
 
 \textbf{The roll} (\musil{display}) draws the score like music: one staff per instrument
-for the notes, in orchestral order (a treble or bass clef by the instrument's range, ledger
-lines, sharps, dynamics under the notes), then a line per kind (files, buffers, synths,
-calls); every event is a head at its onset and a line of the same colour for its duration.
-A D and the wheel pan and zoom in time, W S and Z X scroll and zoom the rows, R resets;
-hovering shows an event's data and the time; a red cursor follows \musil{play-score}
-(through \musil{playhead}, which any player of a score can set). It is a view: the score
-lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
+for the notes, in orchestral order, with a drawn treble or bass clef chosen by the
+instrument's range, ledger lines, sharps, and the dynamics under the staff where they
+change and there is room for them; then a line per kind (files, buffers, synths, calls);
+every event is a head at its onset and a thin line of the same colour for its duration
+(a line stops short of a following note's sharp). A D pan and \texttt{+} \texttt{-} zoom in
+time, W S scroll and Z X zoom the rows, R resets; the wheel scrolls rows (sideways, or with
+Shift, time; with Ctrl it zooms), and scrollbars show the visible part once zoomed;
+hovering shows an event's data and the time; a double-click plays that event alone; a red
+cursor follows \musil{play-score} (through \musil{playhead}, which any player of a score
+can set). It is a view: the score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
 \musil{event-place!} edit one event.
