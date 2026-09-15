@@ -2,11 +2,11 @@
 # The notes are the first phrase of the chorale "O Haupt voll Blut und Wunden" as Bach harmonised
 # it (BWV 244/54, the first four bars, in D minor), the four voices on violin, oboe, horn and
 # cello; then a sound file, a buffer, a synth and a function join in.
-# Usage: musil simple_score.mu      (renders, opens the player, and plays when at a terminal)
+# Usage: musil simple_score.mu      (renders and opens the roll: Play there)
 load "music.mu"
 
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+# var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 var s (score "chorale" 44100)
 var q 0.6                                  # a quarter note, in seconds (100 bpm)
 
@@ -47,4 +47,4 @@ score-print s
 render s "/tmp/musil_chorale.wav" "stereo"
 print "wrote /tmp/musil_chorale.wav"
 display s                                  # the player: Play from the cursor, drag the bars, Render..., Export...
-#if (interactive?) { play-score s 0.7 }
+# play it: press Play in the roll (or (play-score s 0.8) here)

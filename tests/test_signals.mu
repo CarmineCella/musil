@@ -272,6 +272,7 @@ var hall (concerthall (sine sr 440 0.1) sr 0.7 0.3)
 check (== (length hall) 2) "concerthall: stereo"
 check (> (length (head hall)) (* 2 sr)) "concerthall: the tail of the Concertgebouw follows"
 check (> (rms (take (head hall) 800)) 0.2) "concerthall: the dry part is there"
+check (near? (sqrt (sum (* (head (hall-ir 44100)) (head (hall-ir 44100))))) 1 0.02) "hall-ir: the response has unit energy at its own rate (the wet part keeps the level)"
 check (contains? (find-file "hall_concertgebouw.wav") "hall_concertgebouw") "the hall's response ships with the libraries"
 
 # --- spatial ---

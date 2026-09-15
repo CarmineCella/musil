@@ -213,6 +213,12 @@ check (> end (audio-time)) "score-play-now: returns at once with the end time"
 check (head (playhead)) "score-play-now: the playhead is on"
 stop-score
 check (not (head (playhead))) "stop-score: the playhead is off"
+var rh (render-hall s2 "/tmp/musil_test_hall.wav")
+check (== (length rh) 2) "render-hall: stereo in the hall"
+check (<= (max-of (map rh (function (c) (max (abs c))))) 0.981) "render-hall: never above 0.98"
+check (> (length (head rh)) (length (head (score-render s2 "stereo")))) "render-hall: the hall's tail follows"
+check (== (head (read-wav "/tmp/musil_test_hall.wav")) 44100) "render-hall: the file"
+check (== (length (roll-render (register-score s2) "/tmp/musil_test_hall2.wav")) 2) "roll-render: by the score's number"
 var sched (score-schedule s2 1 0.7)
 check (== (length sched) 3) "score-schedule: synths, end, start (the live way)"
 check (> (getidx sched 1) (getidx sched 2)) "score-schedule: ends after it starts"

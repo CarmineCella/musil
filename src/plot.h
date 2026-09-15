@@ -714,7 +714,17 @@ inline void plot_open_window(figure f, int w, int h) {
     for (auto& L : pw->f.layers) if (L.kind == "roll") pw->has_roll = true;
     if (pw->has_roll) Fl::add_timeout(0.05, plot_widget::follow_playhead, pw);
     Fl_Button* exp = new Fl_Button(8, 5, 90, 24, "Export..."); exp->callback(plot_export_cb, pw); exp->clear_visible_focus(); exp->tooltip("the figure as shown, to a PNG file");
-    if (pw->has_roll) { pw->play_btn = new Fl_Button(106, 5, 70, 24, "Play"); pw->play_btn->callback([](Fl_Widget*, void* d) { ((plot_widget*)d)->roll_toggle(); }, pw); pw->play_btn->clear_visible_focus(); pw->play_btn->tooltip("play the score from the cursor (Space); click in the background to place the cursor"); }
+    if (pw->has_roll) {
+        pw->play_btn = new Fl_Button(106, 5, 70, 24, "Play"); pw->play_btn->callback([](Fl_Widget*, void* d) { ((plot_widget*)d)->roll_toggle(); }, pw); pw->play_btn->clear_visible_focus(); pw->play_btn->tooltip("play the score from the cursor (Space); click in the background to place the cursor");
+        Fl_Button* rb = new Fl_Button(184, 5, 90, 24, "Render..."); rb->clear_visible_focus(); rb->tooltip("the score in the concert hall, as a WAV file");
+        rb->callback([](Fl_Widget*, void* d) {
+            plot_widget* w = (plot_widget*)d; if (!plot_submit() || w->score_id() < 0) return;
+            Fl_Native_File_Chooser ch; ch.title("Render the score to a WAV"); ch.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE); ch.filter("WAV\t*.wav"); ch.preset_file((w->f.title + ".wav").c_str()); ch.options(Fl_Native_File_Chooser::SAVEAS_CONFIRM);
+            if (ch.show() != 0) return; std::string path = ch.filename(); if (path.size() < 4 || path.substr(path.size() - 4) != ".wav") path += ".wav";
+            std::string q = "\""; for (char c : path) { if (c == '"' || c == '\\') q += '\\'; q += c; } q += "\"";
+            plot_submit()("(roll-render " + std::to_string(w->score_id()) + " " + q + ")");
+        }, pw);
+    }
     win->resizable(pw); win->end(); win->size_range(300, 200);
     win->callback([](Fl_Widget* wd, void*) { wd->hide(); });
     plot_windows().push_back(win); win->show(); pw->take_focus();

@@ -219,8 +219,10 @@ function score-play-now (s gain from) {
     var mix (score-render-at s "stereo" sr)
     var rv (opt s 'reverb (list 0.7 0.3))
     var hall (concerthall mix sr (head rv) (last rv))
+    var peak (max-of (map hall (function (c) (max (abs c)))))
+    var norm (if (> (* gain peak) 0.98) (/ 0.98 peak) gain)                  # never clip: scaled down when the hall's tail pushes it over
     var skip (floor (* from sr))
-    var out (map hall (function (c) (* gain (drop c (min skip (length c))))))
+    var out (map hall (function (c) (* norm (drop c (min skip (length c))))))
     var t0 (+ (audio-time) 0.1)
     play-buffer out sr 1 0 1 0 t0
     var end (+ t0 (/ (length (head out)) sr))
@@ -335,9 +337,23 @@ function register-score (s) {
 }
 # (displayed-score id)     the score registered under a number
 function displayed-score (id) (get displayed-scores id)
-# (roll-play score-id from) start a displayed score from a time (the roll's Play button); (roll-stop) stops it
+# (roll-play score-id from) start a displayed score from a time (the roll's Play button); (roll-stop) stops it;
+#   (roll-render score-id path) the score in the hall as a WAV (the roll's Render button)
 function roll-play (score-id from) (score-play-now (displayed-score score-id) 1 from)
 function roll-stop () (stop-score)
+function roll-render (score-id path) (render-hall (displayed-score score-id) path)
+# (render-hall s path)     the score rendered in stereo through the concert hall (score-reverb!), written as a WAV,
+#                          scaled so that it never clips; => the channels
+function render-hall (s path) {
+    var sr (get s 'sr)
+    var rv (opt s 'reverb (list 0.7 0.3))
+    var hall (concerthall (score-render s "stereo") sr (head rv) (last rv))
+    var peak (max-of (map hall (function (c) (max (abs c)))))
+    var out (if (> peak 0.98) (map hall (function (c) (* (/ 0.98 peak) c))) hall)
+    write-wav path sr out
+    print "rendered" path "(in the hall)"
+    return out
+}
 # (play-event score-id event-id)   play one event of a displayed score, alone (a double-click in the roll does this)
 function play-event (score-id event-id) {
     var s (displayed-score score-id)
@@ -352,7 +368,9 @@ function play-event (score-id event-id) {
         return nil
     }
     var rv (opt s 'reverb (list 0.7 0.3))
-    play-buffer (concerthall (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr (head rv) (last rv)) sr 1 0 1 0 (+ (audio-time) 0.05)
+    var hall (concerthall (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr (head rv) (last rv))
+    var peak (max-of (map hall (function (c) (max (abs c)))))
+    play-buffer hall sr (if (> peak 0.98) (/ 0.98 peak) 1) 0 1 0 (+ (audio-time) 0.05)
     return nil
 }
 # (event-lanes events)     a lane number per event such that events sharing a lane do not overlap in time

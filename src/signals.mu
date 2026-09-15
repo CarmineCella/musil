@@ -483,7 +483,11 @@ function converb (x ir dry wet) {
 var hall-cache nil
 # (hall-ir sr)             the impulse response of the Concertgebouw (Amsterdam), shipped with the libraries, at a rate
 function hall-ir (sr) {
-    if (equal? (type hall-cache) "nil") { set hall-cache (read-wav (find-file "hall_concertgebouw.wav")) }
+    if (equal? (type hall-cache) "nil") {
+        var w (read-wav (find-file "hall_concertgebouw.wav"))
+        var energy (max-of (map (getidx w 1) (function (c) (sqrt (sum (* c c))))))    # the response scaled to unit energy: wet keeps the input's level
+        set hall-cache (list (head w) (map (getidx w 1) (function (c) (/ c energy))))
+    }
     return (map (getidx hall-cache 1) (function (c) (resample-to c (head hall-cache) sr)))
 }
 # (concerthall x sr dry wet)   x (a vector or channels, at sr) in the Concertgebouw: converb with the shipped response;

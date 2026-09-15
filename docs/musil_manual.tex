@@ -1020,7 +1020,9 @@ Shift, time; with Ctrl it zooms), and scrollbars show the visible part once zoom
 hovering shows an event's data and the time; a double-click plays that event alone; a
 click in the background places the cursor, \textbf{Play} (or Space) plays the score from
 it, in the hall, \textbf{Stop} stops, and the red playhead follows (any \musil{play-score}
-too, through \musil{playhead}). It is a player of the code's score, not an editor: the
+too, through \musil{playhead}); \textbf{Render...} asks for a file name and writes the
+score in the hall (\musil{render-hall}), scaled so that it never clips, as \musil{play-score}
+is. It is a player of the code's score, not an editor: the
 score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},

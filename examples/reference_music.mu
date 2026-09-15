@@ -102,5 +102,6 @@ print "db-available    :" (length (db-available db)) "sounds on disk; db-instrum
 print "db-gen          :" (db-gen (get db 'root) "/tmp/musil_reference_gen.db" "mfcc" 2048 256 13) "sounds analysed into /tmp/musil_reference_gen.db (mfcc, 13); db-make generates and loads"
 print "play-score      : (play-score s gain) renders the score, puts it in the concert hall (score-reverb!) and plays it; (play-score-from s gain from) from a time"
 print "score-play-now  : starts and returns (the roll's Play); stop-score stops; playhead reads the cursor"
+print "render-hall     :" (length (render-hall s2 "/tmp/musil_reference_hall.wav")) "channels in the hall, to a file (the roll's Render...)"
 print "score-schedule  : the live way, every event on the clock (synths compiled, no hall); returns the synths to free"
 print "db-merge        :" (db-size (db-merge (list db db))) "entries out of two databases (or (db-load (list \"a.db\" \"b.db\")))"

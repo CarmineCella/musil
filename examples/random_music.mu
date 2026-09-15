@@ -5,8 +5,8 @@
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 7)
 
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+# var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 print "database:" (db-size db) "entries;" (length (db-available db)) "sounds on disk (missing pitches are shifted from the nearest)"
 
 # --- the generator: density in notes per second, a range of durations, instruments with their pitch ranges ----
@@ -34,11 +34,11 @@ function random-notes (db secs density instruments dyns techs durs) {
     return (sort-by out head)
 }
 
-# --- a score of thirty seconds: every instrument, dynamic and technique the database has (nil = all of them);
+# --- a score of a minute, 1.5 notes a second, 0.3 to 5 s each: every instrument, dynamic and technique the database has (nil = all of them);
 #     give lists instead to choose: (random-notes db 30 3.5 (list 'Vn 'Vc) (list 'pp 'mf) (list 'ord) (list 0.4 2.5))
 print "instruments:" (db-instruments-available db) " dynamics:" (db-dynamics db) " techniques:" (db-techniques db)
 var s (score "random" 44100)
-each (random-notes db 30 3.5 nil nil nil (list 0.4 2.5)) (function (n) {
+each (random-notes db 60 1.5 nil nil nil (list 0.3 5)) (function (n) {
     var e (event s (head n) (getidx n 1) (last n))
     event-place! e (- (* 120 (rand)) 60) 0                  # each note somewhere between left and right
     event-gain! e (if (equal? (get e 'dyn) "pp") 0.5 (if (equal? (get e 'dyn) "mf") 0.8 1))
@@ -50,7 +50,4 @@ var dry (render s "/tmp/musil_random.wav" "stereo")
 write-wav "/tmp/musil_random_hall.wav" 44100 (normalize-peak-stereo (concerthall dry 44100 0.7 0.3))
 print "wrote /tmp/musil_random.wav (stereo, dry) and /tmp/musil_random_hall.wav (in the Concertgebouw: concerthall)"
 display s
-if (interactive?) {
-    print "playing (play-score puts every score in the hall; score-reverb! sets how much)..."
-    play-score s 0.8
-}
+# play it: press Play in the roll, or (play-score s 0.8) here; score-reverb! sets how much of the hall is heard

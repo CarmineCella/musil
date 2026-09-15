@@ -62,5 +62,7 @@ db-available    : 32 sounds on disk; db-instruments-available: (Ob Hn Vn Vc)
 db-gen          : 32 sounds analysed into /tmp/musil_reference_gen.db (mfcc, 13); db-make generates and loads
 play-score      : (play-score s gain) renders the score, puts it in the concert hall (score-reverb!) and plays it; (play-score-from s gain from) from a time
 score-play-now  : starts and returns (the roll's Play); stop-score stops; playhead reads the cursor
+rendered /tmp/musil_reference_hall.wav (in the hall)
+render-hall     : 2 channels in the hall, to a file (the roll's Render...)
 score-schedule  : the live way, every event on the clock (synths compiled, no hall); returns the synths to free
 db-merge        : 64 entries out of two databases (or (db-load (list "a.db" "b.db")))
