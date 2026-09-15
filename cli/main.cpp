@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     }
 #ifdef MUSIL_HAS_FLTK
     // a script that opened plot or controls windows: keep them (and the loops, the port) alive until they are closed
-    while (musil::plot_windows_open() > 0 || musil::controls_window_open()) { I.idle(); Fl::wait(0.05); }
+    while (musil::plot_windows_open() > 0 || musil::controls_window_open() || musil::player_window_open()) { I.idle(); Fl::wait(0.05); }
 #endif
     musil::live_shutdown();
     return 0;

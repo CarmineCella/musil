@@ -34,6 +34,9 @@ inline vptr sys_getenv(vlist& a, Interp& i) { const char* v = std::getenv(i.str(
 // (find-file "name") => the path of a file as load resolves it (the current directory, the file being run, the
 //   load path: MUSIL_PATH, ~/.musil, the libraries), or "" when not found
 inline vptr sys_find_file(vlist& a, Interp& i) { return v_str(i.find_file(i.str(a[0]))); }
+// (resolve-path "name") => the path a reading function would open for a relative name: as given if it exists from the
+//   current directory, else next to the file being run, else next to the program that was started
+inline vptr sys_resolve_path(vlist& a, Interp& i) { return v_str(i.read_path(i.str(a[0]))); }
 // (interactive?) => is the standard input a terminal? (a script asks before prompting for input)
 inline vptr sys_interactive(vlist&, Interp&) {
 #ifndef _WIN32
@@ -241,7 +244,7 @@ inline void add_serve(Interp& i) {         // called by add_system: the port is 
 
 inline void add_system(Interp& i) {
     i.def("exec", sys_exec, 1, 1); i.def("getenv", sys_getenv, 1, 1); i.def("sleep", sys_sleep, 1, 1); i.def("interactive?", sys_interactive, 0, 0); i.def("now", sys_now, 0, 0);
-    i.def("find-file", sys_find_file, 1, 1);
+    i.def("find-file", sys_find_file, 1, 1); i.def("resolve-path", sys_resolve_path, 1, 1);
     add_serve(i);
     i.def("cwd", sys_cwd, 0, 0); i.def("ls", sys_ls, 0, 1); i.def("mkdir", sys_mkdir, 1, 1); i.def("remove", sys_remove, 1, 1); i.def("stat", sys_stat, 1, 1);
     i.def("read-csv", sys_read_csv, 1, 1);

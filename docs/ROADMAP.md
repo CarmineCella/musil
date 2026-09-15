@@ -16,6 +16,8 @@ src/scientific.h .mu  matrices (a list of row vectors), decompositions, PCA, NMF
 src/signals.h  .mu    generators, FFT/STFT, phase vocoder (pvoc), descriptors, filters, reverb
 src/live.h  live.mu   audio device (miniaudio), voices, synths (functions compiled to graphs),
                       scheduler (loops in beats), controls, OSC; src/live/miniaudio.h vendored
+src/music.h music.mu  the score (events: files, buffers, notes, synths, calls), render/play/display,
+                      SOL-like databases (db-load reads the feature file; sounds opened on demand)
 src/plot.h  plot.mu   figures (FLTK windows, PNG export), subplots; src/controls.h the controls window
 src/musil.h           umbrella: make_env registers every library
 cli/main.cpp          musil [-i] [-e code] [--serve PORT] [--send PORT [file]] files...
@@ -87,19 +89,21 @@ cmake --build build --target uninstall
 - `conv` is one big FFT offline (faster than partitioned) and partitioned when streaming.
 - A control is a named value with a range bound to synth parameters; controls die with the device.
 
-## Roadmap (next: music)
+## Roadmap (music: round one done)
 
-1. **Score and rendering**: a score is a typed event list (onset, duration, payload, position);
-   payloads are buffers (eager: `(event score t dur (pvoc-stretch x 2))` stores the buffer), note
-   records `(note 'Fl 'A5 'pp 'ord)` resolved against a database at render/play time, synth events
-   (a function and its parameters). `render` = resolve + `mix` (any channel layout, positions encoded
-   at the edge: stereo, N speakers, ambisonics); `play-score` schedules through `live`; save/load as
-   text; transformations (transpose, time-scale, select, merge, quantise). Generators are functions
-   returning events (`orchestrate`, the granulator); no quoting anywhere.
-2. **Dataset** (SOL and the like): scan, parse names, table of records, descriptors from `signals`
-   cached as CSV, `db-query`; notes resolve to samples.
-3. **Roll and export**: a `segments` layer in `plot`, `score-plot` (time × pitch, instrument colours,
-   dynamics), MIDI and MusicXML export.
+1. **Score and rendering** (done): a score is a record of events (onset, duration, kind, source,
+   gain, azimuth/elevation); events hold files, buffers, notes, synths (`instrument`) and calls;
+   `render` to any layout (mono, stereo, binaural, ambi N, a ring, N channels), `play` through live,
+   `display` as the player (src/player.h): the roll with Play from a cursor, drag-editing of the
+   events, Render and Export (a Musil file defining `(generated-score)`); the window hands every
+   action to the interpreter as Musil through `player_submit`.
+2. **Dataset** (done for SOL-like layouts): `db-load` reads the feature file (metadata from the file
+   names, features in C++); sounds are opened on demand and cached; `note` resolves to the nearest
+   available sound and shifts it. `db-gen` makes a feature file from a folder (Orchidea's dbgen,
+   reproduced exactly); queries: db-query with lists, db-grep, db-find, db-between, db-nearest.
+   The repository bundles MicroSOL (examples/data/microsol, the *SOL layout: X.spectrum.db next to X/);
+   the full TinySOL is a release asset that fetch_tinysol.sh puts in datasets/ (git-ignored).
+3. **Roll and export**: the roll is done (a `roll` layer in `plot`); MIDI and MusicXML export remain.
 4. **Generators**: random score generator, orchestral granulator.
 5. **C++ ports**, each as a C++ core + Musil surface returning events: sound types, Maple (matching
    pursuit), Orchidea (assisted orchestration).

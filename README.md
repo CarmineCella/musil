@@ -98,6 +98,26 @@ A complete release, from a clean tree (this is what the release assets are made 
 git tag -a v<version> -m "Musil <version>" && git push --tags   # then attach the zip, the tarball and the PDF to the GitHub release
 ```
 
+## Sample databases
+
+The `music` library loads databases in the *SOL layout (Ircam's TinySOL, OrchideaSOL, FullSOL):
+a feature file next to a folder of the same name holding the sounds by family and instrument,
+
+```
+datasets/
+  TinySOL.spectrum.db        first line: type block hop ncoeff; then path;feature;feature;...
+  TinySOL/Strings/Violin/ordinario/Vn-ord-C4-mf-4c-N.wav ...
+```
+
+with `(db-load "path/to/TinySOL.spectrum.db")`; the file names carry instrument, technique,
+pitch and dynamics; `db-gen` makes such a feature file from any folder of sounds. The
+repository bundles **MicroSOL** (`examples/data/microsol`: oboe, horn, violin, cello, C4-G4,
+32 sounds) so that every example and test runs from a fresh clone. The full sets are large
+and are not in git: `./fetch_tinysol.sh` downloads TinySOL (about 800 MB, a release asset)
+into `datasets/`, which git ignores; any other *SOL set goes there by hand. The examples use
+MicroSOL by default and each has a commented `db-load` line for `../datasets/TinySOL.spectrum.db`;
+switching is that one line.
+
 The version number lives in one place, `MUSIL_VERSION` in `src/core.h`; CMake, the deploy
 scripts, the VS Code extension and the manual read it from there.
 
@@ -123,6 +143,9 @@ or the operating system and a `.mu` file for what is better written in Musil its
   descriptors, filters and reverb, onsets, harmonic/percussive and NMF separation, and space:
   ambisonics (encode, rotate, decode), speaker rings, binaural for headphones with the
   measured KEMAR HRTFs (MIT Media Lab, shipped);
+- **music**: the score (files, buffers, notes from a sample database, synths, any function,
+  placed in time), rendered to any layout, played live, shown as a roll; SOL-like databases
+  loaded by their feature file, or made from a folder of sounds (`db-gen`);
 - **live**: real-time sound: an audio device, a sample-accurate clock, voices that play
   buffers and files scheduled ahead of time, and synths: an instrument is an ordinary
   function of its parameters (oscillators, envelopes, filters, delays, convolution, pan),

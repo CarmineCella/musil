@@ -15,3 +15,6 @@ src/help.txt
 .DS_Store
 .vscode/
 .idea/
+
+# full sample databases fetched by fetch_tinysol.sh, or placed there by hand (see examples/data/microsol/README.md)
+datasets/

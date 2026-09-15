@@ -23,6 +23,8 @@
 #include <FL/Fl_Widget.H>
 #include <FL/Fl_Image_Surface.H>
 #include <FL/Fl_RGB_Image.H>
+#include <FL/Fl_Button.H>
+#include <FL/Fl_Native_File_Chooser.H>
 #include <FL/fl_draw.H>
 #include <FL/platform.H>
 #include <cstdio>
@@ -32,7 +34,9 @@ namespace musil {
 
 // --- figure description, validated once ---
 struct figure;
-struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; };
+// A roll: rows (labels) and bars (row, start, duration, a lane within the row) with a tooltip
+struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; vptr at_ref, dur_ref; };   // the refs: the numbers the bar was made from (the player edits them)
+struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows; std::vector<roll_bar> bars; };
 struct figure {
     std::string title, xlabel, ylabel;
     std::vector<plot_layer> layers;
@@ -59,6 +63,18 @@ inline figure parse_figure(const vptr& v) {
         } else if (p.kind == "subplot") {
             if (L->l.size() < 2) plot_fail("subplot: needs a figure");
             p.sub = std::make_shared<figure>(parse_figure(L->l[1]));
+        } else if (p.kind == "roll") {
+            // (list "roll" rows bars): rows a list of strings; a bar (list row start dur label tip group [lane lanes])
+            if (L->l.size() < 3 || L->l[1]->t != Value::LIST || L->l[2]->t != Value::LIST) plot_fail("roll: needs rows and bars");
+            for (auto& r : L->l[1]->l) p.rows.push_back(str_of(r));
+            for (auto& b : L->l[2]->l) {
+                if (b->t != Value::LIST || b->l.size() < 3) plot_fail("roll: a bar is (list row start dur label tip group)");
+                roll_bar bar; bar.row = (int)b->l[0]->num[0]; bar.start = b->l[1]->num[0]; bar.dur = b->l[2]->num[0];
+                if (b->l.size() > 3) bar.label = str_of(b->l[3]); if (b->l.size() > 4) bar.tip = str_of(b->l[4]); if (b->l.size() > 5) bar.group = (int)b->l[5]->num[0];
+                if (b->l.size() > 7) { bar.lane = (int)b->l[6]->num[0]; bar.lanes = std::max(1, (int)b->l[7]->num[0]); }
+                if (b->l.size() > 9 && b->l[8]->t == Value::NUM && b->l[9]->t == Value::NUM) { bar.at_ref = b->l[8]; bar.dur_ref = b->l[9]; }
+                p.bars.push_back(bar);
+            }
         } else if (p.kind == "image" || p.kind == "surface") {
             if (L->l.size() < 2 || L->l[1]->t != Value::LIST || L->l[1]->l.empty()) plot_fail(p.kind + ": needs a matrix (list of rows)");
             size_t c = 0;
@@ -89,6 +105,7 @@ inline void figure_range(const figure& f, double& xmin, double& xmax, double& ym
     for (auto& L : f.layers) {
         if (L.kind == "image") { image = true; xmin = std::min(xmin, 0.0); xmax = std::max(xmax, (double)L.m[0].size()); ymin = std::min(ymin, 0.0); ymax = std::max(ymax, (double)L.m.size()); continue; }
         if (L.kind == "surface") continue;
+        if (L.kind == "roll") { image = true; xmin = std::min(xmin, 0.0); for (auto& b : L.bars) xmax = std::max(xmax, b.start + b.dur); ymin = 0; ymax = std::max(ymax, (double)std::max<size_t>(1, L.rows.size())); if (xmax <= 0) xmax = 1; xmax *= 1.02; continue; }
         for (size_t k = 0; k < L.x.size(); k++) { xmin = std::min(xmin, L.x[k]); xmax = std::max(xmax, L.x[k]); ymin = std::min(ymin, L.y[k]); ymax = std::max(ymax, L.y[k]); }
         if (L.kind == "bars") { ymin = std::min(ymin, 0.0); if (L.x.size() > 1) { double bw = L.x[1] - L.x[0]; xmin = std::min(xmin, L.x[0] - bw / 2); xmax = std::max(xmax, L.x[L.x.size()-1] + bw / 2); } }
     }
@@ -139,6 +156,7 @@ struct plot_view {
     float angle = 0.9f, pitch = 0.6f, dist = 2.6f, tx = 0, ty = 0, tz = 0;
     bool has_cursor = false; double cx = 0, cy = 0;
     bool has_pick = false; double px = 0, py = 0; std::string pick_label;
+    double row_scale = 1, row_offset = 0;             // the roll: vertical zoom (1 = every row fits) and the first row shown
 };
 
 // --- 2D drawing into the rectangle (ox, oy, w, h) of the current FLTK drawing surface ---
@@ -218,6 +236,71 @@ inline void render_2d(const figure& f, int ox, int oy, int w, int h, const plot_
     if (view.zoomed) { fl_font(FL_HELVETICA, fs - 2); fl_color(130, 130, 130); fl_draw("zoomed: 0 resets", ox + w - 120, oy + h - 8); }
 }
 
+// --- the roll: rows of bars in time (a score), with the hovered bar's tooltip -----------------
+struct roll_geom { int left, top; double pw, ph, xmin, xmax; int rows; double row_h; int top_rows; };
+inline roll_geom roll_geometry(const figure& f, int ox, int oy, int w, int h, const plot_view& view) {
+    roll_geom g; g.left = ox + 110; g.top = oy + (f.title.empty() ? 16 : 34); g.pw = w - 110 - 20; g.ph = h - (f.title.empty() ? 16 : 34) - 44;
+    double ymin, ymax; figure_range(f, g.xmin, g.xmax, ymin, ymax);
+    if (view.zoomed) { g.xmin = view.xmin; g.xmax = view.xmax; }
+    g.rows = 1; for (auto& L : f.layers) if (L.kind == "roll") g.rows = std::max<int>(1, (int)L.rows.size());
+    g.row_h = g.ph / g.rows * std::max(1.0, view.row_scale); g.top_rows = g.top - (int)(view.row_offset * g.row_h); return g;
+}
+inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
+    fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
+    const int fs = 13; roll_geom g = roll_geometry(f, ox, oy, w, h, view);
+    auto X = [&](double x) { return g.left + (x - g.xmin) / (g.xmax - g.xmin) * g.pw; };
+    fl_font(FL_HELVETICA, fs);
+    if (!f.title.empty()) { fl_font(FL_HELVETICA_BOLD, fs + 1); fl_color(40, 40, 40); fl_draw(f.title.c_str(), g.left + (int)((g.pw - fl_width(f.title.c_str())) / 2), oy + 8 + fs); fl_font(FL_HELVETICA, fs); }
+    // rows: alternate bands and the labels
+    fl_push_clip(ox, g.top, w, (int)g.ph);
+    for (int r = 0; r < g.rows; r++) {
+        int y = g.top_rows + (int)(r * g.row_h);
+        fl_color(r % 2 ? 244 : 250, r % 2 ? 244 : 250, r % 2 ? 242 : 250); fl_rectf(g.left, y, (int)g.pw, (int)std::ceil(g.row_h));
+        if (r < (int)L.rows.size()) { fl_font(FL_HELVETICA, std::min(fs, (int)g.row_h - 2)); fl_color(60, 60, 60); fl_draw(L.rows[r].c_str(), ox + 8, y + (int)(g.row_h / 2) + 4); }
+    }
+    fl_pop_clip();
+    // the time grid
+    double sx = nice_step(g.xmax - g.xmin, 8); fl_font(FL_HELVETICA, fs - 2);
+    for (double t = std::ceil(g.xmin / sx) * sx; t <= g.xmax + 1e-9 * sx; t += sx) {
+        int px = (int)X(t); fl_color(225, 225, 225); fl_line(px, g.top, px, g.top + (int)g.ph);
+        std::string sl = tick_label(t); fl_color(80, 80, 80); fl_draw(sl.c_str(), px - (int)(fl_width(sl.c_str()) / 2), g.top + (int)g.ph + fs + 2);
+    }
+    fl_color(120, 120, 120); fl_rect(g.left, g.top, (int)g.pw, (int)g.ph);
+    fl_font(FL_HELVETICA, fs); fl_color(60, 60, 60); fl_draw((f.xlabel.empty() ? "time (s)" : f.xlabel).c_str(), g.left + (int)(g.pw / 2) - 20, oy + h - 6);
+    // the bars
+    fl_push_clip(g.left, g.top, (int)g.pw, (int)g.ph);
+    for (size_t k = 0; k < L.bars.size(); k++) {
+        const roll_bar& b = L.bars[k]; if (b.row < 0 || b.row >= g.rows) continue;
+        double lane_h = g.row_h / b.lanes; int bar_h = std::max(3, (int)(lane_h * 0.75)), pad = (int)((lane_h - bar_h) / 2);
+        int x0 = (int)X(b.start), x1 = (int)X(b.start + b.dur), y = g.top_rows + (int)(b.row * g.row_h + b.lane * lane_h) + pad; if (x1 <= x0) x1 = x0 + 1;
+        bool hot = view.has_pick && (size_t)view.px == k;
+        rgb c = plot_palette((size_t)b.group); if (hot) c = { 30, 30, 30 };
+        plot_color(c); fl_rectf(x0, y, x1 - x0, bar_h);
+        if (x1 - x0 > 24 && bar_h >= 10) { fl_font(FL_HELVETICA, std::min(fs - 1, bar_h - 2)); fl_color(255, 255, 255); fl_push_clip(x0 + 2, y, x1 - x0 - 6, bar_h); fl_draw(b.label.c_str(), x0 + 4, y + bar_h / 2 + 4); fl_pop_clip(); }
+    }
+    fl_pop_clip();
+    // the tooltip of the hovered bar, and the cursor time
+    fl_font(FL_HELVETICA, fs - 1);
+    if (view.has_cursor) {
+        std::string ss = "t = " + tick_label(view.cx) + " s";
+        if (view.has_pick && (size_t)view.px < L.bars.size()) { const roll_bar& b = L.bars[(size_t)view.px]; ss += "   " + b.label + "   at " + tick_label(b.start) + " s, " + tick_label(b.dur) + " s" + (b.tip.empty() ? "" : "   " + b.tip); }
+        int tw = (int)fl_width(ss.c_str()) + 12;
+        fl_color(255, 255, 240); fl_rectf(g.left + 4, g.top + 4, std::min(tw, (int)g.pw - 8), fs + 6); fl_color(120, 120, 120); fl_rect(g.left + 4, g.top + 4, std::min(tw, (int)g.pw - 8), fs + 6);
+        fl_color(40, 40, 40); fl_push_clip(g.left + 4, g.top + 4, (int)g.pw - 8, fs + 6); fl_draw(ss.c_str(), g.left + 10, g.top + 4 + fs); fl_pop_clip();
+    }
+    if (view.zoomed) { fl_font(FL_HELVETICA, fs - 2); fl_color(130, 130, 130); fl_draw("zoomed: 0 resets", ox + w - 120, oy + h - 8); }
+}
+// hit test: the bar under (mx, my)
+inline int roll_hit(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view, int mx, int my) {
+    roll_geom g = roll_geometry(f, ox, oy, w, h, view);
+    auto X = [&](double x) { return g.left + (x - g.xmin) / (g.xmax - g.xmin) * g.pw; };
+    for (size_t k = L.bars.size(); k-- > 0;) {
+        const roll_bar& b = L.bars[k]; double lane_h = g.row_h / b.lanes; int bar_h = std::max(3, (int)(lane_h * 0.75)), pad = (int)((lane_h - bar_h) / 2);
+        int x0 = (int)X(b.start), x1 = (int)X(b.start + b.dur), y = g.top_rows + (int)(b.row * g.row_h + b.lane * lane_h) + pad; if (x1 <= x0) x1 = x0 + 1;
+        if (mx >= x0 - 2 && mx <= x1 + 2 && my >= y && my <= y + bar_h) return (int)k;
+    }
+    return -1;
+}
 // --- 3D surface: projected and painted in software, so it draws and exports like everything else ---
 inline void render_surface(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
     fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
@@ -288,6 +371,7 @@ inline void render_figure_at(const figure& f, int ox, int oy, int w, int h, cons
         return;
     }
     for (auto& L : f.layers) if (L.kind == "surface") { render_surface(f, L, ox, oy, w, h, view); return; }
+    for (auto& L : f.layers) if (L.kind == "roll") { render_roll(f, L, ox, oy, w, h, view); return; }
     render_2d(f, ox, oy, w, h, view);
 }
 
@@ -314,8 +398,9 @@ inline void plot_key(const figure& f, plot_view& view, int key, bool shift) {
     }
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
     if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
-    double cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2, hw = (xmax - xmin) / 2, hh = (ymax - ymin) / 2;
-    auto set = [&](double a, double b, double c, double d) { view.xmin = a; view.xmax = b; view.ymin = c; view.ymax = d; view.zoomed = true; };
+    bool roll = false; for (auto& L : f.layers) if (L.kind == "roll") roll = true;
+    double cx = (xmin + xmax) / 2, cy = (ymin + ymax) / 2, hw = (xmax - xmin) / 2, hh = roll ? 0 : (ymax - ymin) / 2;
+    auto set = [&](double a, double b, double c, double d) { view.xmin = a; view.xmax = b; view.ymin = roll ? ymin : c; view.ymax = roll ? ymax : d; view.zoomed = true; };
     if (key == '+' || key == '=') set(cx - hw * 0.8, cx + hw * 0.8, cy - hh * 0.8, cy + hh * 0.8);
     if (key == '-') set(cx - hw * 1.25, cx + hw * 1.25, cy - hh * 1.25, cy + hh * 1.25);
     double step = 0.1;
@@ -330,6 +415,14 @@ inline void plot_cursor(const figure& f, plot_view& view, int ox, int oy, int w,
     view.has_cursor = false; view.has_pick = false;
     if (f.is_grid()) return;
     for (auto& L : f.layers) if (L.kind == "surface") return;
+    for (auto& L : f.layers) if (L.kind == "roll") {
+        roll_geom g = roll_geometry(f, ox, oy, w, h, view);
+        if (mx < g.left || mx > g.left + g.pw || my < g.top || my > g.top + g.ph) return;
+        view.has_cursor = true; view.cx = g.xmin + (mx - g.left) / g.pw * (g.xmax - g.xmin); view.cy = 0;
+        int k = roll_hit(f, L, ox, oy, w, h, view, mx, my);
+        if (k >= 0) { view.has_pick = true; view.px = k; view.py = 0; view.pick_label = L.bars[(size_t)k].label; }
+        return;
+    }
     int left = ox + 64, top = oy + (f.title.empty() ? 16 : 34); double pw = w - 64 - 20, ph = h - (f.title.empty() ? 16 : 34) - 44;
     if (mx < left || mx > left + pw || my < top || my > top + ph) return;
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
@@ -348,6 +441,7 @@ inline void plot_cursor(const figure& f, plot_view& view, int ox, int oy, int w,
 inline void plot_drag(const figure& f, plot_view& view, int ox, int oy, int w, int h, int dx, int dy) {
     if (f.is_grid()) return;
     bool surface = false; for (auto& L : f.layers) if (L.kind == "surface") surface = true;
+    for (auto& L : f.layers) if (L.kind == "roll") { roll_geom g = roll_geometry(f, ox, oy, w, h, view); double ddx = -dx / g.pw * (g.xmax - g.xmin); view.xmin = g.xmin + ddx; view.xmax = g.xmax + ddx; view.zoomed = true; return; }
     if (surface) { view.angle += dx * 0.01f; view.pitch = std::max(0.05f, std::min(1.5f, view.pitch - dy * 0.01f)); return; }
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
     if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
@@ -361,6 +455,8 @@ inline void plot_wheel(const figure& f, plot_view& view, int dir) {
     if (surface) { view.dist = dir < 0 ? std::max(0.6f, view.dist * 0.9f) : std::min(8.0f, view.dist * 1.1f); return; }
     double xmin, xmax, ymin, ymax; figure_range(f, xmin, xmax, ymin, ymax);
     if (view.zoomed) { xmin = view.xmin; xmax = view.xmax; ymin = view.ymin; ymax = view.ymax; }
+    bool roll = false; for (auto& L : f.layers) if (L.kind == "roll") roll = true;
+    if (roll) { double cx = view.has_cursor ? view.cx : (xmin + xmax) / 2, zf = dir < 0 ? 0.8 : 1.25; view.xmin = cx - (cx - xmin) * zf; view.xmax = cx + (xmax - cx) * zf; view.ymin = ymin; view.ymax = ymax; view.zoomed = true; return; }
     double cx = view.has_cursor ? view.cx : (xmin + xmax) / 2, cy = view.has_cursor ? view.cy : (ymin + ymax) / 2, zf = dir < 0 ? 0.8 : 1.25;
     view.xmin = cx - (cx - xmin) * zf; view.xmax = cx + (xmax - cx) * zf; view.ymin = cy - (cy - ymin) * zf; view.ymax = cy + (ymax - cy) * zf; view.zoomed = true;
 }
@@ -391,11 +487,14 @@ inline void plot_write_png(const std::string& path, const unsigned char* rgb_pix
     chunk("IHDR", ihdr); chunk("IDAT", z); chunk("IEND", "");
     std::ofstream f(path, std::ios::binary); if (!f) throw std::runtime_error("save-png: cannot write " + path); f << out;
 }
-inline void figure_to_png(const figure& f, const std::string& path, int w, int h) {
+inline void figure_to_png_view(const figure& f, const std::string& path, int w, int h, const plot_view& view);
+inline void figure_to_png(const figure& f, const std::string& path, int w, int h) { figure_to_png_view(f, path, w, h, plot_view()); }
+inline void figure_to_png_view(const figure& f, const std::string& path, int w, int h, const plot_view& view) {
     fl_open_display();
     Fl_Image_Surface surf(w, h);
     Fl_Surface_Device::push_current(&surf);
-    render_figure_at(f, 0, 0, w, h, plot_view());
+    plot_view v = view; v.has_cursor = false; v.has_pick = false;
+    render_figure_at(f, 0, 0, w, h, v);
     Fl_RGB_Image* img = surf.image();
     Fl_Surface_Device::pop_current();
     if (!img) throw std::runtime_error("save-png: cannot render offscreen");
@@ -440,12 +539,23 @@ inline void ui_style_once() {
     Fl::scheme("oxy"); Fl::background(240, 240, 238); Fl::background2(255, 255, 255); Fl::foreground(40, 40, 40);
 }
 inline std::vector<Fl_Double_Window*>& plot_windows() { static std::vector<Fl_Double_Window*> w; return w; }
+// Export...: a file dialog, then the figure as it is shown (the current zoom and view) to a PNG
+inline void plot_export_cb(Fl_Widget*, void* d) {
+    plot_widget* pw = (plot_widget*)d;
+    Fl_Native_File_Chooser ch; ch.title("Export the figure as PNG"); ch.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE); ch.filter("PNG\t*.png");
+    std::string preset = plot_save_name(pw->f); size_t sl = preset.find_last_of('/'); ch.preset_file((sl == std::string::npos ? preset : preset.substr(sl + 1)).c_str()); ch.options(Fl_Native_File_Chooser::SAVEAS_CONFIRM);
+    if (ch.show() != 0) return;
+    std::string path = ch.filename(); if (path.size() < 4 || path.substr(path.size() - 4) != ".png") path += ".png";
+    try { figure_to_png_view(pw->f, path, pw->w(), pw->h() - 18, pw->view); std::cout << "exported " << path << std::endl; } catch (std::exception& ex) { std::cerr << ex.what() << "\n"; }
+}
 inline void plot_open_window(figure f, int w, int h) {
     ui_style_once();
     static int n = 0; int k = n++ % 8;                       // centred on the screen, cascading so several windows do not cover each other
     int x = (Fl::w() - w) / 2 + 30 * k - 100, y = (Fl::h() - h) / 2 + 30 * k - 100;
-    Fl_Double_Window* win = new Fl_Double_Window(std::max(0, x), std::max(0, y), w, h, f.title.empty() ? "musil" : f.title.c_str());
-    plot_widget* pw = new plot_widget(0, 0, w, h, std::move(f));
+    const int bar = 34;
+    Fl_Double_Window* win = new Fl_Double_Window(std::max(0, x), std::max(0, y), w, h + bar, f.title.empty() ? "musil" : f.title.c_str());
+    plot_widget* pw = new plot_widget(0, bar, w, h, std::move(f));
+    Fl_Button* exp = new Fl_Button(8, 5, 90, 24, "Export..."); exp->callback(plot_export_cb, pw); exp->clear_visible_focus(); exp->tooltip("the figure as shown, to a PNG file");
     win->resizable(pw); win->end(); win->size_range(300, 200);
     win->callback([](Fl_Widget* wd, void*) { wd->hide(); });
     plot_windows().push_back(win); win->show(); pw->take_focus();

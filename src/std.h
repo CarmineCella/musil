@@ -7,6 +7,7 @@
 
 #pragma once
 #include "core.h"
+#include <regex>
 
 namespace musil {
 
@@ -128,6 +129,8 @@ inline vptr fn_appendf(vlist& a, Interp& i) {
     std::ofstream f(fn, std::ios::app); if (!f) i.err("append-file: cannot open " + fn);
     f << str_of(a[1]); return v_nil();
 }
+// (directory? path) is the path an existing directory?
+inline vptr fn_directoryp(vlist& a, Interp& i) { std::error_code ec; return v_bool(std::filesystem::is_directory(i.read_path(i.str(a[0])), ec)); }
 // (exists? path) does the file or directory exist?
 inline vptr fn_existsp(vlist& a, Interp& i) { return v_bool(fs::exists(i.read_path(i.str(a[0])))); }
 // (input [prompt]) a line read from the console, or nil at end of input
@@ -182,6 +185,11 @@ inline vptr fn_assert(vlist& a, Interp& i) {   // (assert cond [message...])
     std::string m = "assertion failed"; for (size_t k=1; k<a.size(); k++) m += (k==1 ? ": " : " ") + str_of(a[k]);
     i.err(m);
 }
+// (regex-match? pattern s) does the regular expression (ECMAScript syntax) match anywhere in s?
+inline vptr fn_regex_match(vlist& a, Interp& i) {
+    try { std::regex re(i.str(a[0])); return v_bool(std::regex_search(i.str(a[1]), re)); }
+    catch (std::regex_error& e) { i.bad("regex-match?: bad pattern " + i.str(a[0])); }
+}
 inline void add_std(Interp& i) {
     const int N = -1;   // unbounded
     // vectors
@@ -189,12 +197,12 @@ inline void add_std(Interp& i) {
     // sequences: list, vector, string
     i.def("reverse", fn_reverse, 1, 1); i.def("slice", fn_slice, 2, 3); i.def("find", fn_find, 2, 2);
     // strings
-    i.def("concat", fn_concat, 0, N); i.def("split", fn_split, 2, 2); i.def("join", fn_join, 2, 2);
+    i.def("regex-match?", fn_regex_match, 2, 2); i.def("concat", fn_concat, 0, N); i.def("split", fn_split, 2, 2); i.def("join", fn_join, 2, 2);
     i.def("format", fn_format, 1, N); i.def("upper", fn_upper, 1, 1); i.def("lower", fn_lower, 1, 1);
     i.def("trim", fn_trim, 1, 1); i.def("chr", fn_chr, 1, 1); i.def("ord", fn_ord, 1, 1);
     // files and console
     i.def("read", fn_read, 1, 1); i.def("write", fn_write, 2, 2); i.def("append-file", fn_appendf, 2, 2);
-    i.def("exists?", fn_existsp, 1, 1); i.def("input", fn_input, 0, 1);
+    i.def("exists?", fn_existsp, 1, 1); i.def("directory?", fn_directoryp, 1, 1); i.def("input", fn_input, 0, 1);
     // higher-order, polymorphic on list and vector
     i.def("map", fn_map, 2, 2); i.def("filter", fn_filter, 2, 2); i.def("reduce", fn_reduce, 3, 3);
     // testing

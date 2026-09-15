@@ -149,7 +149,7 @@ inline std::string str_of(const vptr& v) {
         os << ")";
         return os.str();
     case Value::STR: case Value::SYM: return v->s;
-    case Value::FN: return v->op ? "<builtin>" : "<fn>";
+    case Value::FN: return v->op ? "<builtin>" : v->s.empty() ? "<fn>" : "<fn " + v->s + ">";
     case Value::LIST:
         os << "("; for (size_t i=0; i<v->l.size(); i++) { if (i) os << " "; os << str_of(v->l[i]); } os << ")";
         return os.str();
@@ -295,6 +295,7 @@ struct Interp {
     std::vector<std::string> load_path;     // extra directories searched by load (after the local ones)
     std::string home_path;                  // ~/.musil, searched last
     sptr current_file; int current_line = 0;
+    sptr main_file;                         // the program that was started (the first file run, not loaded)
     std::mt19937_64 rng;
     std::ostream* out = &std::cout;
     const char* who = "";                   // name of the builtin being executed (for error messages)
@@ -321,13 +322,18 @@ struct Interp {
     std::string find_file(const std::string& path);   // the resolved path load would use, or ""
     // A path to read from: as given if it exists (or is absolute); otherwise relative to the
     // directory of the file being run, so a script finds its data wherever it is started from.
+    // A relative path for reading: as it is (the current directory), else next to the file whose code is
+    // running, else next to the program that was started (so a library function reading "data/x.wav"
+    // on behalf of examples/foo.mu finds examples/data/x.wav)
     std::string read_path(const std::string& path) {
         fs::path p(path); std::error_code ec;
-        if (p.is_absolute() || fs::exists(p, ec) || !current_file) return path;
-        fs::path base = fs::path(*current_file).parent_path();
-        if (base.empty()) return path;
-        fs::path q = base / p;
-        return fs::exists(q, ec) ? q.string() : path;
+        if (p.is_absolute() || fs::exists(p, ec)) return path;
+        for (const sptr& f : { current_file, main_file }) {
+            if (!f) continue;
+            fs::path base = fs::path(*f).parent_path(); if (base.empty()) continue;
+            fs::path q = base / p; if (fs::exists(q, ec)) return q.string();
+        }
+        return path;
     }
     void repl();
     [[noreturn]] void bad(const std::string& m) { err(std::string(who) + ": " + m); }
@@ -614,7 +620,7 @@ try {
                 if (p->t != Value::SYM) err("function: parameter must be a symbol, got " + str_of(p));
                 fn->params.push_back(p->s);
             }
-            if (named) e->vars[l[1]->s] = fn;
+            if (named) { e->vars[l[1]->s] = fn; fn->s = l[1]->s; }   // a named function remembers its name (str prints it)
             cleanup(); return fn;
         }
         if (op == fn_return) {
@@ -1009,6 +1015,7 @@ inline vptr Interp::run(const std::string& src, const std::string& filename) {
     Parser p(src, file);
     auto prog = p.program();
     current_file = file;
+    if (!main_file && !filename.empty() && filename[0] != '<' && loading_files.empty()) main_file = file;
     char here;
     if (stack_depth == 0) stack_base = reinterpret_cast<std::uintptr_t>(&here);   // outermost run on this thread
     return eval(prog, global);

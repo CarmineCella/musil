@@ -975,6 +975,85 @@ stay separate sessions, the port only lets one hand code to the other.
 \input{generated/live.tex}
 
 % ─────────────────────────────────────────────────────────────────────────────
+\subsection{music}
+
+The score: things placed in time. A score is a record (name, sample rate, events, layout);
+an event has an onset, a duration, a kind, a source, a gain and a position (azimuth and
+elevation, for the spatial layouts). What an event holds is decided by what is placed:
+
+\begin{lstlisting}
+var s (score "study" 44100)
+event s 0 3.5 "bells.wav"                                  # a sound file, read when rendered, cached
+event s 2 3.6 buffer                                       # a vector, or a list of channel vectors
+event s 4 1 (note db 'Vn 'C5 'mf 'ord)                     # a sound from a database (nearest pitch, shifted)
+event s 5 2 (instrument pluck (list (list 'freq 440)))     # a synth: an instrument function and its parameters
+event s 6 1 (call my-function (list 1 2 'dur))             # any function, called when rendered ('dur = the duration)
+event-at s 7 1 my-function 90 0                            # a bare function is called with the duration; placed at the left
+render s "study.wav" "stereo"                              # layouts: "mono" "stereo" "binaural" "ambi N", a ring, or N channels
+play-score s 0.8                                           # through live, ahead of the clock, scaled
+display s                                                  # the player: the roll, playable, editable
+\end{lstlisting}
+
+A sound longer than its event is faded out at the end; a shorter one is left as it is; a
+synth's gate is the duration and its release plays on. A mono sound is spatialised at its
+position; a sound with as many channels as the layout goes in as it is. \musil{play-score}
+(with a gain for the whole; \musil{play-score-from} from a time) renders every sound first,
+then schedules everything ahead of the clock; it refuses an instrument that does not
+stream, naming the event; \musil{play} and \musil{play-file} of \texttt{live} still play a
+buffer or a file.
+
+\textbf{The player} (\musil{display}) is the roll as a window: one row per instrument for
+the notes, in orchestral order, then a row per kind (files, buffers, synths, calls),
+overlapping events in lanes; A D and the wheel pan and zoom in time, W S and Z X scroll
+and zoom the rows, R resets; hovering shows an event's data and the time; a click in the
+background places the cursor; \textbf{Play} (or Space) plays from the cursor and the cursor
+follows the clock (\textbf{Stop} while it plays); dragging a bar moves its event, dragging
+its end changes its length, and the score's own numbers change, so the next Play, Render or
+Export has the edit; \textbf{Render...} asks for a file name and writes the stereo mix;
+\textbf{Export...} asks for a name and writes a Musil file defining \musil{(generated-score)},
+a function that rebuilds the score (notes, files, synths and calls by name; buffers are
+skipped). The window is on the FLTK thread and hands every action to the interpreter as a
+line of Musil, so it works the same from the command line and from the IDE. \musil{score-shift!}, \musil{score-scale!},
+\musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
+transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
+\musil{event-place!} edit one event.
+
+\textbf{Databases.} A database in the *SOL layout (TinySOL, OrchideaSOL, FullSOL) is a
+feature file next to a folder of the same name holding the sounds by family and instrument
+(\texttt{TinySOL.spectrum.db} and \texttt{TinySOL/}); the file's first line gives the type,
+block, hop and number of coefficients, then one line per sound: its path relative to the
+sounds' folder and its features. The sounds' folder is found by content, whatever its name
+(\texttt{TinySOL/}, \texttt{tinysol/}, a copy called otherwise): the folder next to the
+feature file that holds its sounds; and each sound is found by its file name anywhere under
+that folder, so a copy whose folders are named otherwise than the feature file says
+(\texttt{Strings/Vn/} for \texttt{Strings/Violin/}) or spells sharps as \texttt{\_} loads
+too. \musil{db-load} reads the metadata (the
+file names carry instrument, technique, pitch, dynamics) and the features, in C++, and
+never the sounds: those are opened when a note is rendered or played, and cached.
+\musil{db-query} (nil matches anything, a list matches any of its members), \musil{db-grep}
+(a regular expression on the file name), \musil{db-find} (a substring), \musil{db-between}
+(a pitch range), \musil{db-nearest} (the closest features), \musil{db-instruments} (in
+orchestral order), \musil{db-techniques}, \musil{db-dynamics}, \musil{db-pitches},
+\musil{db-range}, \musil{db-features}, \musil{db-path}, \musil{db-available?},
+\musil{db-available}, \musil{db-instruments-available}. \musil{db-gen} makes a feature file
+from a folder of sounds (Orchidea's dbgen, in C++: the energy-weighted average spectrum at
+44100~Hz, as \texttt{spectrum}, \texttt{logspec}, \texttt{specpeaks}, \texttt{specenv},
+\texttt{mfcc} or \texttt{moments}; the bundled TinySOL features are reproduced exactly);
+\musil{db-make} generates and loads. Several databases whose features agree load as one:
+\musil{(db-load (list "a.db" "b.db"))} or \musil{db-merge}; every entry keeps its own
+sounds' folder, and \musil{note} draws on all of them. \musil{note} finds the entry
+for an instrument, pitch, dynamics and technique, or the nearest available pitch of that
+instrument, and shifts it by resampling; only sounds present on disk are candidates, so a
+feature file describing more than is present still works. A sharp in a pitch is written as
+a string (\musil{"D\#5"}): a \texttt{\#} in a symbol would start a comment. The bundled
+\texttt{examples/data/microsol} (MicroSOL: oboe, horn, violin, cello, C4--G4, 32 sounds)
+makes every example run from a fresh clone; the full TinySOL is fetched into
+\texttt{datasets/} (ignored by git) with \texttt{./fetch\_tinysol.sh}, and each example has
+a commented line to switch to it.
+
+\input{generated/music.tex}
+
+% ─────────────────────────────────────────────────────────────────────────────
 \subsection{plot}
 
 A figure is \musil{(list title layers options)}; \musil{plot.mu} builds it and
@@ -983,8 +1062,9 @@ the IDE alike; the interpreter keeps the windows alive while it waits or sleeps,
 several plots can be open while a program goes on, and a script that ends with windows
 open stays until they are closed. \musil{save-png} writes a file. \musil{subplots} puts
 several figures in one grid. Keys in a window: \texttt{+}/\texttt{-} zoom, W A S D pan,
-arrows orbit a surface, \texttt{0} or \texttt{r} reset, \texttt{e} exports a PNG, Esc or
-\texttt{q} closes; the mouse drags to pan or orbit, the wheel zooms. Layers are lines, points, bars, an image (a matrix as
+arrows orbit a surface, \texttt{0} or \texttt{r} reset, \texttt{e} exports a PNG under an
+automatic name, Esc or \texttt{q} closes; the mouse drags to pan or orbit, the wheel zooms;
+the \textbf{Export...} button asks for a file name and writes the figure as shown. Layers are lines, points, bars, an image (a matrix as
 a heat map) or a surface (a matrix in 3D). The one-call helpers build and show in one
 go; the ready-made figures know about signals and data.
 
@@ -1055,6 +1135,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{onsets.mu}, \texttt{transients.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
 \texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
+\texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}
