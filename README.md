@@ -137,7 +137,7 @@ The language comes with libraries, each a pair of a C++ header for what needs sp
 or the operating system and a `.mu` file for what is better written in Musil itself:
 
 - **std**: vectors and statistics, sequences, strings, files, `map`/`filter`/`reduce`;
-- **system**: processes, directories, CSV and WAV files, UDP and OSC, the evaluation port;
+- **system**: processes, directories, CSV and WAV files (8 to 32-bit and float, any channels and rate), UDP and OSC, the evaluation port;
 - **scientific**: matrices, decompositions, regression, PCA, NMF, k-means, KNN;
 - **signals**: generators, FFT and STFT, spectral envelopes, a phase vocoder,
   descriptors, filters and reverb, onsets, harmonic/percussive and NMF separation, and space:

@@ -107,7 +107,7 @@ check (== (length (db-query db 'Vn 'C4 'mf 'ord)) 1) "db-query: exact"
 check (== (length (db-query db 'Nope nil nil nil)) 0) "db-query: none"
 check (equal? (db-range db 'Vn) (list 60 67)) "db-range: C4 to G4"
 check (== (last (db-range db 'Hn)) 76) "db-range: the horn's E5"
-check (contains? (error-of (function () (db-range db 'Nope))) "no sounds") "db-range: unknown instrument"
+check (contains? (error-of (function () (db-range db (quote Nope)))) "no pitched sounds") "db-range: unknown instrument"
 var e (head (db-query db 'Vn 'C4 'mf 'ord))
 check (== (get e 'midi) 60) "entry: midi"
 check (equal? (get e 'other) "4c") "entry: the other field (N when absent)"
@@ -120,6 +120,14 @@ check (ends-with? (db-path db (head (db-query db 'Vn "C#4" 'mf 'ord))) "Vn-ord-C
 check (== (pitch->midi "C4") 60) "pitch->midi"
 check (== (pitch->midi "Bb3") 58) "pitch->midi: flat"
 check (== (pitch->midi "x") -1) "pitch->midi: not a pitch"
+write "/tmp/musil_test_names.db" "spectrum 2048 256 2\n/Strings/Vn/Vn-pizz-lv-C4-mf-1c.wav;1;2\n/Strings/Vn/Vn-art-harm-sul-pont-A#3-ff-N.wav;1;2\n/Perc/Snare-hit-N-mf-N.wav;1;2\n/Winds/Fl/Fl-ord-C4-pp-N-N.wav;1;2\n"
+var names (db-load "/tmp/musil_test_names.db")
+check (equal? (map (get names 'entries) (function (x) (get x 'tech))) (list "pizz-lv" "art-harm-sul-pont" "hit" "ord")) "db-read: a technique of several tokens ends where the pitch begins"
+check (equal? (map (get names 'entries) (function (x) (get x 'midi))) (list 60 58 -1 60)) "db-read: pitches, and -1 for an unpitched sound"
+check (equal? (map (get names 'entries) (function (x) (get x 'dyn))) (list "mf" "ff" "mf" "pp")) "db-read: the dynamics after the pitch"
+check (equal? (db-range names 'Vn) (list 58 60)) "db-range: over the pitched sounds only"
+check (contains? (error-of (function () (db-range names 'Snare))) "no pitched") "db-range: an unpitched instrument"
+check (not (contains? (db-pitches names) "N")) "db-pitches: no N"
 check (equal? (midi->pitch 61) "C#4") "midi->pitch"
 var n1 (note db 'Vn 'C4 'mf 'ord)
 check (and (equal? (get n1 'kind) 'note) (== (get n1 'shift) 0)) "note: an exact match"

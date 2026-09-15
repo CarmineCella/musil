@@ -7,7 +7,8 @@
 //   first line:   <type> <block size> <hop> <number of coefficients>
 //   other lines:  <path relative to the root>;<f1>;<f2>;...
 // Sound file names carry the metadata, separated by dashes: instrument-technique-pitch-dynamics-other
-// (Vn-ord-D#5-mf-3c-N.wav); a sharp may be written # or _ on disk. Only the metadata and the
+// (Vn-ord-D#5-mf-3c-N.wav); a technique may be several tokens (Vn-pizz-lv-C4-mf-...), so the pitch is the
+// first token after the instrument that reads as one; a sharp may be written # or _ on disk. Only the metadata and the
 // features are read here; the sounds are opened on demand (music.mu caches what it plays).
 
 #pragma once
@@ -70,12 +71,21 @@ inline vptr mus_db_read(vlist& a, Interp& i) {
         std::string name = file; size_t sl = name.find_last_of("/\\"); if (sl != std::string::npos) name = name.substr(sl + 1);
         size_t dot = name.find_last_of('.'); if (dot != std::string::npos) name = name.substr(0, dot);
         std::vector<std::string> syms; { std::stringstream ss(name); std::string t; while (std::getline(ss, t, '-')) syms.push_back(t); }
-        while (syms.size() < 4) syms.push_back("N");
-        std::string other; for (size_t j = 4; j < syms.size(); j++) other += (j > 4 ? "-" : "") + syms[j];
-        if (other.empty()) other = "N";
-        int midi = pitch_to_midi(syms[2]);
-        entries.push_back(v_list({ v_list({ v_sym("file"), v_str(file) }), v_list({ v_sym("instr"), v_str(syms[0]) }), v_list({ v_sym("tech"), v_str(syms[1]) }),
-                                   v_list({ v_sym("pitch"), v_str(syms[2]) }), v_list({ v_sym("dyn"), v_str(syms[3]) }), v_list({ v_sym("other"), v_str(other) }),
+        // instrument, then the technique (one token or several joined by dashes: pizz-lv, art-harm), then the first token
+        // that is a pitch, the dynamics, and whatever follows; an unpitched sound (N, or no pitch) gets midi -1
+        std::string instr = syms.empty() ? "N" : syms[0], tech = "N", pitch = "N", dyn = "N", other = "N"; int midi = -1;
+        size_t pp = std::string::npos;
+        for (size_t j = 1; j < syms.size(); j++) if (pitch_to_midi(syms[j]) >= 0) { pp = j; break; }
+        if (pp == std::string::npos) {                        // no pitch: instrument-technique-N-dynamics... in the old layout, or unpitched
+            if (syms.size() > 1) tech = syms[1]; if (syms.size() > 3) dyn = syms[3]; if (syms.size() > 2 && syms[2] != "N") pitch = syms[2];
+            std::string rest; for (size_t j = 4; j < syms.size(); j++) rest += (j > 4 ? "-" : "") + syms[j]; if (!rest.empty()) other = rest;
+        } else {
+            std::string t; for (size_t j = 1; j < pp; j++) t += (j > 1 ? "-" : "") + syms[j]; if (!t.empty()) tech = t;
+            pitch = syms[pp]; midi = pitch_to_midi(pitch); if (pp + 1 < syms.size()) dyn = syms[pp + 1];
+            std::string rest; for (size_t j = pp + 2; j < syms.size(); j++) rest += (j > pp + 2 ? "-" : "") + syms[j]; if (!rest.empty()) other = rest;
+        }
+        entries.push_back(v_list({ v_list({ v_sym("file"), v_str(file) }), v_list({ v_sym("instr"), v_str(instr) }), v_list({ v_sym("tech"), v_str(tech) }),
+                                   v_list({ v_sym("pitch"), v_str(pitch) }), v_list({ v_sym("dyn"), v_str(dyn) }), v_list({ v_sym("other"), v_str(other) }),
                                    v_list({ v_sym("midi"), v_num(midi) }), v_list({ v_sym("features"), v_arr(std::move(feats)) }) }));
     }
     return v_list({ v_str(type), v_num((double)block), v_num((double)hop), v_num((double)ncoeff), v_list(std::move(entries)) });

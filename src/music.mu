@@ -391,7 +391,7 @@ function db-values (db key) (unique (map (get db 'entries) (function (e) (get e 
 function db-instruments (db) (sort-by (db-values db 'instr) instrument-rank)
 function db-techniques (db) (sort-list (db-values db 'tech))
 function db-dynamics (db) (db-values db 'dyn)
-function db-pitches (db) (sort-list (db-values db 'pitch))
+function db-pitches (db) (sort-list (filter (db-values db 'pitch) (function (p) (not (equal? p "N")))))
 # (db-query db instr pitch dyn tech)   the entries matching the given values; nil matches anything, a list matches
 #                          any of its members: (db-query db 'Vn nil 'mf nil) every mf violin sound,
 #                          (db-query db (list 'Vn 'Va) nil (list 'pp 'p) 'ord) quiet upper strings
@@ -422,8 +422,8 @@ function db-available (db) (filter (get db 'entries) (function (e) (db-available
 function db-instruments-available (db) (sort-by (unique (map (db-available db) (function (e) (get e 'instr)))) instrument-rank)
 # (db-range db instr)      the lowest and highest MIDI note of an instrument, as (list lo hi)
 function db-range (db instr) {
-    var ms (vec (map (db-query db instr nil nil nil) (function (e) (get e 'midi))))
-    if (== (length ms) 0) { error "db-range: no sounds of " instr }
+    var ms (vec (map (filter (db-query db instr nil nil nil) (function (e) (>= (get e 'midi) 0))) (function (e) (get e 'midi))))
+    if (== (length ms) 0) { error "db-range: no pitched sounds of " instr }
     return (list (min ms) (max ms))
 }
 # (db-path db entry)       the sound file of an entry, on disk: under the sounds' folder at the path the feature file
@@ -455,8 +455,9 @@ function db-make (folder path type block hop ncoeff) {
 function note (db instr pitch dyn tech) {
     var want (pitch->midi (str pitch))
     if (< want 0) { error "note: not a pitch: " pitch }
-    var same (filter (db-query db instr nil dyn tech) (function (e) (db-available? db e)))
-    if (== (length same) 0) { set same (filter (db-query db instr nil nil nil) (function (e) (db-available? db e))) }
+    var same (filter (db-query db instr nil dyn tech) (function (e) (and (>= (get e 'midi) 0) (db-available? db e))))
+    if (== (length same) 0) { set same (filter (db-query db instr nil nil tech) (function (e) (and (>= (get e 'midi) 0) (db-available? db e)))) }
+    if (== (length same) 0) { set same (filter (db-query db instr nil nil nil) (function (e) (and (>= (get e 'midi) 0) (db-available? db e)))) }
     if (== (length same) 0) { error "note: no sound of " instr " on disk in this database" }
     var exact (filter same (function (e) (== (get e 'midi) want)))
     var entry (if (> (length exact) 0) (head exact) (min-by same (function (e) (abs (- (get e 'midi) want)))))

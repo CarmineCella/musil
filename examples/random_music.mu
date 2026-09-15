@@ -20,7 +20,6 @@ function random-notes (db secs density instruments dyns techs durs) {
         var instr (getidx instruments (floor (* (rand) (length instruments))))
         var range (db-range db instr)
         var midi (+ (head range) (floor (* (rand) (+ 1 (- (last range) (head range))))))
-        if (< midi 0) (set midi 0)
         var dyn (getidx dyns (floor (* (rand) (length dyns))))
         var choices (if (equal? (type techs) "nil") (unique (map (db-query db instr nil nil nil) (function (e) (get e 'tech)))) techs)
         var tech (getidx choices (floor (* (rand) (length choices))))

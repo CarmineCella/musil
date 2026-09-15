@@ -86,6 +86,14 @@ check (< (max (abs (- (head (getidx (read-wav wav) 1)) left))) 1e-6) "wav: 32-bi
 check (contains? (error-of (function () (write-wav wav sr (list left (vec 1 2))))) "same length") "wav: channel length mismatch"
 check (contains? (error-of (function () (write-wav wav 0 left))) "> 0") "wav: bad sample rate"
 check (contains? (error-of (function () (read-wav "/nope.wav"))) "cannot open") "wav: missing file"
+var three (list (* 0.9 left) (* -0.5 left) left)
+each (list 8 16 24 32 "float" "double") (function (b) {
+    write-wav "/tmp/musil_test_bits.wav" 22050 three b
+    var w (read-wav "/tmp/musil_test_bits.wav")
+    check (and (== (head w) 22050) (== (length (getidx w 1)) 3)) (concat "wav: " (str b) " bits, three channels, the rate kept")
+    check (< (max (abs (- (getidx (getidx w 1) 1) (* -0.5 left)))) (if (equal? b 8) 0.02 (if (equal? b 16) 1e-4 1e-6))) (concat "wav: " (str b) " bits round trip")
+})
+check (contains? (error-of (function () (write-wav "/tmp/x.wav" 22050 left 12))) "bits:") "wav: unsupported depth"
 
 # --- UDP ---
 check (== (udp-send "127.0.0.1" 9 "hello") 1) "udp-send: plain"

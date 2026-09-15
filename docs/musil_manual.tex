@@ -1027,8 +1027,9 @@ feature file that holds its sounds; and each sound is found by its file name any
 that folder, so a copy whose folders are named otherwise than the feature file says
 (\texttt{Strings/Vn/} for \texttt{Strings/Violin/}) or spells sharps as \texttt{\_} loads
 too. \musil{db-load} reads the metadata (the
-file names carry instrument, technique, pitch, dynamics) and the features, in C++, and
-never the sounds: those are opened when a note is rendered or played, and cached.
+file names carry instrument, technique, pitch, dynamics; a technique may be several tokens,
+\texttt{pizz-lv}, so the pitch is the first token that reads as one, and an unpitched sound
+has none) and the features, in C++, and never the sounds: those are opened when a note is rendered or played, and cached.
 \musil{db-query} (nil matches anything, a list matches any of its members), \musil{db-grep}
 (a regular expression on the file name), \musil{db-find} (a substring), \musil{db-between}
 (a pitch range), \musil{db-nearest} (the closest features), \musil{db-instruments} (in

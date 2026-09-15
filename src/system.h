@@ -105,7 +105,7 @@ inline vptr sys_read_csv(vlist& a, Interp& i) {
     return v_list(std::move(rows));
 }
 // --- WAV ---
-// (read-wav path) => (list sample-rate (list channel-vector ...)); 16-bit PCM or 32-bit float WAV
+// (read-wav path) => (list sample-rate (list channel-vector ...)): 8, 16, 24 and 32-bit PCM or 32/64-bit float, any channels and rate
 inline vptr sys_read_wav(vlist& a, Interp& i) {
     WAVHeader h{}; std::vector<std::vector<double>> chans;
     try { chans = read_wav_raw(i.read_path(i.str(a[0])).c_str(), h); } catch (std::exception& e) { i.bad(e.what()); }
@@ -113,22 +113,23 @@ inline vptr sys_read_wav(vlist& a, Interp& i) {
     for (auto& c : chans) { varr v(c.size()); for (size_t k = 0; k < c.size(); k++) v[k] = c[k]; cl.push_back(v_arr(std::move(v))); }
     return v_list({ v_num((double)h.sampleRate), v_list(std::move(cl)) });
 }
-// (write-wav path sample-rate channels [bits]) => nil. channels: a vector (mono) or a list of vectors; bits 16 (default) or 32 (float)
+// (write-wav path sample-rate channels [bits]) => nil. channels: a vector (mono) or a list of vectors (any number);
+//   bits 8, 16 (default), 24 or 32 for integer PCM, "float" (or 32.0 with a decimal point: use "float") for 32-bit IEEE
+//   float, "double" for 64-bit; any sample rate. Integer files clip at +-1.
 inline vptr sys_write_wav(vlist& a, Interp& i) {
     double sr = i.scalar(a[1]); if (sr <= 0) i.bad("sample rate must be > 0");
-    int bits = a.size() > 3 ? (int)i.scalar(a[3]) : 16;
-    if (bits != 16 && bits != 32) i.bad("bits must be 16 or 32");
+    int bits = 16, fmt = 1;
+    if (a.size() > 3) {
+        if (a[3]->t == Value::STR || a[3]->t == Value::SYM) { std::string w = a[3]->s; if (w == "float") { bits = 32; fmt = 3; } else if (w == "double") { bits = 64; fmt = 3; } else i.bad("bits: 8, 16, 24, 32, \"float\" or \"double\""); }
+        else { bits = (int)i.scalar(a[3]); if (bits != 8 && bits != 16 && bits != 24 && bits != 32) i.bad("bits: 8, 16, 24, 32, \"float\" or \"double\""); }
+    }
     std::vector<std::vector<double>> chans;
     auto add = [&](const vptr& v) { const varr& n = i.num(v); chans.emplace_back(std::begin(n), std::end(n)); };
     if (a[2]->t == Value::NUM) add(a[2]);
     else for (auto& c : i.list(a[2])) add(c);
     if (chans.empty()) i.bad("no channels");
     for (auto& c : chans) if (c.size() != chans[0].size()) i.bad("all channels must have the same length");
-    WAVHeader h{};
-    std::memcpy(h.riff, "RIFF", 4); std::memcpy(h.wave, "WAVE", 4); std::memcpy(h.fmt, "fmt ", 4); std::memcpy(h.data, "data", 4);
-    h.subchunk1Size = 16; h.audioFormat = bits == 32 ? 3 : 1;
-    h.numChannels = (uint16_t)chans.size(); h.sampleRate = (uint32_t)sr; h.bitsPerSample = (uint16_t)bits;
-    h.blockAlign = (uint16_t)(h.numChannels * bits / 8); h.byteRate = h.sampleRate * h.blockAlign;
+    WAVHeader h{}; h.audioFormat = (uint16_t)fmt; h.numChannels = (uint16_t)chans.size(); h.sampleRate = (uint32_t)sr; h.bitsPerSample = (uint16_t)bits;
     try { write_wav_raw(i.str(a[0]).c_str(), chans, h); } catch (std::exception& e) { i.bad(e.what()); }
     return v_nil();
 }
