@@ -1,24 +1,25 @@
-# reverb: convolution with an impulse response, and a Schroeder network
-# Usage: musil reverb.mu [sound.wav impulse-response.wav]   (defaults to the bundled data/ files)
+# reverb: convolution with an impulse response (the shipped concert hall, or any response), and a Schroeder network
+# Usage: musil reverb.mu [sound.wav impulse-response.wav]   (defaults to the bundled data/anechoic1.wav and the hall)
 load "system.mu"
 load "signals.mu"
 
 var dry (read-wav (if (> (length args) 0) (getidx args 0) "data/anechoic1.wav"))
-var ir (read-wav (if (> (length args) 1) (getidx args 1) "data/Concertgebouw-s.wav"))
 var sr (head dry)
 var x (head (getidx dry 1))
-var irL (head (getidx ir 1))
-var irR (last (getidx ir 1))
-print "input" (length x) "samples, IR" (length irL) "samples per channel"
+print "input" (length x) "samples at" sr "Hz"
 
-var wet-gain 0.3
-var dry-gain 0.7
-var wetL (* wet-gain (conv x irL))
-var wetR (* wet-gain (conv x irR))
-var outL (mix (list (list 0 wetL) (list 0 (* dry-gain x))))
-var outR (mix (list (list 0 wetR) (list 0 (* dry-gain x))))
-print "convolved:" (length outL) "samples (input + IR - 1); peak" (fixed (max (abs outL)) 3)
-write-wav "/tmp/musil_conv_reverb.wav" sr (list (normalize-peak outL) (normalize-peak outR))
+# the Concertgebouw, shipped with the libraries: (concerthall x sr dry wet) gives stereo, dry plus the hall
+var hall (concerthall x sr 0.7 0.3)
+print "concerthall:" (length hall) "channels of" (length (head hall)) "samples (the input plus the hall's tail)"
+write-wav "/tmp/musil_conv_reverb.wav" sr (normalize-peak-stereo hall)
+# any response, with converb: a vector for every channel, or one response per channel
+if (> (length args) 1) {
+    var ir (read-wav (getidx args 1))
+    var own (converb x (map (getidx ir 1) (function (c) (resample-to c (head ir) sr))) 0.7 0.3)
+    write-wav "/tmp/musil_conv_reverb_own.wav" sr (normalize-peak-stereo own)
+    print "converb with" (getidx args 1) "->" "/tmp/musil_conv_reverb_own.wav"
+}
+var outL (head hall)
 
 # Schroeder: an algorithmic reverb; rt60 is the decay time, and the output includes the tail
 var rt60 2.5

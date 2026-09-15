@@ -165,6 +165,7 @@ struct plot_view {
     bool has_cursor = false; double cx = 0, cy = 0;
     bool has_pick = false; double px = 0, py = 0; std::string pick_label;
     double row_scale = 1, row_offset = 0;             // the roll: vertical zoom (1 = every row fits) and the first row shown
+    double cursor_time = 0;                           // the roll: where Play starts (a click in the background moves it)
 };
 
 // --- 2D drawing into the rectangle (ox, oy, w, h) of the current FLTK drawing surface ---
@@ -335,7 +336,7 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
             fl_color(150, 150, 150);
             for (int sdiff = step - st.bottom_step; sdiff < 0; sdiff++) if (sdiff % 2 == 0) { int ly = (int)(st.y_bottom - sdiff * st.sp / 2); fl_line(x0 - (int)head - 3, ly, x0 + (int)head + 3, ly); }
             for (int sdiff = step - st.bottom_step; sdiff > 8; sdiff--) if (sdiff % 2 == 0) { int ly = (int)(st.y_bottom - sdiff * st.sp / 2); fl_line(x0 - (int)head - 3, ly, x0 + (int)head + 3, ly); }
-            plot_color(c); fl_line_style(FL_SOLID, std::max(1, (int)(head * 0.35))); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
+            plot_color(c); fl_line_style(FL_SOLID, std::max(2, (int)(head * 0.5))); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
             fl_pie(x0 - (int)head, (int)(y - head), (int)(2 * head), (int)(2 * head), 0, 360);
             if (sharp) { fl_font(FL_HELVETICA_BOLD, (int)std::max(8.0, st.sp * 1.6)); fl_color(60, 60, 60); fl_draw("#", x0 - (int)head - (int)(st.sp * 1.3), (int)(y + st.sp * 0.6)); }
             if (!b.dyn.empty() && g.row_h > 60) {
@@ -352,9 +353,10 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
             if (x1 - x0 > 30 && lane_h > 16) { fl_font(FL_HELVETICA, std::min(fs - 2, (int)lane_h - 4)); fl_color(80, 80, 80); fl_push_clip(x0 + head + 3, (int)y - (int)lane_h / 2, x1 - x0 - head - 4, (int)lane_h); fl_draw(b.label.c_str(), x0 + head + 4, (int)y - 4); fl_pop_clip(); }
         }
     }
-    // the playhead, while a score plays
+    // the cursor (where Play starts), and the playhead while a score plays
     playhead_state& ph = playhead(); double now = live_now();
-    if (ph.on && now < ph.end) { double t = ph.from + (now - ph.t0); if (t >= g.xmin && t <= g.xmax) { fl_color(200, 30, 30); fl_line_style(FL_SOLID, 2); fl_line((int)X(t), g.top, (int)X(t), g.top + (int)g.ph); fl_line_style(0); } }
+    bool playing = ph.on && now < ph.end; double t = playing ? ph.from + (now - ph.t0) : view.cursor_time;
+    if (t >= g.xmin && t <= g.xmax) { fl_color(playing ? 200 : 120, playing ? 30 : 120, playing ? 30 : 120); fl_line_style(FL_SOLID, 2); fl_line((int)X(t), g.top, (int)X(t), g.top + (int)g.ph); fl_line_style(0); }
     fl_pop_clip(); fl_pop_clip();
     fl_color(120, 120, 120); fl_rect(g.left, g.top, (int)g.pw, (int)g.ph);
     fl_font(FL_HELVETICA, fs); fl_color(60, 60, 60); fl_draw((f.xlabel.empty() ? "time (s)" : f.xlabel).c_str(), g.left + (int)(g.pw / 2) - 20, oy + h - 6);
@@ -608,14 +610,28 @@ inline void figure_to_png_view(const figure& f, const std::string& path, int w, 
 
 // --- the window ---
 struct plot_widget : Fl_Widget {
-    figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false; int dragging_bar = 0;
-    static void follow_playhead(void* p) { plot_widget* w = (plot_widget*)p; if (!w->window() || !w->window()->shown()) return; if (playhead().on) w->redraw(); Fl::repeat_timeout(0.05, follow_playhead, p); }
+    figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false; int dragging_bar = 0; Fl_Button* play_btn = nullptr;
+    int score_id() { for (auto& L : f.layers) if (L.kind == "roll") return L.score_id; return -1; }
+    bool roll_playing() { playhead_state& ph = playhead(); return ph.on && live_now() < ph.end; }
+    void roll_stop() { if (plot_submit() && has_roll) plot_submit()("(roll-stop)"); }
+    void roll_toggle() {
+        if (!plot_submit() || score_id() < 0) return;
+        if (roll_playing()) { plot_submit()("(roll-stop)"); if (play_btn) play_btn->copy_label("Play"); }
+        else { if (play_btn) { play_btn->copy_label("Stop"); play_btn->deactivate(); } plot_submit()("(roll-play " + std::to_string(score_id()) + " " + std::to_string(view.cursor_time) + ")"); }
+    }
+    static void follow_playhead(void* p) {
+        plot_widget* w = (plot_widget*)p; if (!w->window() || !w->window()->shown()) return;
+        bool playing = w->roll_playing();
+        if (playing) w->redraw();
+        if (w->play_btn) { if (playing) { w->play_btn->copy_label("Stop"); w->play_btn->activate(); } else if (w->play_btn->active()) w->play_btn->copy_label("Play"); else if (!playhead().on) { w->play_btn->copy_label("Play"); w->play_btn->activate(); } }
+        Fl::repeat_timeout(0.05, follow_playhead, p);
+    }
     plot_widget(int x, int y, int w, int h, figure fig) : Fl_Widget(x, y, w, h), f(std::move(fig)) {}
     void draw() override {
         render_figure_at(f, x(), y(), w(), h() - 18, view);
         fl_color(246, 246, 244); fl_rectf(x(), y() + h() - 18, w(), 18);
         fl_font(FL_HELVETICA, 11); fl_color(150, 150, 150);
-        fl_draw(has_roll ? "A D pan   + - zoom in time   W S scroll rows   Z X zoom rows   R reset   wheel scrolls (Ctrl: zooms)   double-click plays an event   Esc or q closes"
+        fl_draw(has_roll ? "A D pan   + - zoom in time   W S scroll rows   Z X zoom rows   R reset   wheel scrolls (Ctrl: zooms)   click places the cursor, Space or Play plays from it   double-click plays an event   Esc or q closes"
                          : "+ - zoom   W A S D pan   arrows orbit   0 or r reset   drag pans   wheel zooms   e exports a PNG   Esc or q closes", x() + 8, y() + h() - 5);
     }
     int handle(int e) override {
@@ -629,9 +645,13 @@ struct plot_widget : Fl_Widget {
                 roll_geom g = roll_geometry(f, x(), y(), w(), h() - 18, view); const int fs = 13;
                 if (lastx >= g.left && lastx <= g.left + g.pw && lasty >= g.top + g.ph + fs + 6 && lasty <= g.top + g.ph + fs + 18) dragging_bar = 1;   // the time scrollbar
                 else if (lastx >= g.left + g.pw + 4 && lastx <= g.left + g.pw + 16 && lasty >= g.top && lasty <= g.top + g.ph) dragging_bar = 2;     // the rows' scrollbar
-                else if (Fl::event_clicks() > 0 && plot_submit()) {   // a double click on an event plays it
-                    for (auto& L : f.layers) if (L.kind == "roll") { int k = roll_hit(f, L, x(), y(), w(), h() - 18, view, lastx, lasty);
-                        if (k >= 0 && L.score_id >= 0 && L.bars[(size_t)k].event_id >= 0) plot_submit()("(play-event " + std::to_string(L.score_id) + " " + std::to_string(L.bars[(size_t)k].event_id) + ")"); }
+                else {
+                    int hit = -1; for (auto& L : f.layers) if (L.kind == "roll") hit = roll_hit(f, L, x(), y(), w(), h() - 18, view, lastx, lasty);
+                    if (hit >= 0 && Fl::event_clicks() > 0 && plot_submit()) {   // a double click on an event plays it
+                        for (auto& L : f.layers) if (L.kind == "roll" && L.score_id >= 0 && L.bars[(size_t)hit].event_id >= 0) plot_submit()("(play-event " + std::to_string(L.score_id) + " " + std::to_string(L.bars[(size_t)hit].event_id) + ")");
+                    } else if (hit < 0 && lastx >= g.left && lastx <= g.left + g.pw && lasty >= g.top && lasty <= g.top + g.ph) {   // the background: the cursor
+                        view.cursor_time = std::max(0.0, g.xmin + (lastx - g.left) / g.pw * (g.xmax - g.xmin)); redraw();
+                    }
                 }
             }
             return 1;
@@ -659,7 +679,8 @@ struct plot_widget : Fl_Widget {
         }
         case FL_KEYDOWN: {
             int k = Fl::event_key(); const char* t = Fl::event_text();
-            if (k == FL_Escape || (t && (t[0] == 'q'))) { window()->hide(); return 1; }
+            if (k == FL_Escape || (t && (t[0] == 'q'))) { if (has_roll) roll_stop(); window()->hide(); return 1; }
+            if (has_roll && t && t[0] == ' ') { roll_toggle(); return 1; }
             if (t && t[0] == 'e') { std::string p = plot_save_name(f); try { figure_to_png(f, p, w(), h() - 18); std::cout << "saved " << p << std::endl; } catch (std::exception& ex) { std::cerr << ex.what() << "\n"; } return 1; }
             plot_key(f, view, k >= FL_Left && k <= FL_Down ? k : (t && t[0] ? t[0] : k), Fl::event_state(FL_SHIFT));
             redraw(); return 1;
@@ -693,6 +714,7 @@ inline void plot_open_window(figure f, int w, int h) {
     for (auto& L : pw->f.layers) if (L.kind == "roll") pw->has_roll = true;
     if (pw->has_roll) Fl::add_timeout(0.05, plot_widget::follow_playhead, pw);
     Fl_Button* exp = new Fl_Button(8, 5, 90, 24, "Export..."); exp->callback(plot_export_cb, pw); exp->clear_visible_focus(); exp->tooltip("the figure as shown, to a PNG file");
+    if (pw->has_roll) { pw->play_btn = new Fl_Button(106, 5, 70, 24, "Play"); pw->play_btn->callback([](Fl_Widget*, void* d) { ((plot_widget*)d)->roll_toggle(); }, pw); pw->play_btn->clear_visible_focus(); pw->play_btn->tooltip("play the score from the cursor (Space); click in the background to place the cursor"); }
     win->resizable(pw); win->end(); win->size_range(300, 200);
     win->callback([](Fl_Widget* wd, void*) { wd->hide(); });
     plot_windows().push_back(win); win->show(); pw->take_focus();

@@ -465,6 +465,31 @@ function envelope-follow (x n) {
 # (envelope-from-values v hop)   piecewise-linear signal through successive values, hop samples apart
 function envelope-from-values (v hop) (bpf (head v) (map (vec->list (drop v 1)) (function (e) (list hop e))))
 
+# --- convolution reverb --------------------------------------------------------------------
+# (converb x ir dry wet)   x through an impulse response: x a vector or a list of channels, ir a vector (applied to every
+#                          channel) or a list of channels (one per output channel; a mono x is spread over them); => a
+#                          list of channels, dry x plus wet x convolved, as long as x plus the response's tail
+function converb (x ir dry wet) {
+    var xs (if (equal? (type x) "vec") (list x) x)
+    var irs (if (equal? (type ir) "vec") (list ir) ir)
+    var nch (max (length xs) (length irs))
+    return (map (vec->list (range nch)) (function (k) {
+        var xc (getidx xs (min k (- (length xs) 1)))
+        var ic (getidx irs (min k (- (length irs) 1)))
+        var w (conv xc ic)
+        return (+ (* wet w) (* dry (vec xc (zeros (- (length w) (length xc))))))
+    }))
+}
+var hall-cache nil
+# (hall-ir sr)             the impulse response of the Concertgebouw (Amsterdam), shipped with the libraries, at a rate
+function hall-ir (sr) {
+    if (equal? (type hall-cache) "nil") { set hall-cache (read-wav (find-file "hall_concertgebouw.wav")) }
+    return (map (getidx hall-cache 1) (function (c) (resample-to c (head hall-cache) sr)))
+}
+# (concerthall x sr dry wet)   x (a vector or channels, at sr) in the Concertgebouw: converb with the shipped response;
+#                          => stereo (a mono x is placed in the middle), as long as x plus the hall's tail (~3 s)
+function concerthall (x sr dry wet) (converb x (hall-ir sr) dry wet)
+
 # --- spatial: stereo, speaker rings, ambisonics, binaural --------------------------------
 # Conventions (AmbiX): azimuth in degrees, 0 in front, positive to the left; elevation positive up.
 # A multichannel signal is a list of channel vectors (what write-wav and play take).

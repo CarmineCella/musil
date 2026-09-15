@@ -261,6 +261,19 @@ check (and (> (corr (head (head sup)) pa) 0.85) (> (corr (last (head sup)) pb) 0
 check (< (max (abs (- (+ (head (head sup)) (last (head sup))) (+ pa pb)))) 1e-6) "nmf-separate-with: the sources add up to the mix"
 check (== (nrows (last sup)) 4) "nmf-separate-with: the activations, one row per part"
 
+# --- convolution reverb ---
+var imp (vec 1 (zeros 100))
+var cv (converb imp (vec 0.5 0 0.25) 1 1)
+check (== (length cv) 1) "converb: a mono input and a mono response give one channel"
+check (near? (take (head cv) 4) (vec 1.5 0 0.25 0) 1e-9) "converb: dry plus wet"
+check (== (length (converb imp (list (vec 1) (vec 0.5)) 1 1)) 2) "converb: one response per channel spreads a mono input"
+check (== (length (head (converb imp (vec 1 0 0) 0 1))) 103) "converb: as long as the input plus the response (n + m - 1)"
+var hall (concerthall (sine sr 440 0.1) sr 0.7 0.3)
+check (== (length hall) 2) "concerthall: stereo"
+check (> (length (head hall)) (* 2 sr)) "concerthall: the tail of the Concertgebouw follows"
+check (> (rms (take (head hall) 800)) 0.2) "concerthall: the dry part is there"
+check (contains? (find-file "hall_concertgebouw.wav") "hall_concertgebouw") "the hall's response ships with the libraries"
+
 # --- spatial ---
 check (equal? (fixed (ambi-gains 1 0 0) 6) (vec 1 0 0 1)) "ambi-gains: front is (W 0 0 X)"
 check (equal? (fixed (ambi-gains 1 90 0) 6) (vec 1 1 0 0)) "ambi-gains: left is Y"

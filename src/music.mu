@@ -28,7 +28,10 @@ load "plot.mu"
 
 # --- the score ------------------------------------------------------------------------------
 # (score name sr)          a new, empty score at a sample rate
-function score (name sr) (record (list 'name name 'sr sr 'events (list) 'layout "stereo"))
+function score (name sr) (record (list 'name name 'sr sr 'events (list) 'layout "stereo" 'reverb (list 0.7 0.3)))
+# (score-reverb! s dry wet)   how much of the score is heard dry and through the hall when it is played (0.7 and 0.3
+#                          by default; (score-reverb! s 1 0) plays it dry)
+function score-reverb! (s dry wet) (put! s 'reverb (list dry wet))
 # (score-events s) (score-sr s) (score-duration s)   its events (in the order they were added), rate, end time
 function score-events (s) (get s 'events)
 function score-sr (s) (get s 'sr)
@@ -198,22 +201,47 @@ function render (s path layout) {
 }
 
 # --- playing: the events through live, ahead of the clock ----------------------------------------
-# (play-score s gain)      play the score now (the device is opened if needed) and wait until it ends; files,
-#                          buffers, notes and calls are rendered first, then everything is scheduled ahead of the
-#                          clock; synths are compiled and gated on time (an instrument that is not streamable is
-#                          refused, naming the event); gain scales everything (1 as rendered)
+# (play-score s gain)      play the score now (the device is opened if needed) and wait until it ends or is stopped
+#                          (stop-score): the whole score is rendered in stereo, put in the concert hall (see
+#                          score-reverb!) and played as one buffer; gain scales it; the roll's cursor follows
 function play-score (s gain) (play-score-from s gain 0)
-# (play-score-from s gain from)   the same from a time in seconds: events already over are skipped, one under way
-#                          starts in the middle
+# (play-score-from s gain from)   the same from a time in seconds
 function play-score-from (s gain from) {
-    var sched (score-schedule s gain from)
-    sleep (+ 0.4 (- (score-duration s) from) 0.6)
-    each (head sched) free
+    score-play-now s gain from
+    while (head (playhead)) { sleep 0.05 }
+    return nil
+}
+# (score-play-now s gain from)   start playing and return at once (what the roll's Play button does); => the end time on
+#                          the clock. stop-score stops it.
+function score-play-now (s gain from) {
+    if (not (opt (audio-status) "open" 0)) { audio-init }
+    var sr (audio-sr)
+    var mix (score-render-at s "stereo" sr)
+    var rv (opt s 'reverb (list 0.7 0.3))
+    var hall (concerthall mix sr (head rv) (last rv))
+    var skip (floor (* from sr))
+    var out (map hall (function (c) (* gain (drop c (min skip (length c))))))
+    var t0 (+ (audio-time) 0.1)
+    play-buffer out sr 1 0 1 0 t0
+    var end (+ t0 (/ (length (head out)) sr))
+    playhead! t0 from end
+    return end
+}
+# (stop-score)             stop whatever score is playing
+function stop-score () {
+    if (opt (audio-status) "open" 0) { stop-all }
     playhead-off!
     return nil
 }
-# (score-schedule s gain from)   schedule the score's events on the clock and return at once:
-#                          => (list synth-ids end-clock-time start-clock-time); free the synths when it is over
+# (score-render-at s layout sr)   the score rendered at a rate other than its own (the device's, when playing)
+function score-render-at (s layout sr) {
+    var own (get s 'sr)
+    if (== own sr) { return (score-render s layout) }
+    return (map (score-render s layout) (function (c) (resample-to c own sr)))
+}
+# (score-schedule s gain from)   the live way: every event scheduled on the clock (synths compiled and gated, the rest
+#                          rendered), no hall; returns at once => (list synth-ids end-clock-time start-clock-time);
+#                          free the synths when it is over
 function score-schedule (s gain from) {
     if (not (opt (audio-status) "open" 0)) { audio-init }
     var sr (audio-sr)
@@ -246,7 +274,6 @@ function score-schedule (s gain from) {
             play-buffer (getidx r 1) sr gain 0 1 0 when
         }
     })
-    playhead! t0 from (+ t0 (- (score-duration s) from) 0.6)                      # the roll's cursor follows
     return (list synths (+ t0 (- (score-duration s) from) 0.6) t0)
 }
 # --- the roll --------------------------------------------------------------------------------
@@ -308,6 +335,9 @@ function register-score (s) {
 }
 # (displayed-score id)     the score registered under a number
 function displayed-score (id) (get displayed-scores id)
+# (roll-play score-id from) start a displayed score from a time (the roll's Play button); (roll-stop) stops it
+function roll-play (score-id from) (score-play-now (displayed-score score-id) 1 from)
+function roll-stop () (stop-score)
 # (play-event score-id event-id)   play one event of a displayed score, alone (a double-click in the roll does this)
 function play-event (score-id event-id) {
     var s (displayed-score score-id)
@@ -321,7 +351,8 @@ function play-event (score-id event-id) {
         note id (get e 'dur)
         return nil
     }
-    play-buffer (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr 1 0 1 0 (+ (audio-time) 0.05)
+    var rv (opt s 'reverb (list 0.7 0.3))
+    play-buffer (concerthall (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr (head rv) (last rv)) sr 1 0 1 0 (+ (audio-time) 0.05)
     return nil
 }
 # (event-lanes events)     a lane number per event such that events sharing a lane do not overlap in time
@@ -336,7 +367,9 @@ function event-lanes (events) {
 }
 # (display s)              show the score as a roll: a staff per instrument with note heads and duration lines, a
 #                          line per other kind; A D pan and + - zoom in time, W S scroll and Z X zoom the rows,
-#                          R resets; hovering shows an event; the cursor follows play-score
+#                          R resets; hovering shows an event; a double-click plays it; Play (or Space) plays the
+#                          score from the cursor (a click in the background places it), Stop stops; the cursor
+#                          follows any play-score
 function display (s) (show (score-roll s) 1100 (min 900 (max 320 (+ 100 (* 120 (length (score-rows s)))))))
 
 # --- databases (the *SOL layout: a feature file next to a folder of the same name holding the sounds) -----------

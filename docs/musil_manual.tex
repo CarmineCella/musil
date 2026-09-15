@@ -797,7 +797,10 @@ the table oscillator, the IIR filter, delay, resampling, autocorrelation, peak
 picking and gather are C++; generators, windows, convolution, the STFT and its
 inverse, cepstral envelopes, the phase vocoder, the spectral and temporal descriptors,
 the RBJ biquads, comb and allpass sections and the Schroeder reverb are Musil, as
-compositions of vector operations. \musil{hpss} (harmonic/percussive separation by median
+compositions of vector operations; so are \musil{converb} (a convolution reverb through
+any response, dry and wet, per channel) and \musil{concerthall} (the Concertgebouw's
+response, \texttt{hall\_concertgebouw.wav}, shipped with the libraries; every
+\musil{play-score} goes through it). \musil{hpss} (harmonic/percussive separation by median
 filters over the spectrogram) is C++; \musil{onset-strength}, \musil{onsets} (a global
 threshold), \musil{onsets-adaptive} (a threshold on the flux's moving median, for
 material whose loudness drifts) and \musil{segments} build onset detection from the
@@ -997,10 +1000,14 @@ display s                                                  # the roll, drawn lik
 A sound longer than its event is faded out at the end; a shorter one is left as it is; a
 synth's gate is the duration and its release plays on. A mono sound is spatialised at its
 position; a sound with as many channels as the layout goes in as it is. \musil{play-score}
-(with a gain for the whole; \musil{play-score-from} from a time) renders every sound first,
-then schedules everything ahead of the clock; it refuses an instrument that does not
-stream, naming the event; \musil{play} and \musil{play-file} of \texttt{live} still play a
-buffer or a file.
+(with a gain for the whole; \musil{play-score-from} from a time) renders the score in
+stereo, puts it in the concert hall (\musil{concerthall} of \texttt{signals}: the
+Concertgebouw's response, shipped with the libraries; \musil{score-reverb!} sets the dry
+and wet amounts, \musil{(score-reverb! s 1 0)} plays it dry) and plays it as one buffer,
+waiting until it ends or \musil{stop-score}; \musil{score-play-now} starts and returns.
+\musil{score-schedule} is the live way, every event on the clock with the synths compiled
+(it refuses one that does not stream); \musil{play} and \musil{play-file} of \texttt{live}
+still play a buffer or a file.
 
 \textbf{The roll} (\musil{display}) draws the score like music: one staff per instrument
 for the notes, in orchestral order, with a drawn treble or bass clef chosen by the
@@ -1010,9 +1017,11 @@ every event is a head at its onset and a thin line of the same colour for its du
 (a line stops short of a following note's sharp). A D pan and \texttt{+} \texttt{-} zoom in
 time, W S scroll and Z X zoom the rows, R resets; the wheel scrolls rows (sideways, or with
 Shift, time; with Ctrl it zooms), and scrollbars show the visible part once zoomed;
-hovering shows an event's data and the time; a double-click plays that event alone; a red
-cursor follows \musil{play-score} (through \musil{playhead}, which any player of a score
-can set). It is a view: the score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
+hovering shows an event's data and the time; a double-click plays that event alone; a
+click in the background places the cursor, \textbf{Play} (or Space) plays the score from
+it, in the hall, \textbf{Stop} stops, and the red playhead follows (any \musil{play-score}
+too, through \musil{playhead}). It is a player of the code's score, not an editor: the
+score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
 \musil{event-place!} edit one event.

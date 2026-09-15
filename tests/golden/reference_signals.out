@@ -91,6 +91,10 @@ segments         : (1984 2016) (the pieces between onsets)
 nmf-separate     : 2 sources of 4000 samples; W (257 2) H (2 36) ; they add up to the input within 0
 nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)
 
+--- converb, concerthall ---
+converb          : 13 samples: dry + wet through any response (a vector, or one per channel)
+concerthall      : 2 channels, the Concertgebouw's response shipped with the libraries; play-score uses it
+
 --- spatial (azimuth 0 in front, positive to the left; elevation up) ---
 pan-azimuth 45   : stereo levels (0.616 0.356)
 ambi-gains 1 30 0: (1 0.5 0 0.866) (W Y Z X, SN3D)

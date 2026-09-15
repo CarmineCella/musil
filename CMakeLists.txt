@@ -160,7 +160,7 @@ endif()
 #                                      headers -> ${CMAKE_INSTALL_PREFIX}/include/musil
 #                                      *.mu    -> ~/.musil   (searched last by load)
 #   cmake --install build --prefix ~/.local     to avoid sudo
-file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt ${CMAKE_CURRENT_SOURCE_DIR}/src/hrtf_kemar.csv)
+file(GLOB MUSIL_LANG_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mu ${CMAKE_CURRENT_SOURCE_DIR}/src/help.txt ${CMAKE_CURRENT_SOURCE_DIR}/src/hrtf_kemar.csv ${CMAKE_CURRENT_SOURCE_DIR}/src/hall_concertgebouw.wav)
 file(GLOB MUSIL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h)
 install(TARGETS musil RUNTIME DESTINATION bin)
 if(MUSIL_FLTK)

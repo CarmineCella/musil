@@ -35,7 +35,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/lib"
 cp "$BUILD_DIR/musil-ide" "$OUT/musil-ide"
 cp "$BUILD_DIR/musil" "$OUT/musil"
 strip "$OUT/musil-ide" "$OUT/musil" 2>/dev/null || true
-cp src/*.mu src/help.txt src/hrtf_kemar.csv "$OUT/lib/"
+cp src/*.mu src/help.txt src/hrtf_kemar.csv src/hall_concertgebouw.wav "$OUT/lib/"
 mkdir -p "$OUT/examples" && cp -R examples/. "$OUT/examples/" && find "$OUT/examples" -name '.DS_Store' -delete
 [[ -f docs/musil_manual.pdf ]] && cp docs/musil_manual.pdf "$OUT/"
 cp README.md LICENSE.md "$OUT/"

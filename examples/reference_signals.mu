@@ -146,6 +146,12 @@ var sep (nmf-separate two 512 128 2 40)
 print "nmf-separate     :" (length (head sep)) "sources of" (length (head (head sep))) "samples; W" (mat-shape (getidx sep 1)) "H" (mat-shape (getidx sep 2)) "; they add up to the input within" (fixed (max (abs (- (+ (head (head sep)) (last (head sep))) two))) 6)
 print "nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)"
 
+# --- 6c3. Convolution reverb -------------------------------------------------------------------
+print ""
+print "--- converb, concerthall ---"
+print "converb          :" (length (head (converb (vec 1 (zeros 10)) (vec 0.5 0 0.25) 1 1))) "samples: dry + wet through any response (a vector, or one per channel)"
+print "concerthall      :" (length (concerthall (sine sr 440 0.1) sr 0.7 0.3)) "channels, the Concertgebouw's response shipped with the libraries; play-score uses it"
+
 # --- 6d. Spatial ----------------------------------------------------------------------------
 print ""
 print "--- spatial (azimuth 0 in front, positive to the left; elevation up) ---"

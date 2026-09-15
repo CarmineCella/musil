@@ -204,11 +204,21 @@ save-png roll2 "/tmp/musil_test_staff.png" 800 400
 check (exists? "/tmp/musil_test_staff.png") "the staff draws"
 
 # --- play, on the null device ---
-check (equal? (type (play-score s2 0.8)) "nil") "play-score: runs through live"
+check (equal? (get s2 'reverb) (list 0.7 0.3)) "score: in the hall by default"
+score-reverb! s2 1 0
+check (equal? (get s2 'reverb) (list 1 0)) "score-reverb!: dry"
+check (equal? (type (play-score s2 0.8)) "nil") "play-score: renders, puts in the hall, plays, waits"
+var end (score-play-now s2 1 0.5)
+check (> end (audio-time)) "score-play-now: returns at once with the end time"
+check (head (playhead)) "score-play-now: the playhead is on"
+stop-score
+check (not (head (playhead))) "stop-score: the playhead is off"
 var sched (score-schedule s2 1 0.7)
-check (== (length sched) 3) "score-schedule: synths, end, start"
+check (== (length sched) 3) "score-schedule: synths, end, start (the live way)"
 check (> (getidx sched 1) (getidx sched 2)) "score-schedule: ends after it starts"
-check (equal? (type (play-score-from s2 1 1.2)) "nil") "play-score-from: from the middle"
+each (head sched) free
+check (== (length (score-render-at s2 "stereo" 22050)) 2) "score-render-at: another rate"
+check (near? (length (head (score-render-at s2 "stereo" 22050))) (/ (length (head (score-render s2 "stereo"))) 2) 2) "score-render-at: half the samples at half the rate"
 var ph (playhead)
 check (== (length ph) 2) "playhead: (list on time)"
 playhead! (audio-time) 2 (+ (audio-time) 10)
@@ -220,6 +230,6 @@ check (== (length (play (sine 44100 440 0.05) 44100)) 1) "play from live is not 
 function bad (gate) (pvoc-stretch gate 2)
 var s4 (score "bad" 44100)
 event s4 0 0.1 (instrument bad (list))
-check (contains? (error-of (function () (play-score s4 1))) "does not stream") "play-score: a non-streamable instrument is refused"
+check (contains? (error-of (function () (score-schedule s4 1 0))) "does not stream") "score-schedule: a non-streamable instrument is refused (play-score renders it instead)"
 audio-quit
 report "test_music"
