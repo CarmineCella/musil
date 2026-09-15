@@ -209,6 +209,7 @@ function play-score-from (s gain from) {
     var sched (score-schedule s gain from)
     sleep (+ 0.4 (- (score-duration s) from) 0.6)
     each (head sched) free
+    playhead-off!
     return nil
 }
 # (score-schedule s gain from)   schedule the score's events on the clock and return at once:
@@ -245,45 +246,9 @@ function score-schedule (s gain from) {
             play-buffer (getidx r 1) sr gain 0 1 0 when
         }
     })
+    playhead! t0 from (+ t0 (- (score-duration s) from) 0.6)                      # the roll's cursor follows
     return (list synths (+ t0 (- (score-duration s) from) 0.6) t0)
 }
-# (score-export s path)    the score as a Musil file defining (generated-score), a function that rebuilds it: notes,
-#                          files, synths and calls are written by name (buffers cannot be, and are skipped with a
-#                          note); load the file and call (generated-score) to get the score back
-function score-export (s path) {
-    var lines (list "load \"music.mu\"" "" "function generated-score () {" (concat "    var s (score \"" (get s 'name) "\" " (str (get s 'sr)) ")"))
-    # one variable per distinct database (a merged one is loaded from its list of files)
-    var keys (unique (map (filter (get s 'events) (function (e) (equal? (get e 'kind) 'note))) (function (e) (db-key (get e 'db)))))
-    var names (map (vec->list (range (length keys))) (function (k) (if (== k 0) "db" (concat "db" (str (+ k 1))))))
-    each (zip keys names) (function (p) (push lines (concat "    var " (last p) " (db-load " (to-source (head p)) ")")))
-    function db-var (d) (getidx names (find keys (db-key d)))
-    each (sort-by (get s 'events) (function (e) (get e 'at))) (function (e) {
-        var kind (get e 'kind)
-        var what (if (equal? kind 'file) (to-source (get e 'source))
-                  (if (equal? kind 'note) (concat "(note " (db-var (get e 'db)) " '" (get e 'instr) " " (to-source (get e 'pitch)) " '" (get e 'dyn) " '" (get e 'tech) ")")
-                  (if (equal? kind 'synth) (concat "(instrument " (fn-name (get e 'source)) " " (to-source (get e 'params)) ")")
-                  (if (equal? kind 'call) (concat "(call " (fn-name (get e 'source)) " " (to-source (get e 'args)) ")") nil))))
-        if (equal? (type what) "nil") { push lines (concat "    # skipped: a " (str kind) " event at " (str (get e 'at)) " (buffers cannot be written)") } { push lines (concat "    event-gain! (event-at s " (str (get e 'at)) " " (str (get e 'dur)) " " what " " (str (get e 'az)) " " (str (get e 'el)) ") " (str (get e 'gain))) }
-    })
-    push lines "    return s"
-    push lines "}"
-    write path (join lines "\n")
-    return path
-}
-# (db-key db)              what identifies a database for export: its file, or the list of files of a merged one
-function db-key (d) (if (has? d 'paths) (get d 'paths) (get d 'path))
-# (to-source v)            a value as Musil source text: numbers, strings, symbols and lists of them
-function to-source (v) {
-    var t (type v)
-    if (equal? t "string") { return (concat "\"" (replace v "\"" "\\\"") "\"") }
-    if (equal? t "symbol") { return (concat "'" (str v)) }
-    if (equal? t "scalar") { return (str v) }
-    if (equal? t "vec") { return (concat "(vec " (join (map (vec->list v) str) " ") ")") }
-    if (equal? t "list") { return (concat "(list " (join (map v to-source) " ") ")") }
-    if (equal? t "nil") { return "nil" }
-    return (str v)
-}
-
 # --- the roll --------------------------------------------------------------------------------
 var orchestral-order (list "Picc" "Fl" "AFl" "BFl" "Ob" "EH" "ClEb" "ClBb" "Cl" "BCl" "CbCl" "Bn" "CbBn" "SSax" "ASax" "TSax" "BSax"
                            "Hn" "TpC" "Tp" "Tbn" "BTb" "Tba" "Timp" "Perc" "Hp" "Pno" "Acc" "Gtr" "Vn" "Va" "Vc" "Cb")
@@ -306,27 +271,30 @@ function score-rows (s) {
     })
     return rows
 }
-# (score-roll s)           the roll as a figure: rows and bars (each bar keeps the event's own at and dur values, so
-#                          the player's edits reach the score)
+# (score-roll s)           the roll as a figure: rows (name and clef) and bars (row start dur label tip group lane lanes
+#                          midi dyn); pitched events sit on their row's staff, the others on a line
 function score-roll (s) {
     var rows (score-rows s)
     var groups (list 'note 'file 'buffer 'synth 'call)
     var bars (list)
     var r 0
+    var row-specs (list)
     each rows (function (row) {
-        var lanes (event-lanes (last row))                   # overlapping events in a row get lanes of their own
+        var evs (last row)
+        var pitched (filter evs (function (e) (has? e 'midi)))
+        var clef (if (== (length pitched) 0) "none" (if (< (median (vec (map pitched (function (e) (get e 'midi))))) 60) "bass" "treble"))
+        push row-specs (list (head row) clef)
+        var lanes (if (equal? clef "none") (event-lanes evs) (map evs (function (e) 0)))
         var nlanes (+ 1 (max-of lanes))
-        each (zip (last row) lanes) (function (pair) {
+        each (zip evs lanes) (function (pair) {
             var e (head pair)
             var kind (get e 'kind)
             var tip (if (equal? kind 'note) (concat (get e 'pitch) " " (get e 'dyn) " " (get e 'tech) (if (!= (opt e 'shift 0) 0) (concat " (shifted " (str (opt e 'shift 0)) ")") "")) (concat "az " (str (get e 'az)) " el " (str (get e 'el))))
-            var at-ref (head (filter e (function (p) (equal? (head p) 'at))))
-            var dur-ref (head (filter e (function (p) (equal? (head p) 'dur))))
-            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (last at-ref) (last dur-ref))
+            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (opt e 'midi -1) (opt e 'dyn ""))
         })
         set r (+ r 1)
     })
-    return (list (get s 'name) (list (list "roll" (map rows head) bars)) (list (list "xlabel" "time (s)")))
+    return (list (get s 'name) (list (list "roll" row-specs bars)) (list (list "xlabel" "time (s)")))
 }
 # (event-lanes events)     a lane number per event such that events sharing a lane do not overlap in time
 function event-lanes (events) {
@@ -338,12 +306,10 @@ function event-lanes (events) {
         return k
     }))
 }
-# (display s)              open the score in the player: the roll, playable, editable, renderable (see player.h);
-#                          without the player (no FLTK) the roll is shown as a figure
-function display (s) {
-    if (defined? 'score-player) { return (score-player s) }
-    return (show (score-roll s) 1000 (max 300 (+ 120 (* 28 (length (score-rows s))))))
-}
+# (display s)              show the score as a roll: a staff per instrument with note heads and duration lines, a
+#                          line per other kind; A D pan and + - zoom in time, W S scroll and Z X zoom the rows,
+#                          R resets; hovering shows an event; the cursor follows play-score
+function display (s) (show (score-roll s) 1100 (min 900 (max 320 (+ 100 (* 120 (length (score-rows s)))))))
 
 # --- databases (the *SOL layout: a feature file next to a folder of the same name holding the sounds) -----------
 # (db-load path)           load a database from its feature file: TinySOL.spectrum.db with the sounds in TinySOL/ next

@@ -70,7 +70,9 @@ check (equal? (head (head (getidx roll 1))) "roll") "score-roll: a roll layer"
 check (== (length (getidx (head (getidx roll 1)) 2)) 7) "score-roll: one bar per event"
 check (equal? (event-lanes (list (record (list 'at 0 'dur 2)) (record (list 'at 1 'dur 1)) (record (list 'at 3 'dur 1)))) (list 0 1 0)) "event-lanes: overlaps get their own lane"
 var bar (head (getidx (head (getidx roll 1)) 2))
-check (== (length bar) 10) "score-roll: a bar is row start dur label tip group lane lanes at-ref dur-ref"
+check (== (length bar) 10) "score-roll: a bar is row start dur label tip group lane lanes midi dyn"
+check (== (getidx bar 8) -1) "score-roll: an unpitched event has no pitch"
+check (equal? (map (getidx (head (getidx roll 1)) 1) last) (list "none" "none" "none" "none")) "score-roll: unpitched rows have no clef"
 save-png roll "/tmp/musil_test_roll.png" 600 300
 check (exists? "/tmp/musil_test_roll.png") "the roll draws"
 
@@ -179,15 +181,15 @@ var other (record (list 'path "x" 'root "." 'type "mfcc" 'block 2048 'hop 256 'n
 check (contains? (error-of (function () (db-merge (list db other)))) "types differ") "db-merge: feature types must agree"
 check (contains? (error-of (function () (db-merge (list)))) "no databases") "db-merge: empty"
 
-# --- export as a function ---
-score-export s2 "/tmp/musil_test_export.mu"
-var text (read "/tmp/musil_test_export.mu")
-check (contains? text "function generated-score ()") "score-export: a function"
-check (contains? text "(note db 'Vn \"C4\" 'mf 'ord)") "score-export: notes by name (pitches as strings)"
-load "/tmp/musil_test_export.mu"
-var back (generated-score)
-check (== (length (score-events back)) 2) "score-export: (generated-score) rebuilds the score"
-check (== (get (head (score-events back)) 'dur) 1) "score-export: with its durations"
+# --- the roll of notes: staves ---
+var roll2 (score-roll s2)
+var rows2 (getidx (head (getidx roll2 1)) 1)
+check (equal? (head (head rows2)) "Vn") "score-roll: a row per instrument"
+check (equal? (last (head rows2)) "treble") "score-roll: a treble clef for a violin around C4-B4"
+check (== (getidx (head (getidx (head (getidx roll2 1)) 2)) 8) 60) "score-roll: a note's bar carries its MIDI pitch"
+check (equal? (getidx (head (getidx (head (getidx roll2 1)) 2)) 9) "mf") "score-roll: and its dynamics"
+save-png roll2 "/tmp/musil_test_staff.png" 800 400
+check (exists? "/tmp/musil_test_staff.png") "the staff draws"
 
 # --- play, on the null device ---
 check (equal? (type (play-score s2 0.8)) "nil") "play-score: runs through live"
@@ -195,18 +197,13 @@ var sched (score-schedule s2 1 0.7)
 check (== (length sched) 3) "score-schedule: synths, end, start"
 check (> (getidx sched 1) (getidx sched 2)) "score-schedule: ends after it starts"
 check (equal? (type (play-score-from s2 1 1.2)) "nil") "play-score-from: from the middle"
-var pid (score-player s2)
-check (> pid 0) "score-player: an id (no window under MUSIL_NOSHOW)"
-check (== (player-cursor pid) 0) "player-cursor"
-player-play pid 0.5
-check (player-playing? pid) "player-play"
-player-stop pid
-check (not (player-playing? pid)) "player-stop"
-player-render pid "/tmp/musil_test_player.wav"
-check (== (head (read-wav "/tmp/musil_test_player.wav")) 44100) "player-render"
-player-export pid "/tmp/musil_test_player.mu"
-check (contains? (read "/tmp/musil_test_player.mu") "generated-score") "player-export"
-check (contains? (error-of (function () (player-play 999 0))) "no player") "player-play: unknown player"
+var ph (playhead)
+check (== (length ph) 2) "playhead: (list on time)"
+playhead! (audio-time) 2 (+ (audio-time) 10)
+check (head (playhead)) "playhead!: on while a score plays"
+check (near? (last (playhead)) 2 0.2) "playhead: the position from where it started"
+playhead-off!
+check (not (head (playhead))) "playhead-off!"
 check (== (length (play (sine 44100 440 0.05) 44100)) 1) "play from live is not shadowed by music (a buffer still plays)"
 function bad (gate) (pvoc-stretch gate 2)
 var s4 (score "bad" 44100)

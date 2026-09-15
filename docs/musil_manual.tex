@@ -991,7 +991,7 @@ event s 6 1 (call my-function (list 1 2 'dur))             # any function, calle
 event-at s 7 1 my-function 90 0                            # a bare function is called with the duration; placed at the left
 render s "study.wav" "stereo"                              # layouts: "mono" "stereo" "binaural" "ambi N", a ring, or N channels
 play-score s 0.8                                           # through live, ahead of the clock, scaled
-display s                                                  # the player: the roll, playable, editable
+display s                                                  # the roll, drawn like music
 \end{lstlisting}
 
 A sound longer than its event is faded out at the end; a shorter one is left as it is; a
@@ -1002,18 +1002,14 @@ then schedules everything ahead of the clock; it refuses an instrument that does
 stream, naming the event; \musil{play} and \musil{play-file} of \texttt{live} still play a
 buffer or a file.
 
-\textbf{The player} (\musil{display}) is the roll as a window: one row per instrument for
-the notes, in orchestral order, then a row per kind (files, buffers, synths, calls),
-overlapping events in lanes; A D and the wheel pan and zoom in time, W S and Z X scroll
-and zoom the rows, R resets; hovering shows an event's data and the time; a click in the
-background places the cursor; \textbf{Play} (or Space) plays from the cursor and the cursor
-follows the clock (\textbf{Stop} while it plays); dragging a bar moves its event, dragging
-its end changes its length, and the score's own numbers change, so the next Play, Render or
-Export has the edit; \textbf{Render...} asks for a file name and writes the stereo mix;
-\textbf{Export...} asks for a name and writes a Musil file defining \musil{(generated-score)},
-a function that rebuilds the score (notes, files, synths and calls by name; buffers are
-skipped). The window is on the FLTK thread and hands every action to the interpreter as a
-line of Musil, so it works the same from the command line and from the IDE. \musil{score-shift!}, \musil{score-scale!},
+\textbf{The roll} (\musil{display}) draws the score like music: one staff per instrument
+for the notes, in orchestral order (a treble or bass clef by the instrument's range, ledger
+lines, sharps, dynamics under the notes), then a line per kind (files, buffers, synths,
+calls); every event is a head at its onset and a line of the same colour for its duration.
+A D and the wheel pan and zoom in time, W S and Z X scroll and zoom the rows, R resets;
+hovering shows an event's data and the time; a red cursor follows \musil{play-score}
+(through \musil{playhead}, which any player of a score can set). It is a view: the score
+lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
 \musil{event-place!} edit one event.

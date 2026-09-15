@@ -159,7 +159,6 @@ static void interpreter_thread() {
     line_buf buf; std::ostream out(&buf);
     Interp I;
     plot_needs_awake() = true;                            // plot and controls windows are made on the FLTK thread
-    player_submit() = [](const std::string& code) { submit(code, "<player>"); };   // the player's buttons queue code for this thread
     make_env(I);
     for (auto& p : load_paths) I.load_path.push_back(p);
     I.out = &out;

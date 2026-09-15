@@ -49,7 +49,7 @@ print "score-rows      :" (map (score-rows s) head)
 var roll (score-roll s)
 print "score-roll      : a figure with" (length (getidx (head (getidx roll 1)) 2)) "bars in" (length (getidx (head (getidx roll 1)) 1)) "rows"
 print "event-lanes     :" (event-lanes (list (record (list 'at 0 'dur 2)) (record (list 'at 1 'dur 1)) (record (list 'at 3 'dur 1)))) "(overlapping events get lanes)"
-print "display         : (display s) opens the player: the roll, Play from the cursor, bars dragged to move or stretch, Render..., Export..."
+print "display         : (display s) shows the roll: a staff per instrument, note heads and duration lines, the cursor follows play-score"
 
 # --- 4. Transformations ------------------------------------------------------------------------
 print ""
@@ -101,5 +101,5 @@ print "db-nearest      :" (map (db-nearest db e 3) (function (x) (filename (get 
 print "db-available    :" (length (db-available db)) "sounds on disk; db-instruments-available:" (db-instruments-available db)
 print "db-gen          :" (db-gen (get db 'root) "/tmp/musil_reference_gen.db" "mfcc" 2048 256 13) "sounds analysed into /tmp/musil_reference_gen.db (mfcc, 13); db-make generates and loads"
 print "play-score      : (play-score s gain) through live, ahead of the clock; (play-score-from s gain from) from a time"
-print "score-schedule  : schedules and returns (the player uses it); score-export writes (generated-score), a function that rebuilds the score"
+print "score-schedule  : schedules and returns (the synths to free, the end and the start clock times); playhead reads the cursor"
 print "db-merge        :" (db-size (db-merge (list db db))) "entries out of two databases (or (db-load (list \"a.db\" \"b.db\")))"

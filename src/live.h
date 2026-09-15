@@ -959,6 +959,14 @@ inline vptr live_osc_stop(vlist&, Interp&) {
 // Close the device without an interpreter (at exit, in the hosts): the audio thread must stop before
 // the engine's statics are destroyed
 inline void live_shutdown() { audio_engine& e = engine(); if (e.open) { ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear(); } sched_reset(); controls().clear(); }
+// --- the playhead: where a score is being played, for the roll's cursor (music.mu sets it) ---
+struct playhead_state { bool on = false; double t0 = 0, from = 0, end = 0; };
+inline playhead_state& playhead() { static playhead_state p; return p; }
+// (playhead! t0 from end) tell the roll that a score plays from `from` seconds, started at clock time t0, until end;
+//   (playhead-off!) it stopped; (playhead) => (list on time) the cursor's position now
+inline vptr live_playhead_set(vlist& a, Interp& i) { playhead_state& p = playhead(); p.t0 = i.scalar(a[0]); p.from = i.scalar(a[1]); p.end = i.scalar(a[2]); p.on = true; return v_nil(); }
+inline vptr live_playhead_off(vlist&, Interp&) { playhead().on = false; return v_nil(); }
+inline vptr live_playhead_get(vlist&, Interp&) { playhead_state& p = playhead(); double now = live_now(); bool on = p.on && now < p.end; return v_list({ v_bool(on), v_num(on ? p.from + (now - p.t0) : 0) }); }
 inline void add_live(Interp& i) {
     i.def("audio-open", live_open, 3, 4); i.def("audio-close", live_close, 0, 0);
     i.def("audio-start", live_start, 0, 0); i.def("audio-stop", live_stop, 0, 0);
@@ -975,6 +983,7 @@ inline void add_live(Interp& i) {
     i.def("controls-list", live_controls_list, 0, 0); i.def("bind-control", live_bind_control, 3, 3); i.def("unbind-control", live_unbind_control, 1, 1); i.def("clear-controls", live_clear_controls, 0, 0);
     i.def("osc-send", live_osc_send, 3, -1); i.def("osc-listen", live_osc_listen, 1, 1); i.def("osc-map", live_osc_map, 2, 2); i.def("osc-stop", live_osc_stop, 0, 0);
     i.def("osc-encode", live_osc_encode, 1, -1); i.def("osc-decode", live_osc_decode, 1, 1);
+    i.def("playhead!", live_playhead_set, 3, 3); i.def("playhead-off!", live_playhead_off, 0, 0); i.def("playhead", live_playhead_get, 0, 0);
     auto prev = i.idle_fn;
     i.idle_fn = [&i, prev]() { if (prev) prev(); live_idle(i); };   // chained: the port (system) was hooked first
 }

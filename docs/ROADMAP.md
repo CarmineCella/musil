@@ -94,9 +94,9 @@ cmake --build build --target uninstall
 1. **Score and rendering** (done): a score is a record of events (onset, duration, kind, source,
    gain, azimuth/elevation); events hold files, buffers, notes, synths (`instrument`) and calls;
    `render` to any layout (mono, stereo, binaural, ambi N, a ring, N channels), `play` through live,
-   `display` as the player (src/player.h): the roll with Play from a cursor, drag-editing of the
-   events, Render and Export (a Musil file defining `(generated-score)`); the window hands every
-   action to the interpreter as Musil through `player_submit`.
+   `display` as a roll drawn like music (staves, note heads, duration lines; a cursor following
+   play-score). Editing in the window was tried and dropped: the score lives in the code; a
+   notation font and a real editor come after the music tools (Orchidea, the granulator).
 2. **Dataset** (done for SOL-like layouts): `db-load` reads the feature file (metadata from the file
    names, features in C++); sounds are opened on demand and cached; `note` resolves to the nearest
    available sound and shifts it. `db-gen` makes a feature file from a folder (Orchidea's dbgen,
