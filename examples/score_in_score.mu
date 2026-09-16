@@ -19,7 +19,7 @@ function phrase (name pitches) {
     return p
 }
 var a (phrase "phrase a" row)
-var b (phrase "phrase b" (transpose (retrograde row) 3))                          # backwards, a minor third up
+var b (phrase "phrase b" (transpose-pitches (retrograde row) 3))                          # backwards, a minor third up
 var c (fragment->score "chordal" sr (chords db 'Hn 'p 'ord (list (list "C4" "F#4") (list "D#4" "G4") (list "C#4" "G#4")) (beats 96 (rhythm (list 1.5 1.5 3)))))
 print "phrases:" (fixed (score-duration a) 2) (fixed (score-duration b) 2) (fixed (score-duration c) 2) "s"
 

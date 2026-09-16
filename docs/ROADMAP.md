@@ -103,7 +103,13 @@ cmake --build build --target uninstall
    reproduced exactly); queries: db-query with lists, db-grep, db-find, db-between, db-nearest.
    The repository bundles MicroSOL (examples/data/microsol, the *SOL layout: X.spectrum.db next to X/);
    the full TinySOL is a release asset that fetch_tinysol.sh puts in datasets/ (git-ignored).
-3. **Roll and export**: the roll is done (a `roll` layer in `plot`); MIDI and MusicXML export remain.
+3. **Roll and export**: the roll is done (a `roll` layer in `plot`, drawn like music, a player of the
+   code's score); MIDI and MusicXML export remain.
+4. **Elements** (done, round one): pitches, rhythms, chords, lines, textures, pivots, interpolations,
+   fragments and scores in scores (see the manual's music section); `minimalism.mu`,
+   `algorithmic_comp.mu`, `score_in_score.mu`. Known cost: preparing a long score for playback is the
+   hall convolution (about 3 s per minute of music); notes and the hall's response are cached.
+5. **Next**: the orchestral granulator, Orchidea, sound types, Maple, all as functions returning fragments.
 4. **Generators**: random score generator, orchestral granulator.
 5. **C++ ports**, each as a C++ core + Musil surface returning events: sound types, Maple (matching
    pursuit), Orchidea (assisted orchestration).

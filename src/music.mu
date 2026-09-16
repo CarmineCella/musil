@@ -110,8 +110,30 @@ function load-sound (path) {
     push sound-cache (list path w)
     return w
 }
-# (clear-sound-cache)      forget the loaded files
-function clear-sound-cache () (set sound-cache (list))
+# (note-sound e sr)        a note's channels at a rate: the file's, shifted by resampling when the pitch was not
+#                          the recording's; only what the event's duration needs is resampled (a little more for
+#                          the fade), and the result is kept in the cache under file, shift, rate and length
+var note-cache (list)
+function note-sound (e sr) {
+    var path (note-path e)
+    var shift (opt e 'shift 0)
+    var need (+ 0.2 (get e 'dur))                                    # seconds of output wanted
+    var key (concat path "@" (str shift) "@" (str sr) "@" (str (ceil need)))
+    var hit (opt note-cache key nil)
+    if (not (equal? (type hit) "nil")) { return hit }
+    var w (load-sound path)
+    var ratio (pow 2 (/ (- 0 shift) 12))                             # output length / input length
+    var src-len (min (length (head (getidx w 1))) (ceil (* (ceil need) (head w) (/ 1 ratio))))
+    var chans (map (getidx w 1) (function (c) (take c src-len)))
+    set chans (to-rate chans (head w) sr)
+    if (!= shift 0) { set chans (map chans (function (c) (resample c ratio))) }
+    push note-cache (list key chans)
+    if (> (length note-cache) 400) { set note-cache (drop note-cache 100) }        # a bounded cache
+    return chans
+}
+# (clear-sound-cache)      forget the loaded files and the notes made from them
+function clear-sound-cache () { set sound-cache (list)
+                                 set note-cache (list) }
 # (to-rate channels from to)   channels resampled from one rate to another (nothing to do when equal)
 function to-rate (channels from to) (if (== from to) channels (map channels (function (c) (resample-to c from to))))
 # (render-event e sr)      the sound of an event at the score's rate: a list of channels, cut to its duration
@@ -127,12 +149,7 @@ function render-event (e sr) {
         var src (get e 'source)
         set chans (if (equal? (type src) "vec") (list src) src)
     }
-    if (equal? kind 'note) {
-        var w (load-sound (note-path e))
-        var shift (opt e 'shift 0)
-        set chans (to-rate (getidx w 1) (head w) sr)
-        if (!= shift 0) { set chans (map chans (function (c) (resample c (pow 2 (/ (- 0 shift) 12))))) }   # a pitch shift by resampling
-    }
+    if (equal? kind 'note) { set chans (note-sound e sr) }
     if (equal? kind 'synth) {
         var n (max 1 (floor (* (get e 'dur) sr)))
         var gate (ones n)
@@ -249,7 +266,7 @@ function score-play-now (s gain from) {
     var t0 (+ (audio-time) 0.1)
     play-buffer out sr 1 0 1 0 t0
     var end (+ t0 (/ (length (head out)) sr))
-    playhead! t0 from end
+    playhead! t0 from end (register-score s)                                  # only this score's roll follows
     return end
 }
 # (score-hall-mix s sr)    the score rendered in stereo and put in the hall, at a rate; kept in the score (its
@@ -671,8 +688,8 @@ function chordinterp (db instr dyn tech c1 c2 r) {
     }))
     return (chords db instr dyn tech chord-list r)
 }
-# (transpose pitches n)    pitches n semitones higher (rests kept); (invert pitches axis) mirrored around a pitch
-function transpose (pitches n) (map pitches (function (p) (if (equal? (type p) "nil") nil (+ (pitch->number p) n))))
+# (transpose-pitches pitches n)   pitches n semitones higher (rests kept); (invert pitches axis) mirrored around a pitch
+function transpose-pitches (pitches n) (map pitches (function (p) (if (equal? (type p) "nil") nil (+ (pitch->number p) n))))
 function invert (pitches axis) (map pitches (function (p) (if (equal? (type p) "nil") nil (- (* 2 (pitch->number axis)) (pitch->number p)))))
 # (scale-pitches root mode degrees)   pitches of a scale: root a pitch, mode 'major 'minor 'dorian 'phrygian 'lydian
 #                          'mixolydian 'aeolian 'locrian 'chromatic 'whole 'pentatonic, degrees a list of scale steps (0 = root)

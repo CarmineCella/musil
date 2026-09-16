@@ -145,6 +145,11 @@ event s2 0.5 1 n2
 var nr (render-event (head (score-events s2)) 44100)
 check (== (length (head nr)) 44100) "render-event: a note, cut to its duration"
 check (> (rms (head nr)) 0.01) "render-event: a note sounds"
+var before (length note-cache)
+render-event (head (score-events s2)) 44100
+check (== (length note-cache) before) "note-sound: a note rendered twice comes from the cache"
+clear-sound-cache
+check (== (length note-cache) 0) "clear-sound-cache: the notes too"
 check (equal? (map (score-rows s2) head) (list "Vn")) "score-rows: notes by instrument"
 var s3 (score "orch" 44100)
 event s3 0 1 (note db 'Vc 'C4 'ff 'ord)
@@ -215,7 +220,7 @@ var ci (chordinterp db 'Vn 'mf 'ord (list "C4" "E4" "G4") (list "D4" "F4" "A4") 
 check (== (length ci) 3) "chordinterp: a chord per duration"
 check (equal? (map (get (last (head ci)) 'notes) (function (n) (get n 'pitch))) (list "C4" "E4" "G4")) "chordinterp: starts at the first chord"
 check (equal? (map (get (last (last ci)) 'notes) (function (n) (get n 'pitch))) (list "D4" "F4" "A4")) "chordinterp: ends at the second"
-check (equal? (transpose (list "C4" nil "E4") 2) (list 62 nil 66)) "transpose"
+check (equal? (transpose-pitches (list "C4" nil "E4") 2) (list 62 nil 66)) "transpose"
 check (equal? (invert (list 60 64) "C4") (list 60 56)) "invert"
 check (equal? (scale-pitches "D4" 'dorian (list 0 1 2 7)) (list 62 64 65 74)) "scale-pitches"
 check (== (get (note db 'Vn 62 'mf 'ord) 'midi) 62) "note: a MIDI number is a pitch too"
@@ -322,6 +327,7 @@ check (not (equal? (head (get s2 'cache)) sig1)) "score-hall-mix: a new event re
 score-clear-cache! s2
 check (equal? (type (opt s2 'cache nil)) "nil") "score-clear-cache!"
 check (head (playhead)) "score-play-now: the playhead is on"
+check (== (last (playhead)) (register-score s2)) "score-play-now: the playhead names the score, so only its roll follows"
 stop-score
 check (not (head (playhead))) "stop-score: the playhead is off"
 var rh (render-hall s2 "/tmp/musil_test_hall.wav")
@@ -337,10 +343,10 @@ each (head sched) free
 check (== (length (score-render-at s2 "stereo" 22050)) 2) "score-render-at: another rate"
 check (near? (length (head (score-render-at s2 "stereo" 22050))) (/ (length (head (score-render s2 "stereo"))) 2) 2) "score-render-at: half the samples at half the rate"
 var ph (playhead)
-check (== (length ph) 2) "playhead: (list on time)"
+check (== (length ph) 3) "playhead: (list on time owner)"
 playhead! (audio-time) 2 (+ (audio-time) 10)
 check (head (playhead)) "playhead!: on while a score plays"
-check (near? (last (playhead)) 2 0.2) "playhead: the position from where it started"
+check (near? (getidx (playhead) 1) 2 0.2) "playhead: the position from where it started"
 playhead-off!
 check (not (head (playhead))) "playhead-off!"
 check (== (length (play (sine 44100 440 0.05) 44100)) 1) "play from live is not shadowed by music (a buffer still plays)"

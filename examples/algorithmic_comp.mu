@@ -7,8 +7,8 @@
 # Usage: musil algorithmic_comp.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 9)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+# var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 var sr 44100
 var s (score "algorithmic" sr)
 score-tempo! s 108                                             # times below are in beats (add-beats!) at 108
@@ -22,7 +22,7 @@ var r1 (rhythm (list 1 0.5 0.5 1 0.75 0.25 1 0.5 0.5 1 -0.5 1.5))
 add-beats! s 0 (notes db 'Ob 'mf 'ord row r1)
 add-beats! s 10 (notes db 'Ob 'mf 'ord (invert row "E4") r1)
 add-beats! s 20 (notes db 'Ob 'mf 'ord (retrograde row) (retrograde r1))
-add-beats! s 30 (notes db 'Ob 'mf 'ord (transpose (invert (retrograde row) "E4") 6) r1)
+add-beats! s 30 (notes db 'Ob 'mf 'ord (transpose-pitches (invert (retrograde row) "E4") 6) r1)
 print "1: the row, P I R RI"
 
 # --- 2. chords from the row, voiced three ways, then interpolated as pitch sets --------------------------------------------
@@ -62,7 +62,7 @@ print "5: a texture through six chords (winds), a texture pivoting around the la
 
 # --- 6. walks, arpeggios, a polyrhythm, an ostinato: the language over fragments -------------------------------------------
 add-beats! s 82 (walk db (list 'Ob 'Hn 'Vc) 'mf 'ord (list "A4" "D#4" "G3") 3 (rhythm (list 0.5 0.5 0.5 1 0.5 0.5 1)))
-each (list 0 2 4) (function (k) (add-beats! s (+ 88 k) (arpeggio db 'Vn 'p 'ord (transpose (list "C4" "F#4" "A#4" "E5") k) 0.12 (if (odd? k) 'down 'up) 1)))
+each (list 0 2 4) (function (k) (add-beats! s (+ 88 k) (arpeggio db 'Vn 'p 'ord (transpose-pitches (list "C4" "F#4" "A#4" "E5") k) 0.12 (if (odd? k) 'down 'up) 1)))
 var pr (polyrhythm (rhythm (list 1 1 1)) (rhythm (list 1 1)))                        # 3 against 2, on a common cycle
 add-beats! s 94 (notes db 'Ob 'mf 'ord (list "F5" "E5" "F#5") (head pr))
 add-beats! s 94 (notes db 'Hn 'mf 'ord (list "C#3" "G3") (last pr))

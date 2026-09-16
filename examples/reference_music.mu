@@ -87,7 +87,7 @@ var s2 (score "notes" 44100)
 event s2 0 1 n1
 event s2 0.5 1 n2
 event s2 1 1 (note db 'Vc 'C4 'ff 'ord)
-event s2 1 1 (note db 'Ob 'E4 'mf 'ord)
+event s2 1 1 (note db 'Ob "E4" 'mf 'ord)
 print "score-rows      : notes by instrument, orchestral order:" (map (score-rows s2) head)
 
 # --- 5b. Musical elements: rhythms, chords, lines, textures ------------------------------------------------
@@ -103,7 +103,7 @@ print "chords          :" (length (chords db 'Hn 'mf 'ord (list (list "C4" "E4")
 print "texture         :" (length (texture db (list 'Vn 'Vc) 'mf 'ord (list "C4" "D4") (rhythm (list 0.5 0.5)) (list 1 2))) "notes: one line at two speeds, the faster repeating"
 print "pivots          :" (map (pivots db 'Ob 'mf 'ord (list "C4" "G4") 3 (rhythm (list 0.5 0.5 0.5))) (function (x) (get (last x) 'pitch))) "(two lines wandering around C4 and G4)"
 print "chordinterp     :" (map (chordinterp db 'Vn 'mf 'ord (list "C4" "E4" "G4") (list "D4" "F4" "A4") (rhythm (list 0.5 0.5 0.5))) (function (x) (map (get (last x) 'notes) (function (n) (get n 'pitch)))))
-print "transpose, invert, scale-pitches:" (transpose (list "C4" nil "E4") 2) (invert (list 60 64) "C4") (scale-pitches "D4" 'dorian (list 0 1 2 3 4 5 6 7))
+print "transpose, invert, scale-pitches:" (transpose-pitches (list "C4" nil "E4") 2) (invert (list 60 64) "C4") (scale-pitches "D4" 'dorian (list 0 1 2 3 4 5 6 7))
 print "more elements   : score-tempo!/add-beats!, fragment-gain/dynamics/articulate/thin/density/place/snap, chord-voicing, pitch-field, rotate/retrograde/cycle/interleave, harmonic-series, pitches-from-spectrum, rhythm-from-pattern/augment/diminish, tuplet, polyrhythm, walk, texture-staggered, arpeggio, chordinterp-ease/-sets, texture-on-chords/-pivots, orchestrate-line, score-map!, score-instrument (algorithmic_comp.mu uses them)"
 print "fragments       : duration" (fragment-duration ln) "; shifted" (map (fragment-shift ln 2) head) "; scaled" (map (fragment-scale ln 2) head) "; repeated" (length (fragment-repeat ln 3)) "; until 2.6 s:" (length (fragment-until ln 2.6))
 var sf (score "with fragments" 44100)

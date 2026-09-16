@@ -10,29 +10,31 @@ var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled Mi
 var s (score "chorale" 44100)
 var q 0.6                                  # a quarter note, in seconds (100 bpm)
 
-# --- the chorale: (voice pitch dynamics), one list per beat; each voice is an instrument of the database ---
+# --- the chorale, one event per voice and beat: each voice is an instrument of the database ------------------
 # soprano on the violin, alto on the oboe, tenor on the horn, bass on the cello; MicroSOL has only C4-G4 of
 # each, so most notes are shifted from the nearest sound; a full TinySOL plays every pitch from its own recording
-function chord (beat dur sop alt ten bas) {
+function voices (beat dur sop alt ten bas) {
     event-at s (* beat q) (* dur q) (note db 'Vn sop 'mf 'ord) 30 0
     event-at s (* beat q) (* dur q) (note db 'Ob alt 'mf 'ord) 10 0
     event-at s (* beat q) (* dur q) (note db 'Hn ten 'mf 'ord) -10 0
     event-at s (* beat q) (* dur q) (note db 'Vc bas 'mf 'ord) -30 0
 }
 # upbeat and bar 1
-chord 0 1 'A4 'F4 'D4 'D3                   # upbeat: d minor
-chord 1 1 'D5 'F4 'A3 'D3                   # bar 1, beat 1
-chord 2 1 'C5 'F4 'A3 'F3                   # beat 2 (the c natural of the modal turn)
-chord 3 1 "A#4" 'G4 'G3 'G3                 # beat 3: a sharp is written as a string
-chord 4 1 'A4 'F4 'C4 'F3                   # beat 4
+voices 0 1 "A4" "F4" "D4" "D3"                   # upbeat: d minor
+voices 1 1 "D5" "F4" "A3" "D3"                   # bar 1, beat 1
+voices 2 1 "C5" "F4" "A3" "F3"                   # beat 2 (the c natural of the modal turn)
+voices 3 1 "A#4" "G4" "G3" "G3"                 # beat 3 (pitches are always strings: a sharp needs one)
+voices 4 1 "A4" "F4" "C4" "F3"                   # beat 4
 # bar 2
-chord 5 2 'A4 'E4 'C4 'A2                   # a half note: the cadence on A
-chord 7 1 'A4 'E4 'C4 'A3                   # ... and the upbeat of the next phrase
-chord 8 1 'D5 'F4 'A3 'D3
-chord 9 1 'C5 'F4 'A3 'F3
-chord 10 1 "A#4" 'G4 'G3 'G3
-chord 11 1 'A4 'F4 'C4 'F3
-chord 12 2 'A4 'E4 'C4 'A2
+voices 5 2 "A4" "E4" "C4" "A2"                   # a half note: the cadence on A
+voices 7 1 "A4" "E4" "C4" "A3"                   # ... and the upbeat of the next phrase
+voices 8 1 "D5" "F4" "A3" "D3"
+voices 9 1 "C5" "F4" "A3" "F3"
+voices 10 1 "A#4" "G4" "G3" "G3"
+voices 11 1 "A4" "F4" "C4" "F3"
+voices 12 2 "A4" "E4" "C4" "A2"
+# the same cadence once more as a chord event of the library: one instrument, several pitches, one event
+event-at s (* 14 q) (* 2 q) (chord db 'Vn 'p 'ord (list "A4" "E4" "C4")) 0 0
 
 # --- the other kinds of event, after the chorale --------------------------------------------------------
 var end (* 16.5 q)

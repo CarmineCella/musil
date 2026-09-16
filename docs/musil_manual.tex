@@ -95,10 +95,12 @@ plotting, and the IDE puts all of it in a window.
 % ═════════════════════════════════════════════════════════════════════════════
 \section{Overview}
 
-Musil is a language for people who make music with computation: composers,
-researchers, students. It is deliberately small. The core language fits in one C++
-file of under a thousand lines, and every feature in this manual can be reached from
-that core by loading a library. The design has three commitments:
+Musil is a programming language for people who make music with computation: composers,
+researchers and students. It is deliberately small. The core language fits in one C++
+file of under a thousand lines, and every feature described in this manual, from
+convolution to live coding to orchestral scores, is reached from that core by loading a
+library written partly in C++ and partly in Musil itself. Three commitments shape the
+design:
 
 \begin{itemize}[nosep]
   \item \textbf{Numbers are vectors.} A scalar is a vector of size one; \musil{(+ v 10)}
@@ -111,10 +113,11 @@ that core by loading a library. The design has three commitments:
         build, inspect and \musil{eval}.
 \end{itemize}
 
-The surface is what makes it comfortable: each line is a command, so
-\musil{print "x =" x} needs no parentheses around it; \musil{( )} is a list;
-\musil{\{ \}} is a block of lines; \musil{(expr (a + b * 2))} gives you infix
-arithmetic when a formula reads better that way.
+What makes it comfortable to use is the surface: each line is a command, so
+\musil{print "x =" x} needs no parentheses around it; \musil{( )} encloses a list or a
+nested call; \musil{\{ \}} encloses a block of lines; and \musil{(expr (a + b * 2))} gives
+you infix arithmetic when a formula reads better that way. If you know a Lisp you will
+find the evaluation rule familiar; if you know a shell, the command lines.
 
 \subsection{Two ways to run Musil}
 
@@ -160,6 +163,7 @@ library; \texttt{examples/reference.mu} is the best place to start.
 
 % ═════════════════════════════════════════════════════════════════════════════
 \section{The language}
+\label{sec:language}
 
 \subsection{Reading a program}
 
@@ -426,16 +430,379 @@ macOS, \texttt{./deploy\_macos.sh} builds \texttt{dist/Musil.app}.
 
 
 % ═════════════════════════════════════════════════════════════════════════════
+\section{Tutorial}
+\label{sec:tutorial}
+
+This chapter teaches Musil from nothing, by doing. Every fragment in it can be typed into
+the IDE's console, sent from the editor with Cmd-Enter, or saved and run with
+\texttt{musil file.mu}; all of them were run as written. Chapter~\ref{sec:language} is the
+precise account of the syntax and the evaluation rule, chapter~\ref{sec:practices} the
+style that experience has shown to work, and chapter~\ref{sec:libraries} the reference of
+every function; at the console, \musil{(help name)} prints a function's entry.
+
+\subsection{The language}
+
+\paragraph{Commands and expressions.} A program is a list of commands, one per line. A
+command is a name followed by its arguments; parentheses are only needed to nest a call
+inside another.
+
+\begin{lstlisting}
+print "hello"                 # a command: the function print with one argument
+print (+ 1 2) (* 3 4)         # two nested calls: prints 3 12
+var x 10                      # a variable
+print (* x 2)
+\end{lstlisting}
+
+Inside parentheses the operator comes first, Lisp-style: \musil{(+ 1 2)}, \musil{(< x 5)},
+\musil{(max 3 7)}. Comments start with \texttt{\#}.
+
+\paragraph{Values.} Numbers are vectors: a scalar is a vector of length one, and arithmetic
+works on whole vectors at once, element by element, a scalar spreading over a vector.
+
+\begin{lstlisting}
+var v (vec 1 2 3)             # a vector
+print (* v 2)                 # (2 4 6)
+print (+ v (vec 10 20 30))    # (11 22 33)
+print (sum v) (mean v) (max v) (length v)
+print (range 5)               # (0 1 2 3 4)
+print (getidx v 1)            # 2: indices start at 0
+print (take v 2) (drop v 1)   # (1 2) (2 3)
+\end{lstlisting}
+
+Strings are in double quotes; \musil{concat} joins, \musil{str} converts to text,
+\musil{num} back to a number. Symbols are names used as values, written with a quote:
+\musil{'mf}, \musil{'freq}; they name keys, kinds and parameters. Lists hold anything, in
+order: \musil{(list 1 "two" 'three (vec 4 5))}; \musil{head}, \musil{last}, \musil{getidx},
+\musil{length}, \musil{push} work on them. \musil{nil} is the absence of a value; the
+truth values are \musil{1} and \musil{0}, and \musil{type} tells what something is.
+
+\paragraph{Functions.} \musil{function name (parameters) body}, the body one expression, or
+several in braces with \musil{return}.
+
+\begin{lstlisting}
+function square (x) (* x x)
+function rms-db (x) (db (rms x))
+
+function clamp (x lo hi) {
+    if (< x lo) { return lo }
+    if (> x hi) { return hi }
+    return x
+}
+print (square 4) (clamp 12 0 10)
+\end{lstlisting}
+
+A function's body may also start on the next line, indented. Functions are values: you can
+pass them, return them, keep them in lists. \musil{(function (x) (* x x))} is one without a
+name. Giving fewer arguments than parameters gives back a function waiting for the rest
+(currying), so a function has one arity: there are no optional arguments.
+
+\paragraph{Flow.} \musil{if} takes a condition, a then-branch and an optional else-branch;
+\musil{and}/\musil{or} short-circuit; \musil{while} and \musil{for} loop, with
+\musil{break} and \musil{continue}.
+
+\begin{lstlisting}
+if (> x 5) { print "big" } { print "small" }
+for (var k 0) (< k 3) (var k (+ k 1)) { print k }
+var n 0
+while (< n 100) { set n (* 2 (+ n 1)) }
+\end{lstlisting}
+
+\musil{var} declares, \musil{set} changes an existing variable (also one of an enclosing
+scope, from inside a function). The everyday loop, though, is not \musil{for} but
+\musil{each}, and most of what looks like a loop is a whole-vector operation:
+
+\begin{lstlisting}
+each (list "a" "b" "c") (function (s) (print s))
+each (range 3) (function (k) (print k (square k)))
+var t (/ (range 44100) 44100)                 # a second of time, no loop
+var y (* (exp (* -3 t)) (sin (* tau 440 t)))  # a decaying sine, no loop
+\end{lstlisting}
+
+\paragraph{map, filter, reduce.} They build new collections from old ones and are the
+functional heart of the language; use them when the function fits on the line.
+
+\begin{lstlisting}
+print (map (list 1 2 3) square)                          # (1 4 9)
+print (filter (range 10) odd?)                           # (1 3 5 7 9)
+print (reduce (list 1 2 3 4) + 0)                        # 10
+print (map (list "a" "bb") length)                       # (1 2)
+print (sort-by (list "pear" "fig" "apple") length)       # (fig pear apple)
+\end{lstlisting}
+
+\paragraph{Records.} Structured data is a list of \musil{(list key value)} pairs, made with
+\musil{record}, read with \musil{get} (an error when absent) or \musil{opt} (a default),
+changed with \musil{put!}. Keys are symbols. Events, options and database entries are all
+records.
+
+\begin{lstlisting}
+var e (record (list 'pitch 60 'dur 0.5 'amp 0.8))
+print (get e 'pitch) (opt e 'pan 0)
+put! e 'amp 0.6
+print (keys e) (values e)
+\end{lstlisting}
+
+\paragraph{Errors.} \musil{error} raises with a message; \musil{try ... catch} handles it.
+
+\begin{lstlisting}
+function safe-div (a b) { if (== b 0) { error "safe-div: division by zero" }
+                          return (/ a b) }
+var r (try (safe-div 1 0) catch err (concat "caught: " err))
+print r
+\end{lstlisting}
+
+\paragraph{Code as data.} \musil{'(+ 1 2)} is a list of three elements, \musil{eval} runs a
+form, \musil{parse} turns text into forms, \musil{apply} calls a function on a list of
+arguments. Patterns, scores and instruments are data because of this; in ordinary programs
+you will rarely need it.
+
+\subsection{Files and input}
+
+\begin{lstlisting}
+load "system.mu"
+write "/tmp/notes.txt" "a line of text"       # a string, or anything printed
+var text (read "/tmp/notes.txt")
+var rows (read-csv "data/iris.csv")            # a list of rows (vectors of numbers)
+write-csv "/tmp/out.csv" (list (vec 1 2) (vec 3 4))
+var w (read-wav "data/drums.wav")             # (list sample-rate channels)
+var sr (head w)
+var x (head (getidx w 1))                     # the first channel
+write-wav "/tmp/out.wav" sr x                 # 16-bit; 24, 32, "float" as a fourth argument
+write-wav "/tmp/stereo.wav" sr (list x x)     # a list of channels
+print (ls ".") (exists? "/tmp/out.wav")
+var answer (input "your name? ")              # a line from the console
+\end{lstlisting}
+
+A relative path is looked for in the current directory, then next to the file being run,
+then next to the program that was started, so an example in \texttt{examples/} reads
+\texttt{data/drums.wav} from anywhere. \musil{load} runs a file once (the libraries, or your
+own), searching the load path too (\texttt{MUSIL\_PATH}, \texttt{\textasciitilde/.musil},
+the installed libraries). Nothing is loaded by itself: a program that uses \texttt{signals}
+starts with \musil{load "signals.mu"}, which loads \texttt{std} as well.
+
+\subsection{The standard library}
+
+\texttt{std} is loaded by every other library. What you will use daily:
+
+\begin{lstlisting}
+load "std.mu"
+print (zip (list 1 2) (list "a" "b"))          # ((1 a) (2 b))
+print (concat-list (list 1) (list 2 3))         # (1 2 3)
+print (unique (list 1 1 2)) (reverse (list 1 2 3)) (sort-list (list 3 1 2))
+print (split "a,b,c" ",") (join (list "a" "b") "-") (replace "hello" "l" "L")
+print (starts-with? "musil" "mu") (contains? "musil" "si") (trim "  x  ")
+print (find-first (list 1 4 9) (function (x) (> x 3)))   # 4
+print (group-by (list 1 2 3 4) odd?)            # ((1 (1 3)) (0 (2 4)))
+print (fixed 3.14159 2) (round 2.5) (floor 2.7) (mod 7 3)
+print (rand) (seed 3)                           # random numbers, and a seed for repeatable ones
+print (clock) (now)                             # seconds since the start, and the date
+\end{lstlisting}
+
+Vectors have their own family: \musil{zeros}, \musil{ones}, \musil{vec} (concatenation),
+\musil{slice}, \musil{argmax}, \musil{cumsum}, \musil{dot}, \musil{norm}, \musil{clip},
+\musil{abs}, \musil{sqrt}, \musil{exp}, \musil{log}, \musil{sin} \ldots\ all element-wise.
+
+\subsection{Signals}
+
+Load a sound, look at it, filter it, convolve it, write it.
+
+\begin{lstlisting}
+load "signals.mu"
+load "plot.mu"
+var w (read-wav "data/drums.wav")
+var sr (head w)
+var x (head (getidx w 1))
+print (length x) "samples," (fixed (/ (length x) sr) 2) "s, rms" (fixed (rms x) 3)
+show (waveform x sr)
+var dull (lowpass x sr 800 0.7)                          # a biquad: cutoff, Q
+var bright (highpass x sr 2000 0.7)
+var hall (concerthall x sr 0.7 0.3)                      # the shipped concert hall (stereo)
+write-wav "/tmp/drums_hall.wav" sr hall
+var ir (head (getidx (read-wav "data/Concertgebouw-s.wav") 1))
+var wet (conv x (resample-to ir 44100 sr))                # any impulse response, by FFT
+\end{lstlisting}
+
+\paragraph{Synthesis as functions.} A sound is a function of time; write it as vector
+algebra.
+
+\begin{lstlisting}
+function tone (sr freq dur)
+    (* (sine sr freq dur) (exp (* -4 (/ (range (* sr dur)) sr))))
+function fm (sr carrier ratio index dur) {
+    var t (/ (range (* sr dur)) sr)
+    return (sin (+ (* tau carrier t) (* index (sin (* tau carrier ratio t)))))
+}
+write-wav "/tmp/fm.wav" 44100 (* 0.5 (fm 44100 220 1.5 3 2))
+\end{lstlisting}
+
+The same function can be an instrument for the live engine when it is written with a
+gate: \musil{(function (gate freq) (* (adsr sr gate 0.01 0.1 0.5 0.3) (osc sr (sig gate freq) saw-table)))}
+renders offline with \musil{synth-render} and streams with \musil{synth} (section~\ref{tut:live}).
+
+\paragraph{Spectra.} \musil{fft} gives real and imaginary parts, \musil{magnitude-spectrum}
+the magnitudes of the positive frequencies, \musil{stft} the frames of a short-time
+transform; the descriptors summarise them.
+
+\begin{lstlisting}
+var mags (magnitude-spectrum (take x 4096))
+var freqs (spectrum-freqs 4096 sr)
+print "centroid" (fixed (spectral-centroid mags freqs) 0) "Hz"
+show (spectrogram x sr 1024 256)
+var frames (stft x 1024 256)                               # complex frames, for your own analysis
+\end{lstlisting}
+
+\paragraph{Further.} Time stretching keeps the pitch (\musil{pvoc-stretch x 2}), onsets
+find the attacks (\musil{onsets x sr 1024 256 0.25}), and harmonic/percussive separation
+splits a recording into its sustained and its struck parts:
+
+\begin{lstlisting}
+var parts (hpss x 2048 512 31)
+write-wav "/tmp/harmonic.wav" sr (head parts)
+write-wav "/tmp/percussive.wav" sr (last parts)
+\end{lstlisting}
+
+\musil{nmf-separate} goes further, into any number of sources; \musil{binaural} and
+\musil{ambi-encode} place a sound in space. Chapter~\ref{sec:libraries} lists them all.
+
+\subsection{Scientific}
+
+A matrix is a list of row vectors; the C++ half does the products and decompositions, the
+Musil half the construction and the statistics.
+
+\begin{lstlisting}
+load "scientific.mu"
+var A (list->mat (list (list 2 1) (list 1 3)))
+var b (vec 3 5)
+print (mat-mul A A) (transpose A) (det A) (inv A)
+print (solve A b)                                       # A x = b
+print (eig-sym A)                                       # eigenvalues and vectors of a symmetric matrix
+var X (list->mat (list (list 1 2) (list 2 4.1) (list 3 6.2)))
+var P (pca X)
+print (pca-explained P)                                 # how much variance each direction carries
+var groups (kmeans X 2)
+print (kmeans-labels groups)
+var W-H (nmf (mat-map X abs) 1 50)                      # non-negative factorisation
+\end{lstlisting}
+
+In music these are the tools behind feature spaces (a database's spectra as rows: PCA maps
+them, k-means groups them, \musil{knn} classifies a new sound), behind NMF separation, and
+behind the regressions of \texttt{examples/regression.mu}. \musil{mat-map},
+\musil{mat-add}, \musil{hadamard}, \musil{mat-sum} and friends are the element-wise
+algebra; \musil{cov}, \musil{mat-mean}, \musil{mat-std} the statistics.
+
+\subsection{Live}
+\label{tut:live}
+
+A live session is: open the device, define an instrument, play it, then keep redefining
+things while the clock runs.
+
+\begin{lstlisting}
+load "live.mu"
+audio-init                                              # 44100 Hz, stereo
+var sr (audio-sr)
+function pluck (gate freq cutoff)
+    (* (adsr sr gate 0.005 0.2 0.3 0.2) (lowpass (osc sr (sig gate freq) saw-table) sr cutoff 2))
+var p (synth pluck)                                     # compiled into the engine
+set-param p 'freq 220
+set-param p 'cutoff 1500
+note p 0.5                                              # gate on for half a second
+\end{lstlisting}
+
+\paragraph{The clock and loops.} \musil{tempo} sets the beat; a \musil{live-loop} calls a
+function of that name every so many beats, and the function returns the events of that
+turn: \musil{synth-ev} (a note on a synth at a beat, with parameters), \musil{drums} (a kit
+and a step pattern), \musil{melody} (pitches on a synth), or \musil{stack} of several.
+Redefining the function changes the music at the next turn.
+
+\begin{lstlisting}
+tempo 120
+function bass (cycle) (list (synth-ev 0 0.25 p (list (list 'freq 110)))
+                            (synth-ev 2 0.25 p (list (list 'freq (if (odd? cycle) 165 110)))))
+live-loop 'bass 4
+var kit (house-kit)
+function beat-loop (cycle) (drums kit "bd ~ sn ~ bd bd sn ~" 4)
+live-loop 'beat-loop 4
+stop-loop 'bass
+\end{lstlisting}
+
+\musil{pat} turns a step string into events, \musil{melody} plays pitches on an instrument,
+the kits (house, techno, trance) give drums and synths ready to play; \texttt{live\_house.mu}
+and its siblings are complete sessions.
+
+\paragraph{Controls.} A control is a slider in a window, bound to a synth parameter; it
+can also be driven from code, or by OSC from another program.
+
+\begin{lstlisting}
+control 'cutoff 200 5000 1500
+bind-control 'cutoff p 'cutoff
+controls                                                # the window
+osc-listen 9000
+osc-map "/cutoff" 'cutoff                               # /cutoff 800 from anywhere sets it
+osc-send "127.0.0.1" 9001 "/hello" 1 2.5 "three"        # and the other way
+\end{lstlisting}
+
+The IDE keeps the interpreter running while the loops turn, so you edit the file, send a
+block with Cmd-Enter, and hear the change on the next cycle. From the command line,
+\texttt{musil --serve 7770 -i} does the same for an editor that sends code to the port.
+
+\subsection{Music}
+
+The \texttt{music} library holds the score: things placed in time, and the sample
+databases that notes are drawn from.
+
+\begin{lstlisting}
+load "music.mu"
+var db (db-load "data/microsol/microsol.spectrum.db")
+print (db-instruments db) (db-range db 'Vn)
+var s (score "first" 44100)
+event s 0 1 (note db 'Vn "C4" 'mf 'ord)                 # instrument, pitch, dynamics, technique
+event s 0.5 1 (note db 'Ob "F#4" 'p 'ord)
+event-at s 1 2 (chord db 'Hn 'mf 'ord (list "D4" "G#4")) -30 0   # placed at the right
+event s 2 3 "data/gong_c_sharp.wav"                     # a file
+event s 3 1 (* 0.3 (sine 44100 660 1))                  # a buffer
+render s "/tmp/first.wav" "stereo"
+display s                                               # the roll: Play, Render, a double-click on a note
+play-score s 0.8                                        # in the concert hall
+\end{lstlisting}
+
+\paragraph{Pitches, rhythms, lines.} Pitches are strings (\musil{"F\#4"}) or MIDI numbers,
+\musil{nil} a rest; a rhythm is a list of durations, negative for a pause. Elements make
+fragments, lists of \musil{(at dur payload)}, that \musil{add!} places.
+
+\begin{lstlisting}
+var line (list "C4" "F#4" "D4" "G#4" "E4")
+var r (rhythm (list 0.5 0.25 0.25 1 -0.5))
+add! s 4 (notes db 'Ob 'mf 'ord line r)
+add! s 8 (notes db 'Ob 'mf 'ord (invert line "C4") (retrograde r))
+add! s 12 (chords db 'Vn 'p 'ord (list (list "C4" "F#4") (list "D4" "G#4")) (rhythm (list 1 1)))
+add! s 14 (texture db (list 'Vn 'Vc) 'pp 'ord line (rhythm (list 0.25 0.25 0.5)) (list 1 1.2 1.5))
+add! s 18 (pivots db (list 'Ob 'Hn) 'mf 'ord (list "D5" "A3") 3 (rhythm (list 0.5 0.5 1)))
+add! s 22 (chordinterp db 'Vn 'p 'ord (list "C4" "E4" "G4") (list "C#4" "F#4" "A#4") (tuplet 6 6))
+\end{lstlisting}
+
+Because fragments and pitches are lists, the language composes them: \musil{map} a
+fragment to transpose it (\musil{fragment-map}), \musil{reverse} a rhythm,
+\musil{fragment-scale} for an augmentation, \musil{each} to place an ostinato three times,
+\musil{fragment->score} to make a section that another score holds as one event.
+\texttt{algorithmic\_comp.mu} and \texttt{score\_in\_score.mu} go through all of it.
+
+\paragraph{A convention.} Pitches are always strings (\musil{"A3"}, \musil{"D\#5"}): a
+sharp needs one, since \texttt{\#} starts a comment in a symbol, and one spelling is better
+than two. Symbols name things: instruments, dynamics, techniques, keys and parameters
+(\musil{'Vn}, \musil{'mf}, \musil{'ord}, \musil{'freq}). Numbers are for computed pitches
+(\musil{(+ 7 60)}), and every element accepts them.
+
+% ═════════════════════════════════════════════════════════════════════════════
 \section{Programming practices}
 \label{sec:practices}
 
-How to write Musil that reads well and runs fast, and how to extend it. The language is
-a Scheme in its bones (everything is an expression, functions are values, code is data)
-with a Tcl surface (one command per line, no parentheses around a top-level call). The
-style that fits it best is \emph{imperative at the top, functional in the small}: programs
-are sequences of steps that build and transform vectors and lists; the functional tools
-(\musil{map}, \musil{filter}, \musil{reduce}) are used inside those steps where they are
-shorter than a loop, never as an end in themselves.
+This chapter is about writing Musil that reads well and runs fast, and about extending
+the language with a library of your own. The language is a Scheme in its bones
+(everything is an expression, functions are values, code is data) with a Tcl surface (one
+command per line, no parentheses around a top-level call). The style that fits it best is
+\emph{imperative at the top, functional in the small}: a program is a sequence of steps
+that build and transform vectors and lists, and the functional tools (\musil{map},
+\musil{filter}, \musil{reduce}) are used inside those steps where they are shorter than a
+loop, never as an end in themselves.
 
 \subsection{The shape of a program}
 
@@ -499,111 +866,42 @@ depends on the previous one and no builtin does it (\musil{osc}, \musil{lag}, \m
 \musil{delay}, \musil{comb}, \musil{adsr} are there); such a loop usually belongs in C++
 (section~\ref{sec:adding-library}).
 
-\subsection{Loops and iteration}
+\subsection{Rules of thumb}
 
-Three forms, in order of preference. \textbf{\musil{each}} for doing something with every
-element (printing, pushing, writing files): the everyday loop. Over a vector it gives
-numbers, over a list its elements; \musil{(range n)} is the counter loop. Inside the
-function, \musil{set} reaches variables of the enclosing scope.
-
-\begin{lstlisting}
-each files (function (f) (print f (fixed (rms (head (getidx (read-wav f) 1))) 3)))
-each (zip names sources) (function (p) (write-wav (concat "/tmp/" (head p) ".wav") sr (last p)))
-each (range 8) (function (k) (push hits (list (* k 4000) burst)))
-\end{lstlisting}
-
-\textbf{\musil{for}} when an index and a step are the point, or the loop must stop early;
-\textbf{\musil{while}} for conditions that are not a count (reading until a value,
-converging, waiting). \musil{break} and \musil{continue} work in both.
-
-\begin{lstlisting}
-for (var k 1) (< k (length mags)) (var k (+ k 1)) {
-    push flux (spectral-flux (getidx mags k) (getidx mags (- k 1)))
-}
-while (controls-open?) { sleep 0.1 }
-\end{lstlisting}
-
-\textbf{\musil{map}, \musil{filter}, \musil{reduce}} when the result is a new collection:
-\musil{map} turns a list into another of the same length, \musil{filter} keeps some
-elements, \musil{reduce} folds into one value. Use them when the function fits on the
-line; otherwise name the function first. \musil{map} over a list gives a list; over a
-vector it gives a vector when every result is a number and a list otherwise, so
-\musil{(map (range n) (function (k) (list k ...)))} builds a list of records directly.
-
-\begin{lstlisting}
-var levels (map sources rms)
-var loud (filter events (function (e) (> (get e 'amp) 0.5)))
-var total (reduce lengths + 0)
-\end{lstlisting}
-
-\textbf{Recursion} is for trees and for algorithms that are recursive by nature (a nested
-pattern, an evaluator, a parser). The interpreter turns a call in tail position into a
-jump, so a loop written as a tail-recursive function costs nothing, but it reads worse
-than \musil{for} to most people; prefer the loop unless the structure is genuinely
-recursive. The evaluation depth is bounded (\texttt{--stack}), so a non-tail recursion
-over a long list will overflow: use a loop or \musil{reduce}.
-
-\textbf{Building lists}: start with \musil{(list)} and \musil{push}, or \musil{map}. Do
-not \musil{concat-list} in a loop over long lists (each call copies). For vectors,
-preallocate with \musil{zeros} and write with \musil{add-at!} or \musil{setidx}.
-
-\subsection{Records: options, events, rows}
-
-A record is a list of \musil{(list key value)} pairs. It is the shape of every option
-list, every event, every row of a table, so its helpers are used everywhere:
-\musil{record}, \musil{get}, \musil{opt} (with a default), \musil{has?}, \musil{put!} (in
-place) and \musil{put} (a copy), \musil{keys}, \musil{values}; and, over lists of them,
-\musil{sort-by}, \musil{group-by}, \musil{find-first}, \musil{reject}, \musil{min-by},
-\musil{max-by}, \musil{sum-by}, \musil{partition}. Keys are symbols by convention
-(\musil{'freq}); a string key is a different key, so pick one and keep it.
-
-\begin{lstlisting}
-var note (record (list 'pitch 60 'dur 0.5 'amp 0.8))
-put! note 'amp 0.6
-var louder (filter notes (function (n) (> (get n 'amp) 0.5)))
-var by-pitch (sort-by notes (function (n) (get n 'pitch)))
-\end{lstlisting}
-
-\subsection{Symbols, quoting, code as data}
-
-\musil{'x} is the symbol \musil{x}: a name as a value, used for keys, kinds and parameter
-names (\musil{(set-param a 'cutoff 300)}). Quote a whole form to keep it as data:
-\musil{'(+ 1 2)} is a list of three elements. \musil{eval} runs a form, \musil{parse}
-turns text into forms, \musil{apply} calls a function on a list of arguments. This is what
-makes patterns, scores and instruments plain data you can build and transform; it is
-rarely needed in ordinary programs, and never as a way to generate code when a function
-will do.
-
-\subsection{Files, paths and data}
+The tutorial (chapter~\ref{sec:tutorial}) shows how loops, records, files and errors
+work; this is how to choose between them when writing something that will last.
 
 \begin{itemize}[nosep]
-  \item Reading: \musil{read-wav}, \musil{read-csv}, \musil{read}, \musil{read-lines}. A
-        relative path is looked for in the current directory, then next to the file being
-        run, so \texttt{data/drums.wav} works from anywhere for an example living in
-        \texttt{examples/}. \musil{load} and \musil{find-file} also search the load path
-        (\texttt{MUSIL\_PATH}, \texttt{\textasciitilde/.musil}, the libraries).
-  \item Writing: \musil{write-wav}, \musil{write-csv}, \musil{write}. Relative paths write
-        into the current directory; the examples write into \texttt{/tmp/} on purpose, so
-        that running them never litters the tree; outputs are prefixed \texttt{musil\_}.
-  \item WAVs come back as \musil{(list sr channels)}; a mono file is one channel:
-        \musil{(head (getidx w 1))}. A multichannel signal is a list of channel vectors,
-        which \musil{write-wav} and \musil{play} take as they are.
-  \item Big files: slice what you need early, keep sample rates in a variable, never
-        hard-code 44100 in a function: pass \musil{sr}.
-  \item Data the examples share lives in \texttt{examples/data/} and is committed; how
-        each synthetic file was made is on record in \texttt{make\_audio\_demos.mu}. Data a
-        library needs (the HRTFs) lives in \texttt{src/} and is installed with the
-        \texttt{.mu} files.
+  \item \textbf{Loops.} \musil{each} for doing something with every element (printing,
+        pushing, writing files); \musil{for} when an index and a step are the point or the
+        loop must stop early; \musil{while} for a condition that is not a count. Prefer
+        \musil{map}, \musil{filter} and \musil{reduce} when the result is a new collection
+        and the function fits on the line; name the function first otherwise.
+  \item \textbf{Recursion} is for trees and for algorithms that are recursive by nature (a
+        nested pattern, an evaluator). A tail call costs nothing, but a loop written as a
+        recursive function reads worse than \musil{for} to most people, and a non-tail
+        recursion over a long list will overflow the evaluation depth: use a loop or
+        \musil{reduce}.
+  \item \textbf{Building.} Lists grow with \musil{push} or come out of \musil{map}; do not
+        \musil{concat-list} inside a loop over long lists, every call copies. Vectors are
+        preallocated with \musil{zeros} and filled with \musil{add-at!} or \musil{setidx}.
+  \item \textbf{Records} are the shape of every option list, event and database entry;
+        keys are symbols, and a string key is a different key, so pick one and keep it.
+        \musil{get} when the key must be there, \musil{opt} when it may not.
+  \item \textbf{Symbols and quoting.} \musil{'x} names a thing (a parameter, a kind, a
+        key); quoting a whole form (\musil{'(+ 1 2)}) and \musil{eval} are for programs
+        that build programs, patterns and instruments, and rarely for anything else.
+  \item \textbf{Files.} Relative paths are looked for in the current directory, next to
+        the file being run, then next to the program that was started; examples write
+        into \texttt{/tmp/} with a \texttt{musil\_} prefix so that running them never
+        litters the tree; sample rates travel in a variable and are never hard-coded.
+        Data an example shares lives in \texttt{examples/data/}; data a library needs (the
+        HRTFs, the hall) in \texttt{src/} next to the \texttt{.mu} files.
+  \item \textbf{Errors.} Check arguments at the top of a function and fail early with a
+        message that names it: \musil{if (<= n 0) \{ error "hann: n must be > 0" \}}.
+        \musil{error-of} gives a failing thunk's message, which is how tests check errors.
+        A program should be silent when it succeeds and precise when it fails.
 \end{itemize}
-
-\subsection{Errors, tests, printing}
-
-\musil{error} raises with a message; \musil{try ... catch e} catches it; \musil{error-of}
-gives the message of a failing thunk, which is how tests check errors. Check arguments at
-the top of a function and fail early with a message that names the function:
-\musil{if (<= n 0) \{ error "hann: n must be > 0" \}}. \musil{print} takes any number of
-arguments; \musil{fixed} rounds for display; \musil{str} converts. A program should be
-silent when it succeeds and precise when it fails.
 
 \subsection{Adding a library}
 \label{sec:adding-library}
@@ -692,6 +990,7 @@ records for structured data, one arity per function, a doc line on every definit
 
 % ═════════════════════════════════════════════════════════════════════════════
 \section{Libraries}
+\label{sec:libraries}
 
 A library is a pair of files: \texttt{name.h} holds the functions that need C++, an
 element-by-element loop or the operating system; \texttt{name.mu} holds everything
@@ -1044,7 +1343,7 @@ pitch of a chord, wandering at random within an interval of it), \musil{chordint
 one chord to another in as many steps as the rhythm has). \musil{add!} and
 \musil{add-placed!} put a fragment into a score, \musil{fragment->score} makes it a score,
 \musil{fragment-shift}, \musil{fragment-scale}, \musil{fragment-repeat},
-\musil{fragment-until}, \musil{fragment-map} transform it, and \musil{transpose},
+\musil{fragment-until}, \musil{fragment-map} transform it, and \musil{transpose-pitches},
 \musil{invert}, \musil{scale-pitches} work on the pitches, so the list functions
 (\musil{map}, \musil{each}, \musil{reverse} \ldots) compose everything. Around them: a
 tempo on the score (\musil{score-tempo!}, \musil{add-beats!}); gains and dynamics along a
@@ -1179,7 +1478,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
-\texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
+\texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu}, \texttt{minimalism.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language; a two-minute minimalist piece by additive process, phase and a tutti \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

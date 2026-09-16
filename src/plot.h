@@ -356,7 +356,7 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
     }
     // the cursor (where Play starts), and the playhead while a score plays
     playhead_state& ph = playhead(); double now = live_now();
-    bool playing = ph.on && now < ph.end; double t = playing ? ph.from + (now - ph.t0) : view.cursor_time;
+    bool playing = ph.on && now < ph.end && (ph.owner < 0 || ph.owner == L.score_id); double t = playing ? ph.from + (now - ph.t0) : view.cursor_time;
     if (t >= g.xmin && t <= g.xmax) { fl_color(playing ? 200 : 120, playing ? 30 : 120, playing ? 30 : 120); fl_line_style(FL_SOLID, 2); fl_line((int)X(t), g.top, (int)X(t), g.top + (int)g.ph); fl_line_style(0); }
     fl_pop_clip(); fl_pop_clip();
     fl_color(120, 120, 120); fl_rect(g.left, g.top, (int)g.pw, (int)g.ph);
@@ -613,7 +613,7 @@ inline void figure_to_png_view(const figure& f, const std::string& path, int w, 
 struct plot_widget : Fl_Widget {
     figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false; int dragging_bar = 0; Fl_Button* play_btn = nullptr;
     int score_id() { for (auto& L : f.layers) if (L.kind == "roll") return L.score_id; return -1; }
-    bool roll_playing() { playhead_state& ph = playhead(); return ph.on && live_now() < ph.end; }
+    bool roll_playing() { playhead_state& ph = playhead(); return ph.on && live_now() < ph.end && (ph.owner < 0 || ph.owner == score_id()); }
     void roll_stop() { if (plot_submit() && has_roll) plot_submit()("(roll-stop)"); }
     void roll_toggle() {
         if (!plot_submit() || score_id() < 0) return;
