@@ -35,7 +35,7 @@ chord 11 1 'A4 'F4 'C4 'F3
 chord 12 2 'A4 'E4 'C4 'A2
 
 # --- the other kinds of event, after the chorale --------------------------------------------------------
-var end (* 14 q)
+var end (* 16.5 q)
 event-at s end 2.5 "data/gong_c_sharp.wav" 0 20                           # a sound file, placed above and in front
 event s (+ end 1) 1.5 (* 0.3 (sine 44100 293.66 1.5))                    # a buffer: a D4 sine, 1.5 s
 function pluck-d (gate freq cutoff) (* (adsr 44100 gate 0.005 0.2 0.3 0.3) (lowpass (osc 44100 (sig gate freq) saw-table) 44100 cutoff 2))

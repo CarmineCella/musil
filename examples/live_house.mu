@@ -31,9 +31,9 @@ function hats (cycle) (swing (drums kit "[hh hh] [hh oh] [hh hh] [hh oh]" 4) 0.1
 function backbeat (cycle) (every 4 cycle (function (e) (stack (list e (drums kit "~ ~ ~ [cp cp]" 4)))) (drums kit "~ cp ~ cp" 4))
 function bassline (cycle) (melody bass "a1 ~ a1 a2 ~ a1 g1 a2" 4 (list (list 'res 4)))
 function chords (cycle) \
-    (list (chord-ev 0.5 0.4 stabs (chord "A3" 'min7) (list)) \
-          (chord-ev 2.5 0.4 stabs (chord "G3" 'maj7) (list)) \
-          (chord-ev 3.5 0.3 stabs (chord "F3" 'maj7) (list)))
+    (list (chord-ev 0.5 0.4 stabs (chord-midi "A3" 'min7) (list)) \
+          (chord-ev 2.5 0.4 stabs (chord-midi "G3" 'maj7) (list)) \
+          (chord-ev 3.5 0.3 stabs (chord-midi "F3" 'maj7) (list)))
 
 # --- 3. play: each loop reads its function every cycle ---------------------------------
 live-loop 'kicks 4
@@ -55,7 +55,7 @@ print "playing at" (bpm) "bpm; loops:" (loops)
 # a breakdown: stop the drums, hold a pad chord, bring them back
 #   stop-loop 'kicks
 #   stop-loop 'backbeat
-#   function padline (cycle) (list (chord-ev 0 3.8 pads (chord "A2" 'min) (list)))
+#   function padline (cycle) (list (chord-ev 0 3.8 pads (chord-midi "A2" 'min) (list)))
 #   live-loop 'padline 4
 #   set-control 'cutoff 300
 #   ... and then: live-loop 'kicks 4   live-loop 'backbeat 4   stop-loop 'padline   set-control 'cutoff 1500
@@ -71,7 +71,7 @@ if (== (length args) 0) {
     sleep (* 8 (/ 240 (bpm)))
     stop-loop 'kicks
     stop-loop 'backbeat
-    function padline (cycle) (list (chord-ev 0 3.8 pads (chord "A2" 'min) (list)))
+    function padline (cycle) (list (chord-ev 0 3.8 pads (chord-midi "A2" 'min) (list)))
     live-loop 'padline 4
     sleep (* 4 (/ 240 (bpm)))
     stop-loop 'padline

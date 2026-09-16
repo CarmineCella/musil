@@ -195,12 +195,12 @@ function note->midi (name) {
     return (+ (find note-names letter) (if sharp 1 0) (if flat -1 0) (* 12 (+ octave 1)))
 }
 function hz (name) (midi->hz (note->midi name))
-# (chord root kind)        the MIDI numbers of a chord: kind is 'maj 'min 'dom7 'min7 'maj7 'sus4 'dim; root a note name
-function chord (root kind) {
+# (chord-midi root kind)   the MIDI numbers of a chord: kind is 'maj 'min 'dom7 'min7 'maj7 'sus4 'dim 'min9; root a note name
+function chord-midi (root kind) {
     var r (note->midi root)
     var iv (opt (list (list "maj" (list 0 4 7)) (list "min" (list 0 3 7)) (list "dom7" (list 0 4 7 10)) (list "min7" (list 0 3 7 10))
                       (list "maj7" (list 0 4 7 11)) (list "sus4" (list 0 5 7)) (list "dim" (list 0 3 6)) (list "min9" (list 0 3 7 10 14))) (str kind) nil)
-    if (equal? (type iv) "nil") { error "chord: unknown kind " kind }
+    if (equal? (type iv) "nil") { error "chord-midi: unknown kind " kind }
     return (map iv (function (i) (+ r i)))
 }
 

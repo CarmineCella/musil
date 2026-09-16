@@ -31,8 +31,8 @@ function claps (cycle) (drums kit "~ cp ~ cp" 4)
 function percs (cycle) (pat-events (pat "pc ~ ~ pc ~ ~ pc ~ ~ ~ pc ~ ~ pc ~ ~" 4) (function (x) (function (t d) (note-at t (kit-get kit 'perc) 0.05))))
 function bassline (cycle) (melody bass "a1 ~ a1 a1 ~ a1 ~ [a1 c2]" 4 (list))
 function leadline (cycle) (every 2 cycle (function (e) (melody lead "a2 ~ ~ e3 ~ ~ g2 ~" 4 (list))) (melody lead "a2 ~ ~ c3 ~ ~ a2 ~" 4 (list)))
-function stabline (cycle) (list (chord-ev 1.75 0.2 stabs (chord "A2" 'min) (list)) (chord-ev 3.5 0.2 stabs (chord "A2" 'min) (list)))
-function padline (cycle) (stack (list (list (chord-ev 0 3.9 pads (chord "A2" 'min) (list))) (duck pads 4 0.15)))
+function stabline (cycle) (list (chord-ev 1.75 0.2 stabs (chord-midi "A2" 'min) (list)) (chord-ev 3.5 0.2 stabs (chord-midi "A2" 'min) (list)))
+function padline (cycle) (stack (list (list (chord-ev 0 3.9 pads (chord-midi "A2" 'min) (list))) (duck pads 4 0.15)))
 
 # --- 3. play -------------------------------------------------------------------------
 live-loop 'kicks 4

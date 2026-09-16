@@ -90,6 +90,29 @@ event s2 1 1 (note db 'Vc 'C4 'ff 'ord)
 event s2 1 1 (note db 'Ob 'E4 'mf 'ord)
 print "score-rows      : notes by instrument, orchestral order:" (map (score-rows s2) head)
 
+# --- 5b. Musical elements: rhythms, chords, lines, textures ------------------------------------------------
+print ""
+print "--- elements ---"
+seed 2
+var r (rhythm (list 1 0.5 -0.5 1))
+print "rhythm, beats   :" r "lasts" (rhythm-duration r) "s; at 120 bpm:" (beats 120 r)
+print "chord           :" (get (chord db 'Vn 'mf 'ord (list "C4" "E4" "G4")) 'label)
+var ln (notes db 'Ob 'mf 'ord (list "C4" "D4" "E4") (rhythm (list 0.25 0.5)))
+print "notes           :" (map ln (function (x) (list (head x) (getidx x 1) (get (last x) 'pitch)))) "(the rhythm repeats under the line)"
+print "chords          :" (length (chords db 'Hn 'mf 'ord (list (list "C4" "E4") (list "D4" "F4")) (rhythm (list 1 -0.5 1)))) "chord events"
+print "texture         :" (length (texture db (list 'Vn 'Vc) 'mf 'ord (list "C4" "D4") (rhythm (list 0.5 0.5)) (list 1 2))) "notes: one line at two speeds, the faster repeating"
+print "pivots          :" (map (pivots db 'Ob 'mf 'ord (list "C4" "G4") 3 (rhythm (list 0.5 0.5 0.5))) (function (x) (get (last x) 'pitch))) "(two lines wandering around C4 and G4)"
+print "chordinterp     :" (map (chordinterp db 'Vn 'mf 'ord (list "C4" "E4" "G4") (list "D4" "F4" "A4") (rhythm (list 0.5 0.5 0.5))) (function (x) (map (get (last x) 'notes) (function (n) (get n 'pitch)))))
+print "transpose, invert, scale-pitches:" (transpose (list "C4" nil "E4") 2) (invert (list 60 64) "C4") (scale-pitches "D4" 'dorian (list 0 1 2 3 4 5 6 7))
+print "more elements   : score-tempo!/add-beats!, fragment-gain/dynamics/articulate/thin/density/place/snap, chord-voicing, pitch-field, rotate/retrograde/cycle/interleave, harmonic-series, pitches-from-spectrum, rhythm-from-pattern/augment/diminish, tuplet, polyrhythm, walk, texture-staggered, arpeggio, chordinterp-ease/-sets, texture-on-chords/-pivots, orchestrate-line, score-map!, score-instrument (algorithmic_comp.mu uses them)"
+print "fragments       : duration" (fragment-duration ln) "; shifted" (map (fragment-shift ln 2) head) "; scaled" (map (fragment-scale ln 2) head) "; repeated" (length (fragment-repeat ln 3)) "; until 2.6 s:" (length (fragment-until ln 2.6))
+var sf (score "with fragments" 44100)
+print "add!            :" (length (add! sf 0 ln)) "events placed;" (length (add-placed! sf 1 ln 45 0)) "more at the left"
+var inner (fragment->score "inner" 44100 ln)
+print "fragment->score :" (get inner 'name) "with" (length (score-events inner)) "events"
+var e-in (event sf 2 0 inner)
+print "a score inside  : kind" (get e-in 'kind) "for" (fixed (get e-in 'dur) 2) "s (0 = its whole length); rendered" (length (head (score-render sf "stereo"))) "samples; a score cannot contain itself"
+
 # --- 6. More queries, making a database, playing ------------------------------------------------------
 print ""
 print "--- queries, db-gen, playing ---"

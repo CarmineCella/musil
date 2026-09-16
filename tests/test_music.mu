@@ -182,6 +182,108 @@ check (contains? (error-of (function () (db-gen sounds "/tmp/x.db" "nope" 2048 2
 check (contains? (error-of (function () (db-gen sounds "/tmp/x.db" "spectrum" 1000 100 4))) "power of 2") "db-gen: block"
 check (contains? (error-of (function () (db-gen "/nowhere" "/tmp/x.db" "spectrum" 1024 256 4))) "not a folder") "db-gen: folder"
 
+# --- musical elements ---
+seed 4
+var rr (rhythm (list 0.5 0.5 -0.25 1))
+check (== (rhythm-duration rr) 2.25) "rhythm-duration: pauses count"
+check (equal? (beats 120 (list 1 -0.5)) (list 0.5 -0.25)) "beats: at a tempo"
+var ch (chord db 'Vn 'mf 'ord (list "C4" "E4" nil "G4"))
+check (and (equal? (get ch 'kind) 'chord) (== (length (get ch 'notes)) 3)) "chord: a payload of notes (rests dropped)"
+var sc (score "el" 44100)
+var ce (event sc 0 0.5 ch)
+check (== (length (head (render-event ce 44100))) 22050) "chord: renders as one, cut to the duration"
+var ln (notes db 'Ob 'mf 'ord (list "C4" "D4" "E4") (rhythm (list 0.25 0.5)))
+check (== (length ln) 3) "notes: the shorter (the rhythm) repeats until the longer ends"
+check (equal? (map ln head) (list 0 0.25 0.75)) "notes: onsets from the durations"
+check (equal? (map (notes db 'Ob 'mf 'ord (list "C4" nil) (rhythm (list 0.5 -0.5 0.5))) head) (list 0 1)) "notes: rests (nil pitches, negative durations) take time and make no event"
+check (== (length (notes db 'Ob 'mf 'ord (list) (rhythm (list 1)))) 0) "notes: nothing from nothing"
+check (== (fragment-duration ln) 1) "fragment-duration"
+check (equal? (map (fragment-shift ln 2) head) (list 2 2.25 2.75)) "fragment-shift"
+check (equal? (map (fragment-scale ln 2) head) (list 0 0.5 1.5)) "fragment-scale"
+check (== (length (fragment-repeat ln 3)) 9) "fragment-repeat"
+check (== (fragment-duration (fragment-until ln 2.6)) 2.75) "fragment-until: repeated to cover the time"
+var cs2 (chords db 'Hn 'mf 'ord (list (list "C4" "E4") (list "D4" "F4")) (rhythm (list 1 -0.5 1)))
+check (and (== (length cs2) 2) (equal? (get (last (head cs2)) 'kind) 'chord)) "chords: chord payloads on a rhythm"
+var tx (texture db (list 'Vn 'Vc) 'mf 'ord (list "C4" "D4") (rhythm (list 0.5 0.5)) (list 1 2))
+check (== (length tx) 6) "texture: the faster voice repeats until the slowest has played once"
+check (near? (fragment-duration tx) 2 1e-9) "texture: as long as the slowest voice"
+check (equal? (unique (map tx (function (x) (get (last x) 'instr)))) (list "Vn" "Vc")) "texture: instruments cycled over the voices"
+var pv (pivots db 'Ob 'mf 'ord (list "C4" "G4") 3 (rhythm (list 0.5 0.5 0.5)))
+check (== (length pv) 6) "pivots: one line per pitch, one note per duration"
+check (all? (map pv (function (x) (<= (abs (- (get (last x) 'midi) (if (< (get (last x) 'midi) 64) 60 67))) 3))) identity) "pivots: within the interval of the pitch"
+var ci (chordinterp db 'Vn 'mf 'ord (list "C4" "E4" "G4") (list "D4" "F4" "A4") (rhythm (list 0.5 0.5 0.5)))
+check (== (length ci) 3) "chordinterp: a chord per duration"
+check (equal? (map (get (last (head ci)) 'notes) (function (n) (get n 'pitch))) (list "C4" "E4" "G4")) "chordinterp: starts at the first chord"
+check (equal? (map (get (last (last ci)) 'notes) (function (n) (get n 'pitch))) (list "D4" "F4" "A4")) "chordinterp: ends at the second"
+check (equal? (transpose (list "C4" nil "E4") 2) (list 62 nil 66)) "transpose"
+check (equal? (invert (list 60 64) "C4") (list 60 56)) "invert"
+check (equal? (scale-pitches "D4" 'dorian (list 0 1 2 7)) (list 62 64 65 74)) "scale-pitches"
+check (== (get (note db 'Vn 62 'mf 'ord) 'midi) 62) "note: a MIDI number is a pitch too"
+var placed (add! sc 1 ln)
+check (== (length placed) 3) "add!: the fragment's events in the score"
+check (== (get (head placed) 'at) 1) "add!: at the offset"
+check (== (get (head (add-placed! sc 2 ln 45 0)) 'az) 45) "add-placed!"
+var fs (fragment->score "frag" 44100 ln)
+check (and (equal? (get fs 'name) "frag") (== (length (score-events fs)) 3)) "fragment->score"
+
+# --- more elements ---
+seed 7
+score-tempo! sc 120
+check (== (beat->sec sc 4) 2) "score-tempo!, beat->sec"
+check (equal? (map (add-beats! sc 2 ln) (function (e) (get e 'at))) (list 1 1.125 1.375)) "add-beats!: times in beats at the tempo"
+check (near? (get (last (last (fragment-gain ln 0.2 1))) 'gain) 0.8 1e-9) "fragment-gain: a ramp"
+check (== (get (head (add! sc 0 (fragment-gain ln 0.2 1))) 'gain) 0.2) "add!: a payload's gain is kept"
+check (== (get (head (add! sc 0 (fragment-place ln 30 5))) 'az) 30) "fragment-place: kept by add!"
+check (equal? (map (fragment-dynamics db ln (list 'pp 'ff)) (function (x) (get (last x) 'dyn))) (list "pp" "pp" "ff")) "fragment-dynamics"
+check (equal? (map (fragment-articulate ln 0.5) (function (x) (getidx x 1))) (list 0.125 0.25 0.125)) "fragment-articulate"
+check (< (length (fragment-thin (fragment-repeat ln 20) 0.5)) 60) "fragment-thin"
+check (== (length (fragment-density ln (list 0))) 0) "fragment-density: a zero curve keeps nothing"
+check (equal? (map (fragment-snap db (notes db 'Vn 'mf 'ord (list 61 63 66) (rhythm (list 1))) (pitch-field "C4" 'major 1)) (function (x) (get (last x) 'midi))) (list 60 62 65)) "fragment-snap, pitch-field"
+check (equal? (chord-voicing (list "C4" "E4" "G4" "B4") 'open) (list 60 67 76 83)) "chord-voicing: open"
+check (equal? (chord-voicing (list "C4" "E4" "G4" "B4") 'drop2) (list 55 60 64 71)) "chord-voicing: drop2"
+check (equal? (chord-voicing (list "C4" "E4" "G4") (list 'invert 1)) (list 64 67 72)) "chord-voicing: an inversion"
+check (contains? (error-of (function () (chord-voicing (list "C4") 'nope))) "unknown mode") "chord-voicing: unknown mode"
+check (equal? (rotate (list 1 2 3 4) 1) (list 2 3 4 1)) "rotate"
+check (equal? (cycle (list 1 2 3) 5) (list 1 2 3 1 2)) "cycle"
+check (equal? (interleave (list 1 2 3) (list "a" "b")) (list 1 "a" 2 "b" 3)) "interleave"
+check (equal? (harmonic-series "C2" 4) (list 36 48 55 60)) "harmonic-series"
+check (equal? (pitches-from-spectrum (+ (sine 44100 110 0.5) (* 0.5 (sine 44100 220 0.5))) 44100 2) (list 45 57)) "pitches-from-spectrum: the strongest partials as pitches"
+check (equal? (rhythm-from-pattern "x..x.x" 0.25) (list 0.75 0.5 0.25)) "rhythm-from-pattern"
+check (equal? (rhythm-augment (list 1 0.5) 2) (list 2 1)) "rhythm-augment"
+check (near? (sum (vec (tuplet 3 1))) 1 1e-9) "tuplet"
+check (equal? (map (polyrhythm (list 1 1 1) (list 1 1)) length) (list 6 6)) "polyrhythm: a common cycle"
+var wk (walk db 'Ob 'mf 'ord (list "C4") 2 (rhythm (list 0.5 0.5 0.5)))
+check (and (== (length wk) 3) (== (get (last (head wk)) 'midi) 60)) "walk: starts at the pitch, one note per duration"
+check (== (length (texture-staggered db (list 'Vn 'Vc) 'pp 'ord (list "C4" "D4") (rhythm (list 0.5 0.5)) (list 1 2) (list 0 1))) 8) "texture-staggered"
+check (equal? (map (arpeggio db 'Vn 'mf 'ord (list "C4" "E4" "G4") 0.1 'updown 1) (function (x) (get (last x) 'pitch))) (list "C4" "E4" "G4" "E4" "C4")) "arpeggio: up and down"
+check (equal? (map (chordinterp-ease db 'Vn 'mf 'ord (list "C4") (list "C5") (rhythm (list 1 1 1 1)) 2) (function (x) (get (head (get (last x) 'notes)) 'pitch))) (list "C4" "C#4" "F4" "C5")) "chordinterp-ease"
+check (equal? (map (get (last (last (chordinterp-sets db 'Vn 'mf 'ord (list "C4" "G4") (list "A4" "B3") (rhythm (list 1 1 1))))) 'notes) (function (n) (get n 'pitch))) (list "B3" "A4")) "chordinterp-sets: each voice to the nearest free pitch"
+check (== (length (texture-on-chords db (list 'Ob 'Hn) 'pp 'ord (list (list "C4" "E4") (list "D4" "F4")) (rhythm (list 0.5)) (list 1 1.5))) 10) "texture-on-chords"
+check (== (length (texture-on-pivots db (list 'Ob 'Hn) 'pp 'ord (list "C4" "G4") 2 (rhythm (list 0.5 0.5)) (list 1 2))) 6) "texture-on-pivots"
+check (equal? (map (orchestrate-line db (list "C3" "C4" "C5") (rhythm (list 1)) (list (list 'Vc "C2" "B3") (list 'Vn "C4" "C6")) 'mf 'ord) (function (x) (get (last x) 'instr))) (list "Vc" "Vn" "Vn")) "orchestrate-line"
+score-map! sc (function (e) (put e 'gain 0.5))
+check (equal? (unique (map (score-events sc) (function (e) (get e 'gain)))) (list 0.5)) "score-map!"
+check (> (length (score-instrument sc 'Ob)) 0) "score-instrument"
+check (== (length (shuffle (list 1 2 3 4))) 4) "shuffle"
+
+# --- scores in scores ---
+var outer (score "outer" 44100)
+var se (event outer 0 0 fs)
+check (equal? (get se 'kind) 'score) "event: a score is a payload"
+check (near? (get se 'dur) 1.6 1e-9) "event: duration 0 means the whole score (with its releases)"
+var se2 (event outer 2 0.4 fs)
+check (== (get se2 'dur) 0.4) "event: or cut to a duration"
+check (contains? (error-of (function () (event fs 0 0 fs))) "cannot contain itself") "event: a score cannot contain itself"
+var om (score-render outer "stereo")
+check (== (length om) 2) "score-render: nested scores render into the layout"
+check (== (length (head om)) (+ (floor (* 2.4 44100)) (floor (* 0.6 44100)))) "score-render: the outer length"
+check (== (length (render-event se 44100)) 2) "render-event: a score event alone renders stereo"
+check (equal? (map (score-rows outer) head) (list "scores")) "score-rows: a scores row"
+var deep (score "deep" 44100)
+event deep 0 0 outer
+check (== (length (score-render deep "stereo")) 2) "score-render: two levels"
+check (equal? (type (play-event (register-score outer) (get se (quote id)))) "nil") "play-event: on a score inside, its roll is opened (nothing shown under MUSIL_NOSHOW)"
+
 # --- several databases at once ---
 var both (db-merge (list db db))
 check (== (db-size both) 64) "db-merge: the entries of both"
@@ -210,6 +312,15 @@ check (equal? (get s2 'reverb) (list 1 0)) "score-reverb!: dry"
 check (equal? (type (play-score s2 0.8)) "nil") "play-score: renders, puts in the hall, plays, waits"
 var end (score-play-now s2 1 0.5)
 check (> end (audio-time)) "score-play-now: returns at once with the end time"
+check (has? s2 'cache) "score-play-now: the hall mix is cached on the score"
+var sig1 (head (get s2 'cache))
+score-play-now s2 1 0
+check (equal? (head (get s2 'cache)) sig1) "score-hall-mix: the same score plays from the cache"
+event s2 3 0.2 (sine 44100 660 0.2)
+score-play-now s2 1 0
+check (not (equal? (head (get s2 'cache)) sig1)) "score-hall-mix: a new event renders again"
+score-clear-cache! s2
+check (equal? (type (opt s2 'cache nil)) "nil") "score-clear-cache!"
 check (head (playhead)) "score-play-now: the playhead is on"
 stop-score
 check (not (head (playhead))) "stop-score: the playhead is off"

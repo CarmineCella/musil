@@ -26,7 +26,7 @@ control 'pluck-cutoff 500 8000 3000
 bind-control 'pluck-cutoff plucks 'cutoff
 
 # --- 2. patterns (four beats a cycle; the progression Am F C G, one chord per cycle) ---------
-var progression (list (chord "A3" 'min) (chord "F3" 'maj) (chord "C4" 'maj) (chord "G3" 'maj))
+var progression (list (chord-midi "A3" 'min) (chord-midi "F3" 'maj) (chord-midi "C4" 'maj) (chord-midi "G3" 'maj))
 function chord-of (cycle) (getidx progression (mod cycle 4))
 function kicks (cycle) (drums kit "bd bd bd bd" 4)
 function hats (cycle) (drums kit "[~ hh] [~ oh] [~ hh] [~ oh]" 4)

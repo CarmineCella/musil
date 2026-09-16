@@ -83,7 +83,7 @@ function corr (a b) (/ (dot a b) (* (norm a) (norm b)))
 if (wanted? "hpss") {
     var secs 8
     var n (* secs sr)
-    var prog (list (list 0 (chord "A3" 'min)) (list 2 (chord "F3" 'maj)) (list 4 (chord "C4" 'maj)) (list 6 (chord "G3" 'maj)))
+    var prog (list (list 0 (chord-midi "A3" 'min)) (list 2 (chord-midi "F3" 'maj)) (list 4 (chord-midi "C4" 'maj)) (list 6 (chord-midi "G3" 'maj)))
     var layers (list)
     each prog (function (p) (each (last p) (function (m) (push layers (pad-note m (head p) 2)))))
     var harmonic-ref (take (vec (mix layers) (zeros n)) n)
@@ -106,7 +106,7 @@ if (wanted? "stems") {
     var bars 8
     var beat (/ 60 bpm)
     var n (floor (* bars 4 beat sr))
-    var prog (list (chord "D3" 'min7) (chord "G3" 'dom7) (chord "C4" 'maj7) (chord "A3" 'min7))   # one chord per two bars
+    var prog (list (chord-midi "D3" 'min7) (chord-midi "G3" 'dom7) (chord-midi "C4" 'maj7) (chord-midi "A3" 'min7))   # one chord per two bars
     # drums
     var drums-t (take (vec (drum-track bpm bars) (zeros n)) n)
     # bass: the root of each chord, an octave down, on beats 1 and 3 and the "and" of 2, through sub

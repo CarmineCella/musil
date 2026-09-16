@@ -201,8 +201,8 @@ check (near? (hz "C4") 261.63 0.01) "hz: C4"
 check (near? (hz "Bb3") 233.08 0.01) "hz: flats"
 check (== (note->midi "F#5") 78) "note->midi: sharps"
 check (== (hz->midi 440) 69) "hz->midi"
-check (equal? (chord "A3" 'min7) (list 57 60 64 67)) "chord: minor seventh"
-check (contains? (error-of (function () (chord "C4" 'nope))) "unknown kind") "chord: unknown kind"
+check (equal? (chord-midi "A3" 'min7) (list 57 60 64 67)) "chord: minor seventh"
+check (contains? (error-of (function () (chord-midi "C4" 'nope))) "unknown kind") "chord: unknown kind"
 check (equal? (pat "bd ~ sn ~" 4) (list (list 0 1 "bd") (list 2 1 "sn"))) "pat: steps and rests"
 check (equal? (map (pat "bd [hh hh] sn" 3) head) (list 0 1 1.5 2)) "pat: a subdivision"
 check (equal? (map (pat "hh*4" 2) head) (list 0 0.5 1 1.5)) "pat: a repeat"
@@ -285,7 +285,7 @@ check (== (length (drums kit "bd ~ sn ~ bd bd sn ~" 4)) 5) "drums: events from a
 check (== (length (melody (synth acid) "a1 ~ a1 c2" 4 (list))) 3) "melody: notes from a pattern"
 var voices3 (poly stab 3)
 check (== (length voices3) 3) "poly"
-check (== (ev-beat (chord-ev 1 0.5 voices3 (chord "A3" 'min) (list))) 1) "chord-ev"
+check (== (ev-beat (chord-ev 1 0.5 voices3 (chord-midi "A3" 'min) (list))) 1) "chord-ev"
 free-all
 
 # --- controls ---

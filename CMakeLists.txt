@@ -234,6 +234,8 @@ if(MUSIL_TESTS)
   set(NEEDS_reference_music "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_simple_score "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_random_collage "${D}/microsol/microsol.spectrum.db")
+  set(NEEDS_score_in_score "${D}/microsol/microsol.spectrum.db")
+  set(NEEDS_algorithmic_comp "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)

@@ -33,8 +33,9 @@
 
 namespace musil {
 
-// how a window hands a line of Musil to the interpreter: hosts set it (the IDE queues; the CLI runs it at once)
+// how a window hands a line of Musil to the interpreter: hosts set it (the IDE queues; the CLI runs it from its idle hook)
 inline std::function<void(const std::string&)>& plot_submit() { static std::function<void(const std::string&)> f; return f; }
+inline std::vector<std::string>& plot_pending() { static std::vector<std::string> q; return q; }
 
 // --- figure description, validated once ---
 struct figure;
@@ -617,12 +618,20 @@ struct plot_widget : Fl_Widget {
     void roll_toggle() {
         if (!plot_submit() || score_id() < 0) return;
         if (roll_playing()) { plot_submit()("(roll-stop)"); if (play_btn) play_btn->copy_label("Play"); }
-        else { if (play_btn) { play_btn->copy_label("Stop"); play_btn->deactivate(); } plot_submit()("(roll-play " + std::to_string(score_id()) + " " + std::to_string(view.cursor_time) + ")"); }
+        else {
+            if (play_btn) { play_btn->copy_label("preparing"); play_btn->deactivate(); play_btn->redraw(); }   // grey until the sound starts (the request runs after this repaint)
+            plot_submit()("(roll-play " + std::to_string(score_id()) + " " + std::to_string(view.cursor_time) + ")");
+        }
     }
     static void follow_playhead(void* p) {
         plot_widget* w = (plot_widget*)p; if (!w->window() || !w->window()->shown()) return;
         bool playing = w->roll_playing();
-        if (playing) w->redraw();
+        if (playing) {
+            // a zoomed view follows the playhead: when it leaves the visible span, the view jumps ahead by a page
+            if (w->view.zoomed) { playhead_state& ph = playhead(); double t = ph.from + (live_now() - ph.t0), span = w->view.xmax - w->view.xmin;
+                if (t > w->view.xmax || t < w->view.xmin) { w->view.xmin = t - span * 0.1; w->view.xmax = w->view.xmin + span; } }
+            w->redraw();
+        }
         if (w->play_btn) { if (playing) { w->play_btn->copy_label("Stop"); w->play_btn->activate(); } else if (w->play_btn->active()) w->play_btn->copy_label("Play"); else if (!playhead().on) { w->play_btn->copy_label("Play"); w->play_btn->activate(); } }
         Fl::repeat_timeout(0.05, follow_playhead, p);
     }
@@ -766,7 +775,11 @@ inline void add_plot(Interp& i) {
     i.def("save-png", plot_save_png, 2, 4); i.def("show", plot_show, 1, 3);
     i.def("plot-windows", plot_windows_count, 0, 0); i.def("close-plots", plot_close_all, 0, 0);
     if (!plot_needs_awake()) { auto prev = i.idle_fn; i.idle_fn = [prev]() { if (prev) prev(); if (Fl::first_window()) Fl::check(); }; }   // keep the windows alive while the interpreter waits (only once there is one: no GUI setup for plain scripts)
-    if (!plot_submit()) { Interp* ip = &i; plot_submit() = [ip](const std::string& code) { try { ip->run(code, "<window>"); } catch (std::exception& e) { *ip->out << "window: " << e.what() << "\n" << std::flush; } }; }   // a window's action runs at once (the IDE queues instead)
+    if (!plot_submit()) {                                    // a window's request is kept until the event loop has repainted, then run from the idle hook (the IDE queues on its own)
+        plot_submit() = [](const std::string& code) { plot_pending().push_back(code); };
+        Interp* ip = &i; auto prev2 = i.idle_fn;
+        i.idle_fn = [ip, prev2]() { if (prev2) prev2(); while (!plot_pending().empty()) { std::string code = plot_pending().front(); plot_pending().erase(plot_pending().begin()); try { ip->run(code, "<window>"); } catch (std::exception& e) { *ip->out << "window: " << e.what() << "\n" << std::flush; } } };
+    }
 }
 
 } // namespace musil

@@ -52,6 +52,21 @@ note            : Vn C4 mf shift 0 ; Vn B4 mf uses G4 shifted 4
 note-path       : Vn-ord-C4-mf-4c.wav  note-duration: 7.35 s
 score-rows      : notes by instrument, orchestral order: (Ob Vn Vc)
 
+--- elements ---
+rhythm, beats   : (1 0.5 -0.5 1) lasts 3 s; at 120 bpm: (0.5 0.25 -0.25 0.5)
+chord           : Vn chord C4 E4 G4
+notes           : ((0 0.25 C4) (0.25 0.5 D4) (0.75 0.25 E4)) (the rhythm repeats under the line)
+chords          : 2 chord events
+texture         : 6 notes: one line at two speeds, the faster repeating
+pivots          : (D4 D4 D4 A#4 F#4 F4) (two lines wandering around C4 and G4)
+chordinterp     : ((C4 E4 G4) (C#4 F4 G#4) (D4 F4 A4))
+transpose, invert, scale-pitches: (62 nil 66) (60 56) (62 64 65 67 69 71 72 74)
+more elements   : score-tempo!/add-beats!, fragment-gain/dynamics/articulate/thin/density/place/snap, chord-voicing, pitch-field, rotate/retrograde/cycle/interleave, harmonic-series, pitches-from-spectrum, rhythm-from-pattern/augment/diminish, tuplet, polyrhythm, walk, texture-staggered, arpeggio, chordinterp-ease/-sets, texture-on-chords/-pivots, orchestrate-line, score-map!, score-instrument (algorithmic_comp.mu uses them)
+fragments       : duration 1 ; shifted (2 2.25 2.75) ; scaled (0 0.5 1.5) ; repeated 9 ; until 2.6 s: 8
+add!            : 3 events placed; 3 more at the left
+fragment->score : inner with 3 events
+a score inside  : kind score for 1.6 s (0 = its whole length); rendered 185220 samples; a score cannot contain itself
+
 --- queries, db-gen, playing ---
 db-query (lists): 16 string sounds, mf or ff
 db-grep         : 2 violin C4 and C#4 (a regular expression on the file name)

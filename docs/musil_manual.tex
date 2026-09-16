@@ -939,7 +939,7 @@ function drums (cycle) ...          # redefine: next cycle it changes
 \end{lstlisting}
 
 \textbf{Notes, patterns, a kit.} \musil{hz}, \musil{note->midi}, \musil{midi->hz},
-\musil{chord} for pitch names and chords; \musil{pat} is a compact notation for steps,
+\musil{chord-midi} for pitch names and chords; \musil{pat} is a compact notation for steps,
 one string per cycle (\musil{"bd ~ sn ~"}: spaces are steps, \texttt{\textasciitilde} a rest,
 \texttt{[a b]} a subdivision, \texttt{a*n} a repeat), turned into events by
 \musil{pat-events}, \musil{drums} (a kit) and \musil{melody} (a synth); \musil{euclid},
@@ -992,6 +992,7 @@ event s 4 1 (note db 'Vn 'C5 'mf 'ord)                     # a sound from a data
 event s 5 2 (instrument pluck (list (list 'freq 440)))     # a synth: an instrument function and its parameters
 event s 6 1 (call my-function (list 1 2 'dur))             # any function, called when rendered ('dur = the duration)
 event-at s 7 1 my-function 90 0                            # a bare function is called with the duration; placed at the left
+event s 8 0 other-score                                    # a score inside a score (0: its whole length); any depth
 render s "study.wav" "stereo"                              # layouts: "mono" "stereo" "binaural" "ambi N", a ring, or N channels
 play-score s 0.8                                           # through live, ahead of the clock, scaled
 display s                                                  # the roll, drawn like music
@@ -1026,7 +1027,38 @@ is. It is a player of the code's score, not an editor: the
 score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
-\musil{event-place!} edit one event.
+\musil{event-place!} edit one event. A score placed as an event renders into the parent's
+layout with its own positions kept, cut to the event's duration with a fade (0 means its
+whole length), at any depth; a score cannot contain itself, and the roll opens a score
+inside on a double-click.
+
+\textbf{Elements.} Pitches are names (\musil{"C4"}, \musil{"F\#3"}) or MIDI numbers, nil a
+rest; a \musil{rhythm} is a list of durations in seconds, negative for a pause
+(\musil{beats} converts from beats at a tempo). \musil{chord} is a payload: several pitches
+sounding together on one instrument, one event. The other elements make a
+\emph{fragment}, a list of \musil{(at dur payload)} from time 0: \musil{notes} (a line
+on a rhythm, the shorter of the two repeating), \musil{chords} (chords on a rhythm),
+\musil{texture} (one line at several speeds on cycled instruments, the faster voices
+repeating until the slowest has played once: micropolyphony), \musil{pivots} (one line per
+pitch of a chord, wandering at random within an interval of it), \musil{chordinterp} (from
+one chord to another in as many steps as the rhythm has). \musil{add!} and
+\musil{add-placed!} put a fragment into a score, \musil{fragment->score} makes it a score,
+\musil{fragment-shift}, \musil{fragment-scale}, \musil{fragment-repeat},
+\musil{fragment-until}, \musil{fragment-map} transform it, and \musil{transpose},
+\musil{invert}, \musil{scale-pitches} work on the pitches, so the list functions
+(\musil{map}, \musil{each}, \musil{reverse} \ldots) compose everything. Around them: a
+tempo on the score (\musil{score-tempo!}, \musil{add-beats!}); gains and dynamics along a
+fragment (\musil{fragment-gain}, \musil{fragment-dynamics}), articulation, thinning by a
+probability or a density curve, placing, snapping to a pitch field; voicings
+(\musil{chord-voicing}), series (\musil{rotate}, \musil{retrograde}, \musil{cycle},
+\musil{interleave}), the harmonic series and the partials of a sound as pitches
+(\musil{harmonic-series}, \musil{pitches-from-spectrum}); rhythms from patterns, augmented,
+tuplets, polyrhythms; random walks, staggered textures, arpeggios, eased and set-wise chord
+interpolation, textures running through chords or around them
+(\musil{texture-on-chords}, \musil{texture-on-pivots}), a line orchestrated by register,
+\musil{score-map!}. \texttt{algorithmic\_comp.mu} (a row and its forms, Ligeti-like
+micropolyphony, spectral pivots after Grisey, moving textures) and
+\texttt{score\_in\_score.mu} show it.
 
 \textbf{Databases.} A database in the *SOL layout (TinySOL, OrchideaSOL, FullSOL) is a
 feature file next to a folder of the same name holding the sounds by family and instrument
@@ -1147,6 +1179,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
+\texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

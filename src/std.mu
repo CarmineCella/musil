@@ -320,6 +320,17 @@ function partition (L f) (list (filter L f) (reject L f))
 function remove-at (L k) (concat-list (take L k) (drop L (+ k 1)))
 function insert-at (L k x) (concat-list (concat-list (take L k) (list x)) (drop L k))
 
+# (shuffle L)              the elements in a random order (a new list)
+function shuffle (L) {
+    var out (map L identity)
+    for (var k (- (length out) 1)) (> k 0) (var k (- k 1)) {
+        var j (floor (* (rand) (+ k 1)))
+        var t (getidx out k)
+        setidx out k (getidx out j)
+        setidx out j t
+    }
+    return out
+}
 # (identity x)
 function identity (x) x
 # (compose f g)        the function x -> (f (g x))
