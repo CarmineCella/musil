@@ -150,6 +150,14 @@ print "nmf V 2 200      : W" (mat-shape (head fac)) "H" (mat-shape (last fac)) "
 print "nmf-error        :" (fixed (nmf-error Vn (head fac) (last fac)) 3) "(the KL divergence the updates decrease)"
 print "mat-min, mat-max :" (mat-min Vn) (mat-max Vn) " mat-div:" (mat-div (list (vec 2 4)) (list (vec 2 2)))
 
+# --- 9c. Matching pursuit ----------------------------------------------------------------------
+print ""
+print "--- mp ---"
+var Dm (list->mat (list (list 1 0 0 0) (list 0 1 0 0) (list 0 0 1 0) (list 1 1 0 0)))
+var rm (mp (vec 2 3 0 0) Dm 3 0.01 (record (list 'nonneg 1)))
+print "mp               : atoms" (get rm 'atoms) "weights" (get rm 'weights) "error" (fixed (get rm 'error) 3) "(greedy, non-negative)"
+print "mp orthogonal    : error" (fixed (get (mp (vec 2 3 0.5 0) Dm 3 0.001 (record (list 'orthogonal 1))) 'error) 6) "(weights refitted by least squares)"
+
 # --- 10. Display ---------------------------------------------------------------
 print ""
 print "--- display ---"

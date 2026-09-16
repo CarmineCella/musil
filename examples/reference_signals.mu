@@ -32,7 +32,7 @@ print "add-at           :" (add-at (zeros 3) 1 (vec 5 5 5))
 print "fade-in, fade-out:" (fade-in (ones 4) 2) (fade-out (ones 4) 2)
 print "normalize-peak   :" (normalize-peak (vec 1 -4 2))
 print "normalize-rms    :" (fixed (rms (normalize-rms s 0.1)) 3)
-print "db, undb         :" (db 0.5) (undb -6)
+print "db, undb         :" (amp->db 0.5) (db->amp -6)
 
 # --- 2. Windows and spectra --------------------------------------------------
 print ""
@@ -108,7 +108,7 @@ print "allpass          :" (fixed (take (allpass (impulse 6) 2 0.5) 4) 3)
 print "dc-block         :" (fixed (take (dc-block (+ (zeros 5) 1)) 5) 3)
 print "reson            :" (length (reson (impulse 10) sr 440 0.05)) "samples ringing at" (fixed (acf-f0 (reson (impulse 10) sr 440 0.05) sr) 0) "Hz"
 var rev (schroeder-reverb (impulse 100) sr 1)
-print "schroeder-reverb :" (length rev) "samples (input + rt60 seconds); level at 0.1 s and 0.9 s:" (fixed (db (rms (slice rev 800 400))) 1) (fixed (db (rms (slice rev 7200 400))) 1) "dB"
+print "schroeder-reverb :" (length rev) "samples (input + rt60 seconds); level at 0.1 s and 0.9 s:" (fixed (amp->db (rms (slice rev 800 400))) 1) (fixed (amp->db (rms (slice rev 7200 400))) 1) "dB"
 print "delay 1.5        :" (delay (vec 1 2 3 4) 1.5)
 
 # --- 6. Phase vocoder ------------------------------------------------------------
@@ -145,6 +145,19 @@ var two (+ (* (bpf 0 (list (list 2000 1) (list 2000 0))) (sine sr 220 0.5)) (* (
 var sep (nmf-separate two 512 128 2 40)
 print "nmf-separate     :" (length (head sep)) "sources of" (length (head (head sep))) "samples; W" (mat-shape (getidx sep 1)) "H" (mat-shape (getidx sep 2)) "; they add up to the input within" (fixed (max (abs (- (+ (head (head sep)) (last (head sep))) two))) 6)
 print "nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)"
+
+# --- 6c2b. Morphology: descriptors as curves over time -------------------------------------------
+print ""
+print "--- morphology ---"
+var mx (vec (* 0.5 (sine sr 220 1)) (* (noise sr) (exp (* -20 (/ (range sr) sr)))) (zeros sr) (* 0.3 (sine sr 880 1)))
+var msp (frame-spectra mx 2048 512 1024)
+print "frame-spectra    :" (length msp) "frames of" (length (head msp)) "bins (the database's feature space, per frame)"
+print "spectral-similarity: tone vs itself" (fixed (spectral-similarity (head msp) (getidx msp 1)) 2) ", tone vs noise" (fixed (spectral-similarity (getidx msp 5) (getidx msp 20)) 2)
+var mer (event-rate mx sr 1 512)
+print "event-rate       :" (length (last mer)) "events that change the spectrum; rates up to" (fixed (max (getidx mer 1)) 1) "a second"
+print "polyphony-estimate:" (take (polyphony-estimate msp) 4) " register-curve: centroid" (fixed (getidx (head (register-curve msp sr 2048)) 5) 0) "lowest partial" (fixed (getidx (last (register-curve msp sr 2048)) 5) 0) "(MIDI)"
+print "loudness-curve   :" (fixed (take (loudness-curve mx sr 512) 3) 1) "dB; coherence-time:" (fixed (take (coherence-time msp 512 sr 0.75) 3) 2) "s"
+print "spectral-peaks   :" (fixed (head (spectral-peaks (getidx msp 5) sr 2048 2)) 1) "Hz (parabolic)"
 
 # --- 6c3. Convolution reverb -------------------------------------------------------------------
 print ""

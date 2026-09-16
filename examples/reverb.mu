@@ -30,7 +30,7 @@ var start (length x)
 each (range 0 (floor (* rt60 2)) 1) (function (k) {
     var from (+ start (floor (* k 0.5 sr)))
     var chunk (slice schroeder from (floor (* 0.5 sr)))
-    if (> (length chunk) 0) { print "  " (fixed (* k 0.5) 1) "s:" (fixed (db (rms chunk)) 1) "dB" }
+    if (> (length chunk) 0) { print "  " (fixed (* k 0.5) 1) "s:" (fixed (amp->db (rms chunk)) 1) "dB" }
 })
 write-wav "/tmp/musil_schroeder.wav" sr (normalize-peak (mix (list (list 0 x) (list 0 (* 0.5 schroeder)))))
 print "wrote /tmp/musil_schroeder.wav"

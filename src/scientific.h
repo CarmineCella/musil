@@ -117,6 +117,48 @@ inline vptr sci_solve(vlist& a, Interp& i) {
     return v_arr(std::move(x));
 }
 
+// --- matching pursuit ---
+// (mp x D iterations threshold options) => a record: atoms (the indices of the chosen rows of D, in the order chosen),
+//   weights, residual, error (the residual's norm over x's), and approx (the reconstruction). x a vector, D a
+//   dictionary (a matrix: one atom per row, the same length as x). Greedy: the atom most correlated with the
+//   residual is taken with its projection weight and subtracted, until iterations are done, the error is below
+//   threshold, or no atom helps. options: a record with 'nonneg (1: only atoms with a positive projection, weights
+//   kept positive; the choice for magnitude spectra) and 'orthogonal (1: orthogonal matching pursuit, every weight
+//   refitted by least squares after each pick)
+inline vptr sci_mp(vlist& a, Interp& i) {
+    const varr& xv = i.num(a[0]); mat D = to_mat(i, a[1]); long iters = (long)i.scalar(a[2]); double threshold = i.scalar(a[3]);
+    bool nonneg = false, orth = false;
+    if (a.size() > 4 && a[4]->t == Value::LIST) for (auto& kv : a[4]->l) if (kv->t == Value::LIST && kv->l.size() == 2) { std::string k = str_of(kv->l[0]); bool v = kv->l[1]->t == Value::NUM && kv->l[1]->num[0] != 0; if (k == "nonneg") nonneg = v; if (k == "orthogonal") orth = v; }
+    size_t n = xv.size(), m = D.r; if (D.c != n) i.bad("mp: the atoms must have the length of the signal");
+    std::vector<double> x(std::begin(xv), std::end(xv)), r = x, norms(m, 0.0);
+    for (size_t k = 0; k < m; k++) { double s = 0; for (size_t j = 0; j < n; j++) s += D(k, j) * D(k, j); norms[k] = std::sqrt(s); }
+    double xnorm = 0; for (double v : x) xnorm += v * v; xnorm = std::sqrt(xnorm); if (xnorm <= 0) xnorm = 1;
+    std::vector<size_t> atoms; std::vector<double> weights;
+    for (long it = 0; it < iters; it++) {
+        double rnorm = 0; for (double v : r) rnorm += v * v; rnorm = std::sqrt(rnorm); if (rnorm / xnorm < threshold) break;
+        long best = -1; double bestc = 0;
+        for (size_t k = 0; k < m; k++) {
+            if (norms[k] <= 0) continue; bool used = false; for (size_t q : atoms) if (q == k) used = true; if (used && !orth) continue;
+            double dot = 0; for (size_t j = 0; j < n; j++) dot += r[j] * D(k, j); double c = dot / norms[k];
+            if (nonneg ? c > bestc : std::fabs(c) > std::fabs(bestc)) { bestc = c; best = (long)k; }
+        }
+        if (best < 0 || bestc == 0) break;
+        double w = bestc / norms[(size_t)best];
+        atoms.push_back((size_t)best); weights.push_back(w);
+        if (orth) {                                            // refit every weight: least squares on the chosen atoms
+            size_t p = atoms.size(); mat G(p, p + 1);
+            for (size_t u = 0; u < p; u++) { for (size_t v = 0; v < p; v++) { double s = 0; for (size_t j = 0; j < n; j++) s += D(atoms[u], j) * D(atoms[v], j); G(u, v) = s; } double s = 0; for (size_t j = 0; j < n; j++) s += D(atoms[u], j) * x[j]; G(u, p) = s; }
+            elim_result e = eliminate(G);
+            if (e.rank == p) { std::vector<double> wv(p); for (size_t k = p; k-- > 0;) { double s = G(k, p); for (size_t j = k + 1; j < p; j++) s -= G(k, j) * wv[j]; wv[k] = s / G(k, k); } for (size_t u = 0; u < p; u++) weights[u] = nonneg ? std::max(0.0, wv[u]) : wv[u]; }
+            r = x; for (size_t u = 0; u < p; u++) for (size_t j = 0; j < n; j++) r[j] -= weights[u] * D(atoms[u], j);
+        } else { for (size_t j = 0; j < n; j++) r[j] -= w * D((size_t)best, j); }
+    }
+    varr res(n), approx(n); for (size_t j = 0; j < n; j++) { res[j] = r[j]; approx[j] = x[j] - r[j]; }
+    double rnorm = 0; for (double v : r) rnorm += v * v; rnorm = std::sqrt(rnorm);
+    vlist al, wl; for (size_t k = 0; k < atoms.size(); k++) { al.push_back(v_num((double)atoms[k])); wl.push_back(v_num(weights[k])); }
+    return v_list({ v_list({ v_sym("atoms"), v_list(std::move(al)) }), v_list({ v_sym("weights"), v_list(std::move(wl)) }), v_list({ v_sym("residual"), v_arr(std::move(res)) }), v_list({ v_sym("error"), v_num(rnorm / xnorm) }), v_list({ v_sym("approx"), v_arr(std::move(approx)) }) });
+}
+
 // --- statistics ---
 // (median-filter v order) the running median of width order
 inline vptr sci_median_filter(vlist& a, Interp& i) {
@@ -206,7 +248,7 @@ inline void add_scientific(Interp& i) {
     i.def("mat-mul", sci_mat_mul, 2, N); i.def("transpose", sci_transpose, 1, 1);
     i.def("det", sci_det, 1, 1); i.def("rank", sci_rank, 1, 1); i.def("inv", sci_inv, 1, 1); i.def("solve", sci_solve, 2, 2);
     i.def("eig-sym", sci_eig_sym, 1, 1); i.def("median-filter", sci_median_filter, 2, 2);
-    i.def("kmeans", sci_kmeans, 2, 2); i.def("knn", sci_knn, 3, 3);
+    i.def("kmeans", sci_kmeans, 2, 2); i.def("knn", sci_knn, 3, 3); i.def("mp", sci_mp, 4, 5);
 }
 
 } // namespace musil

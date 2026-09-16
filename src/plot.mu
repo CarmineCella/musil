@@ -91,12 +91,12 @@ function waveform (x sr) (set-labels (add-line (figure "waveform") (/ (range (le
 function spectrum (x sr) {
     var m (magnitude-spectrum (* x (hann (length x))))
     var f (spectrum-freqs (* 2 (length m)) sr)
-    return (set-labels (add-line (figure "spectrum") f (db m) "") "frequency (Hz)" "dB")
+    return (set-labels (add-line (figure "spectrum") f (amp->db m) "") "frequency (Hz)" "dB")
 }
 # (spectrogram x sr n hop)   STFT magnitudes in dB as an image: time along x, frequency along y
 function spectrogram (x sr n hop) {
     var mags (stft-magnitudes (stft x n hop))
-    var M (transpose (map mags db))            # rows = frequency bins, columns = frames
+    var M (transpose (map mags amp->db))            # rows = frequency bins, columns = frames
     return (set-labels (add-image (figure "spectrogram") M) "frame" "bin")
 }
 # (scatter-clusters X labels k)   the rows of an n x 2 matrix coloured by cluster

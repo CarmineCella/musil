@@ -481,7 +481,7 @@ several in braces with \musil{return}.
 
 \begin{lstlisting}
 function square (x) (* x x)
-function rms-db (x) (db (rms x))
+function rms-db (x) (amp->db (rms x))
 
 function clamp (x lo hi) {
     if (< x lo) { return lo }
@@ -838,7 +838,7 @@ write-wav "/tmp/out.wav" sr (normalize-peak x)
 
 \begin{lstlisting}
 function rms-db (x)
-    (db (rms x))
+    (amp->db (rms x))
 
 function normalise-to (x target) {
     var g (/ target (rms x))
@@ -1073,7 +1073,9 @@ Linear algebra, statistics and machine learning. A matrix is a list of row vecto
 \musil{(list (vec 1 2) (vec 3 4))} is $2\times2$; \musil{(getidx M i)} is a row.
 Products, transposition, elimination (\musil{det}, \musil{inv}, \musil{solve}), the
 symmetric eigensolver, k-means and KNN are C++; construction, elementwise arithmetic,
-statistics along an axis, covariance, PCA, regression, NMF and the model helpers are Musil.
+statistics along an axis, covariance, PCA, regression, NMF and the model helpers are Musil;
+\musil{mp}, matching pursuit over a dictionary (greedy, optionally non-negative or
+orthogonal), is C++ and serves the orchestrators.
 
 \begin{lstlisting}
 load "scientific.mu"
@@ -1099,7 +1101,8 @@ the RBJ biquads, comb and allpass sections and the Schroeder reverb are Musil, a
 compositions of vector operations; so are \musil{converb} (a convolution reverb through
 any response, dry and wet, per channel) and \musil{concerthall} (the Concertgebouw's
 response, \texttt{hall\_concertgebouw.wav}, shipped with the libraries; every
-\musil{play-score} goes through it). \musil{hpss} (harmonic/percussive separation by median
+\musil{play-score} goes through it), both on \musil{conv-fast}, a C++ overlap-add over
+blocks that gives \musil{conv}'s result and lets the interpreter breathe between blocks. \musil{hpss} (harmonic/percussive separation by median
 filters over the spectrogram) is C++; \musil{onset-strength}, \musil{onsets} (a global
 threshold), \musil{onsets-adaptive} (a threshold on the flux's moving median, for
 material whose loudness drifts) and \musil{segments} build onset detection from the
@@ -1314,7 +1317,10 @@ for the notes, in orchestral order, with a drawn treble or bass clef chosen by t
 instrument's range, ledger lines, sharps, and the dynamics under the staff where they
 change and there is room for them; then a line per kind (files, buffers, synths, calls);
 every event is a head at its onset and a thin line of the same colour for its duration
-(a line stops short of a following note's sharp). A D pan and \texttt{+} \texttt{-} zoom in
+(a line stops short of a following note's sharp); above a note, in a small script, its
+playing technique where it changes and its tuning in cents when it is not zero
+(\musil{note-cents!} sets it; the orchestrators that know a target's exact frequencies
+will), written where there is room. A D pan and \texttt{+} \texttt{-} zoom in
 time, W S scroll and Z X zoom the rows, R resets; the wheel scrolls rows (sideways, or with
 Shift, time; with Ctrl it zooms), and scrollbars show the visible part once zoomed;
 hovering shows an event's data and the time; a double-click plays that event alone; a
@@ -1358,6 +1364,72 @@ interpolation, textures running through chords or around them
 \musil{score-map!}. \texttt{algorithmic\_comp.mu} (a row and its forms, Ligeti-like
 micropolyphony, spectral pivots after Grisey, moving textures) and
 \texttt{score\_in\_score.mu} show it.
+
+\textbf{MIDI files.} \musil{midi-read} parses a standard MIDI file (formats 0 and 1, the
+tempo map applied) into notes with times in seconds; \musil{midi->fragment} puts them on
+an instrument, velocities becoming dynamics, \musil{midi->fragment-by-channel} an
+instrument per channel, \musil{midi->score} a score. Material from a sequencer, or a
+target for an orchestration.
+
+\textbf{Orchestrations.} Every orchestrator returns a \emph{result}: a record with its
+method and parameters and a list of segments, each covering a span of the target and
+holding solutions, every solution a fragment (at the segment's time) with a cost.
+\musil{solutions} and \musil{solution} read them; \musil{connection} joins one chosen
+solution per segment into a fragment (a note continued across a boundary on the same
+instrument and pitch becomes one longer note), \musil{best-connection} takes the first
+of each, \musil{connect!} places a connection in a score. Three orchestrators share this:
+\musil{orchestrate-granular} (below), \musil{orchestrate-morphological} (the granulator driven by a target's analysis, below) and
+\musil{orchestrate-mimetic} (Orchidea), the last to come.
+
+\textbf{The orchestral granulator.} Orchestration as granular synthesis: a stochastic
+process, described by envelopes over time, realised by the players of an orchestra with
+never more sounding at once than there are players. \musil{orchestra} takes a list where a
+symbol is a player, a string \musil{"Fl|Picc"} a player with an ossia (one instrument or
+the other, by the pitch's range), and a list a paired group scheduled together.
+\musil{env} is a value changing with time: at each breakpoint a number, a range
+\musil{(list lo hi)} or a set (techniques, dynamics, chords); between breakpoints numbers
+and ranges are interpolated and sets crossfaded by chance, so a process moves from one
+state to another rather than switching. \musil{orchestrate-granular db orch secs params}
+takes a record of parameters, each an envelope or a fixed value: \musil{'density} (events
+per second), \musil{'register} (octaves), \musil{'duration}, \musil{'styles},
+\musil{'dynamics}, \musil{'chords}, and \musil{'method}: \musil{'random} in the register
+(or from the chord), \musil{'pivots} (each player around a pitch of the chord within
+\musil{'interval}), \musil{'chordinterp} (the chord itself moving between two chords over
+time, \musil{chordinterp-env}), \musil{'markov} (transitions learnt from a score,
+\musil{'markov-score}), \musil{'harmonic} (partials of a \musil{'fundamental} with
+probability \musil{'harmonicity}); \musil{'dynamics} may also be a level from 0 (ppp) to 1 (fff), interpolated, which
+picks the nearest recorded dynamics and sets a gain between them for a truly continuous
+crescendo; \musil{'chord-weight} says how often a pitch comes from the chord rather than the
+register, so a chord dissolves into a cloud gradually; \musil{'coupling} says how often a paired group actually
+sounds together (an envelope from 1 to 0 makes an orchestra synchronised at first and free
+later); \musil{'solutions} asks for several realisations. The database is indexed once
+(\musil{db-index!}: the available pitched sounds of every instrument by dynamics and
+technique), so a note costs nothing on a large set; \musil{db-techniques-of} and
+\musil{db-dynamics-of} say what an instrument was recorded with, which is how an example
+builds its orchestra and its palette from whatever database is loaded.
+\textbf{Morphological orchestration.} \musil{target-analyse} turns a sound into curves
+over time (the descriptors of \texttt{signals}: \musil{event-rate}, the onsets that change
+the spectrum, counted a second; \musil{polyphony-estimate}; \musil{register-curve}, the
+centroid and the lowest strong partial in pitch; \musil{loudness-curve};
+\musil{coherence-time}, how long the spectrum persists; and the frame spectra in the
+database's feature space). \musil{orchestrate-morphological db orch target params} makes
+the granulator follow them (\musil{target-envelopes}: density, polyphony, register,
+duration and dynamics from the curves; \musil{'follow} loosens the fit, any parameter of
+your own overrides) and, at every event, runs a matching pursuit (\musil{mp} of
+\texttt{scientific}, non-negative, on log magnitudes) over the free players' sounds
+against the target's spectrum at that instant less what already sounds (an orchestral
+residual): each atom is a note with its instrument, pitch and technique, its dynamics from
+the level, its tuning in cents from the target's nearest peak, held as long as its sound
+persists in the target (\musil{atom-persistence}). Nothing is segmented: a long sound
+under short ones comes out as a long note under short ones, which is what granulating
+rather than cutting is for. \texttt{morph\_orchestration.mu} orchestrates a recording
+and places the target after it to compare.
+
+\texttt{gran\_orchestration.mu} realises a unison that accelerates into a storm of every
+style over five octaves and then slows down towards the harmonic series of E2;
+\texttt{modulations.mu} follows the analysis of Grisey's \emph{Modulations}, section by
+section, with the harmonicity, density, duration, dynamics, register and coupling envelopes
+of each process on the spectrum of E.
 
 \textbf{Databases.} A database in the *SOL layout (TinySOL, OrchideaSOL, FullSOL) is a
 feature file next to a folder of the same name holding the sounds by family and instrument
@@ -1478,7 +1550,8 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
-\texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu}, \texttt{minimalism.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language; a two-minute minimalist piece by additive process, phase and a tutti \\
+\texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
+\texttt{gran\_orchestration.mu}, \texttt{modulations.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; Grisey's \emph{Modulations} simulated section by section; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

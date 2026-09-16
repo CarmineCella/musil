@@ -179,6 +179,19 @@ var Hs (nmf-with-parts Vt Wt 100)
 check (equal? (mat-shape Hs) (list 2 4)) "nmf-with-parts: H for known parts"
 check (< (mat-max (mat-map (mat-sub (mat-mul Wt Hs) Vt) abs)) 0.05) "nmf-with-parts: reconstructs V with W fixed"
 
+# --- matching pursuit ---
+var Dm (list->mat (list (list 1 0 0 0) (list 0 1 0 0) (list 0 0 1 0) (list 1 1 0 0)))
+var rm (mp (vec 2 3 0 0) Dm 3 0.01 (record (list 'nonneg 1)))
+check (equal? (get rm 'atoms) (list 3 1)) "mp: the most correlated atom first, then the residual's"
+check (near? (vec (get rm 'weights)) (vec 2.5 0.5) 1e-9) "mp: projection weights"
+check (near? (get rm 'error) (/ 0.5 (sqrt 13)) 1e-9) "mp: the residual's norm over the signal's"
+check (== (length (get rm 'residual)) 4) "mp: the residual"
+var om (mp (vec 2 3 0.5 0) Dm 3 0.001 (record (list 'orthogonal 1)))
+check (< (get om 'error) 1e-9) "mp: orthogonal pursuit refits the weights: exact"
+check (equal? (get (mp (vec 1 0 0 0) Dm 5 0.01 (list)) 'atoms) (list 0)) "mp: stops when the error is under the threshold"
+check (== (length (get (mp (vec 0 0 0 0) Dm 3 0.01 (list)) 'atoms)) 0) "mp: nothing for silence"
+check (contains? (error-of (function () (mp (vec 1 2) Dm 1 0 (list)))) "length") "mp: atoms must match the signal"
+
 # --- display ---
 check (equal? (mat-round (list (vec 1.234 5.678)) 1) (list (vec 1.2 5.7))) "mat-round"
 check (equal? (mat-str A 1) "1.0  2.0\n3.0  4.0") "mat-str"

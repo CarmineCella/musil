@@ -31,7 +31,7 @@ var t-on (onsets percussive sr 1024 256 0.15)
 print (length t-on) "attacks in the percussive part:" (fixed (take t-on (min 12 (length t-on))) 3) (if (> (length t-on) 12) "..." "")
 
 # 3. picture: the three spectrograms and the percussive waveform with the attacks
-var spec (function (y title) (add-image (figure title) (map (stft-magnitudes (stft y 1024 256)) (function (m) (undb (db m))))))
+var spec (function (y title) (add-image (figure title) (map (stft-magnitudes (stft y 1024 256)) (function (m) (db->amp (amp->db m))))))
 var fig (figure "percussive part and its attacks")
 add-line fig (/ (range (length percussive)) sr) percussive "percussive"
 add-scatter fig t-on (zeros (length t-on)) "attacks"

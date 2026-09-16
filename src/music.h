@@ -15,6 +15,7 @@
 #include "core.h"
 #include "system.h"
 #include "signals.h"
+#include "music/midi.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -210,7 +211,7 @@ inline vptr mus_db_index_size(vlist& a, Interp& i) { return v_num((double)db_ind
 
 inline void add_music(Interp& i) {
     i.def("pitch->midi", mus_pitch_to_midi, 1, 1); i.def("midi->pitch", mus_midi_to_pitch, 1, 1);
-    i.def("db-read", mus_db_read, 1, 1); i.def("db-gen", mus_db_gen, 6, 6); i.def("db-locate", mus_db_locate, 2, 2); i.def("db-index-size", mus_db_index_size, 1, 1);
+    i.def("db-read", mus_db_read, 1, 1); i.def("db-gen", mus_db_gen, 6, 6); add_midi(i); i.def("db-locate", mus_db_locate, 2, 2); i.def("db-index-size", mus_db_index_size, 1, 1);
 }
 
 } // namespace musil

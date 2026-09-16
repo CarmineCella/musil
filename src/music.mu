@@ -116,7 +116,7 @@ function load-sound (path) {
 var note-cache (list)
 function note-sound (e sr) {
     var path (note-path e)
-    var shift (opt e 'shift 0)
+    var shift (+ (opt e 'shift 0) (/ (opt e 'cents 0) 100))          # semitones, the cents included
     var need (+ 0.2 (get e 'dur))                                    # seconds of output wanted
     var key (concat path "@" (str shift) "@" (str sr) "@" (str (ceil need)))
     var hit (opt note-cache key nil)
@@ -358,7 +358,8 @@ function roll-events (s) {
     return out
 }
 # (score-roll s)           the roll as a figure: rows (name and clef) and bars (row start dur label tip group lane lanes
-#                          midi dyn); pitched events sit on their row's staff, the others on a line
+#                          midi dyn id tech cents); pitched events sit on their row's staff, the others on a line;
+#                          the technique is written above a note where it changes, the tuning in cents when not zero
 function score-roll (s) {
     var rows (score-rows s)
     var groups (list 'note 'file 'buffer 'synth 'call 'score)
@@ -376,7 +377,7 @@ function score-roll (s) {
             var e (head pair)
             var kind (get e 'kind)
             var tip (if (equal? kind 'note) (concat (get e 'pitch) " " (get e 'dyn) " " (get e 'tech) (if (!= (opt e 'shift 0) 0) (concat " (shifted " (str (opt e 'shift 0)) ")") "")) (concat "az " (str (get e 'az)) " el " (str (get e 'el))))
-            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (opt e 'midi -1) (opt e 'dyn "") (get e 'id))
+            push bars (list r (get e 'at) (get e 'dur) (get e 'label) tip (find groups kind) (last pair) nlanes (opt e 'midi -1) (opt e 'dyn "") (get e 'id) (opt e 'tech "") (opt e 'cents 0))
         })
         set r (+ r 1)
     })
@@ -527,11 +528,28 @@ function db-nearest (db entry n) {
 }
 # (db-available db)        the entries whose sounds are on disk; (db-instruments-available db) their instruments
 function db-available (db) (filter (get db 'entries) (function (e) (db-available? db e)))
-function db-instruments-available (db) (sort-by (unique (map (db-available db) (function (e) (get e 'instr)))) instrument-rank)
+function db-instruments-available (db) (sort-by (keys (db-index! db)) instrument-rank)
+# (db-techniques-of db instr)   the techniques an instrument was recorded with (on disk); (db-dynamics-of db instr) its dynamics
+function db-techniques-of (db instr) {
+    var slot (opt (db-index! db) (str instr) nil)
+    return (if (equal? (type slot) "nil") (list) (sort-list (unique (map (get slot 'all) (function (e) (get e 'tech))))))
+}
+function db-dynamics-of (db instr) {
+    var slot (opt (db-index! db) (str instr) nil)
+    return (if (equal? (type slot) "nil") (list) (unique (map (get slot 'all) (function (e) (get e 'dyn)))))
+}
 # (db-range db instr)      the lowest and highest MIDI note of an instrument, as (list lo hi)
 function db-range (db instr) {
     var ms (vec (map (filter (db-query db instr nil nil nil) (function (e) (>= (get e 'midi) 0))) (function (e) (get e 'midi))))
     if (== (length ms) 0) { error "db-range: no pitched sounds of " instr }
+    return (list (min ms) (max ms))
+}
+# (db-range-available db instr)   the range of the sounds actually on disk, from the index (fast; what the
+#                          orchestrators use)
+function db-range-available (db instr) {
+    var slot (opt (db-index! db) (str instr) nil)
+    if (equal? (type slot) "nil") { error "db-range-available: no pitched sound of " instr " on disk" }
+    var ms (vec (map (get slot 'all) (function (e) (get e 'midi))))
     return (list (min ms) (max ms))
 }
 # (db-path db entry)       the sound file of an entry, on disk: under the sounds' folder at the path the feature file
@@ -555,6 +573,39 @@ function db-make (folder path type block hop ncoeff) {
     return (db-load path)
 }
 
+# --- an index of the database, built once: what a note can choose from -----------------------------------
+# (db-index! db)           builds (if not yet) the index: for every instrument, its available pitched entries,
+#                          grouped by dynamics and technique; note and db-range read it, so a large database
+#                          (FullSOL has tens of thousands of entries) costs a scan once, not per note
+function db-index! (db) {
+    if (has? db 'index) { return (get db 'index) }
+    var by-instr (list)
+    each (get db 'entries) (function (e) {
+        if (and (>= (get e 'midi) 0) (db-available? db e)) {
+            var i (get e 'instr)
+            if (not (has? by-instr i)) { put! by-instr i (record (list 'all (list) 'by (list))) }
+            var slot (get by-instr i)
+            push (get slot 'all) e
+            var key (concat (get e 'dyn) "|" (get e 'tech))
+            if (has? (get slot 'by) key) { push (get (get slot 'by) key) e } { put! (get slot 'by) key (list e) }
+        }
+    })
+    put! db 'index by-instr
+    return by-instr
+}
+# (db-candidates db instr dyn tech)   the available pitched entries of an instrument with these dynamics and
+#                          technique; failing that, with the technique; failing that, any of the instrument
+function db-candidates (db instr dyn tech) {
+    var idx (db-index! db)
+    var slot (opt idx (str instr) nil)
+    if (equal? (type slot) "nil") { return (list) }
+    var exact (opt (get slot 'by) (concat (str dyn) "|" (str tech)) nil)
+    if (not (equal? (type exact) "nil")) { return exact }
+    var same-tech (filter (get slot 'all) (function (e) (equal? (get e 'tech) (str tech))))
+    if (> (length same-tech) 0) { return same-tech }
+    return (get slot 'all)
+}
+
 # --- notes: sounds from a database as events --------------------------------------------------------
 # (note db instr pitch dyn tech)   a note event (pitch a name, "D#5", or a MIDI number): the entry matching instrument, pitch, dynamics and technique, or
 #                          the nearest available pitch of that instrument (same dynamics and technique when they
@@ -564,16 +615,18 @@ function note (db instr pitch dyn tech) {
     var want (if (equal? (type pitch) "scalar") (round pitch) (pitch->midi (str pitch)))
     if (< want 0) { error "note: not a pitch: " pitch }
     var pname (midi->pitch want)
-    var same (filter (db-query db instr nil dyn tech) (function (e) (and (>= (get e 'midi) 0) (db-available? db e))))
-    if (== (length same) 0) { set same (filter (db-query db instr nil nil tech) (function (e) (and (>= (get e 'midi) 0) (db-available? db e)))) }
-    if (== (length same) 0) { set same (filter (db-query db instr nil nil nil) (function (e) (and (>= (get e 'midi) 0) (db-available? db e)))) }
+    var same (db-candidates db instr dyn tech)
     if (== (length same) 0) { error "note: no sound of " instr " on disk in this database" }
     var exact (filter same (function (e) (== (get e 'midi) want)))
     var entry (if (> (length exact) 0) (head exact) (min-by same (function (e) (abs (- (get e 'midi) want)))))
     var shift (- want (get entry 'midi))
     return (record (list 'kind 'note 'source (get entry 'file) 'db db 'entry entry 'instr (str instr) 'pitch pname 'midi want
-                         'dyn (str dyn) 'tech (str tech) 'shift shift 'label (concat (str instr) " " pname " " (str dyn))))
+                         'dyn (str dyn) 'tech (str tech) 'shift shift 'cents 0 'label (concat (str instr) " " pname " " (str dyn))))
 }
+# (note-cents! n cents)    a note's tuning away from its pitch, in cents (shown in the roll; used by the orchestrators
+#                          that know the target's exact frequencies); the shift by resampling follows it
+function note-cents! (n cents) { put! n 'cents cents
+                                 return n }
 # (note-path e)            the sound file of a note event, on disk
 function note-path (e) (db-path (get e 'db) (get e 'entry))
 # (note-duration e)        how long the note's sound is, in seconds (after the shift)
@@ -644,7 +697,11 @@ function fragment-until (f secs) {
     return (filter (fragment-repeat f (ceil (/ secs d))) (function (x) (< (head x) secs)))
 }
 # (add! s at fragment)     place a fragment's events into a score at a time; => the events
-function add! (s at f) (map f (function (x) (event-at s (+ at (head x)) (getidx x 1) (last x) (opt (last x) 'az 0) (opt (last x) 'el 0))))
+function add! (s at f) (map f (function (x) {
+    var pl (last x)
+    var rec? (and (equal? (type pl) "list") (> (length pl) 0) (equal? (type (head pl)) "list"))
+    return (event-at s (+ at (head x)) (getidx x 1) pl (if rec? (opt pl 'az 0) 0) (if rec? (opt pl 'el 0) 0))
+}))
 # (add-at! s at fragment az el)   the same, placed at a direction
 function add-placed! (s at f az el) (map f (function (x) (event-at s (+ at (head x)) (getidx x 1) (last x) az el)))
 # (fragment->score name sr fragment)   a score of its own, to place inside another with event
@@ -890,6 +947,426 @@ function orchestrate-line (db line r registers dyn tech) (line-of line r (functi
 function score-map! (s f) (put! s 'events (map (get s 'events) f))
 # (score-instrument s instr)   the events of an instrument
 function score-instrument (s instr) (score-select s (function (e) (equal? (opt e 'instr "") (str instr))))
+
+
+# --- MIDI files as material ------------------------------------------------------------------------------
+# (midi->fragment path db instr tech)   the notes of a MIDI file as a fragment on one instrument, velocities
+#                          becoming dynamics (pp p mp mf f ff over 0..127); times as the file's tempo map says
+function midi->fragment (path db instr tech) (midi-notes->fragment (get (midi-read path) 'notes) db instr tech)
+# (midi->fragment-by-channel path db instrs tech)   the same with an instrument per MIDI channel (instrs a list; a
+#                          channel beyond the list takes the last one), => one fragment
+function midi->fragment-by-channel (path db instrs tech) {
+    var ns (get (midi-read path) 'notes)
+    var out (list)
+    each ns (function (n) (each (midi-notes->fragment (list n) db (getidx instrs (min (get n 'channel) (- (length instrs) 1))) tech) (function (x) (push out x))))
+    return out
+}
+# (velocity->dynamics v)   a MIDI velocity as one of pp p mp mf f ff
+function velocity->dynamics (v) (getidx (list 'pp 'p 'mp 'mf 'f 'ff) (min 5 (floor (/ v 21.4))))
+function midi-notes->fragment (ns db instr tech) (map ns (function (n) (list (get n 'at) (max 0.05 (get n 'dur)) (note db instr (get n 'pitch) (velocity->dynamics (get n 'velocity)) tech))))
+# (midi->score path db instrs tech name)   a score from a MIDI file, an instrument per channel
+function midi->score (path db instrs tech name) (fragment->score name 44100 (midi->fragment-by-channel path db instrs tech))
+
+# --- orchestrations: results, segments, solutions, connections ----------------------------------------------
+# Every orchestrator (orchestrate-granular here; orchestrate-mimetic and orchestrate-morphological to come) returns
+# a *result*: a record with the method, its parameters, and segments; a segment covers a span of time and holds
+# solutions, each a fragment (already at the segment's time) with a cost. A connection is one solution per segment
+# joined into a fragment; the best connection takes the first solution of each.
+# (orchestration method params segments)   a result record
+function orchestration (method params segments) (record (list 'kind 'orchestration 'method method 'params params 'segments segments))
+# (segment at dur solutions)   a segment: solutions a list of (list cost fragment), best first
+function segment (at dur solutions) (record (list 'at at 'dur dur 'solutions (sort-by solutions head)))
+# (solutions result k)     the solutions of segment k, best first, as (list cost fragment) pairs
+function solutions (result k) (get (getidx (get result 'segments) k) 'solutions)
+# (solution result k n)    the fragment of the n-th solution of segment k
+function solution (result k n) (last (getidx (solutions result k) n))
+# (connection result choices)   one solution per segment (choices: an index per segment) joined into a fragment; a
+#                          note that continues across a boundary on the same instrument at the same pitch is merged
+function connection (result choices) {
+    var segs (get result 'segments)
+    var out (list)
+    each (zip segs choices) (function (p) (each (solution result (find segs (head p)) (last p)) (function (x) (push out x))))
+    return (merge-continuations (sort-by out head))
+}
+# (best-connection result)   the first solution of every segment
+function best-connection (result) (connection result (map (get result 'segments) (function (g) 0)))
+# (connect! s at result choices)   a connection placed in a score
+function connect! (s at result choices) (add! s at (connection result choices))
+# (merge-continuations f)   in a fragment, a note starting where a note of the same instrument and pitch ends becomes
+#                          the continuation of that note (one longer event), as an orchestration's connection does
+function merge-continuations (f) {
+    var out (list)
+    each f (function (x) {
+        var pl (last x)
+        var prev (if (equal? (get pl 'kind) 'note) (find-first out (function (y) (and (equal? (get (last y) 'kind) 'note) (equal? (get (last y) 'instr) (get pl 'instr)) (== (get (last y) 'midi) (get pl 'midi)) (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.02)))) nil)
+        if (equal? (type prev) "nil") { push out (list (head x) (getidx x 1) pl) } { setidx prev 1 (+ (getidx prev 1) (getidx x 1)) }
+    })
+    return out
+}
+
+# --- envelopes over time: parameters that change during a process ---------------------------------------------
+# (env t0 v0 t1 v1 ...)    a value changing with time: at each breakpoint a value; between breakpoints a number or
+#                          a range (list lo hi) is interpolated, and a set (a list of symbols, pitches or chords) is
+#                          crossfaded: nearer the earlier breakpoint the earlier set is drawn more often. Given as a
+#                          flat list: (env (list 0 (list 1 2) 10 (list 0.1 0.2)))
+function env (kv) (record kv)
+# (env-at e t)             the value at time t: an interpolated number or range, or a set chosen by the crossfade
+function env-at (e t) {
+    var ts (map e head)
+    if (<= t (head ts)) { return (last (head e)) }
+    if (>= t (last ts)) { return (last (last e)) }
+    var k 0
+    while (and (< (+ k 1) (length ts)) (>= t (getidx ts (+ k 1)))) { set k (+ k 1) }
+    var a (last (getidx e k))
+    var b (last (getidx e (+ k 1)))
+    var u (/ (- t (getidx ts k)) (max 1e-9 (- (getidx ts (+ k 1)) (getidx ts k))))
+    if (and (equal? (type a) "scalar") (equal? (type b) "scalar")) { return (+ a (* u (- b a))) }
+    if (and (numeric-range? a) (numeric-range? b)) { return (list (+ (head a) (* u (- (head b) (head a)))) (+ (last a) (* u (- (last b) (last a))))) }
+    return (if (< (rand) u) b a)                                   # sets: crossfaded by chance
+}
+function numeric-range? (v) (and (equal? (type v) "list") (== (length v) 2) (equal? (type (head v)) "scalar") (equal? (type (last v)) "scalar"))
+# (draw-in range)          a random number in a range (or the number itself)
+function draw-in (v) (if (equal? (type v) "list") (+ (head v) (* (rand) (- (last v) (head v)))) v)
+# (pick-from set)          a random element of a set (or the value itself when it is not a list of alternatives)
+function pick-from (v) (if (equal? (type v) "list") (getidx v (floor (* (rand) (length v)))) v)
+
+# --- dynamics as a level: 0 (ppp) to 1 (fff), for gradual crescendi and diminuendi ---
+var dynamics-scale (list 'ppp 'pp 'p 'mp 'mf 'f 'ff 'fff)
+# (dynamics-level? v)      is a dynamics parameter a level (a number or a range) rather than a set of labels?
+function dynamics-level? (v) (or (equal? (type v) "scalar") (numeric-range? v))
+# (level->dynamics x)      a level 0..1 as the nearest label of ppp pp p mp mf f ff fff; (dynamics->level d) the reverse
+function level->dynamics (x) (getidx dynamics-scale (max 0 (min 7 (round (* 7 x)))))
+function dynamics->level (d) { var k (find (map dynamics-scale str) (str d))
+                               return (if (< k 0) 0.5 (/ k 7)) }
+# (level->gain x)          a level as a gain, 0.25 at ppp to 1 at fff (the sample carries the timbre of its dynamics,
+#                          the gain the finer steps between the recorded ones)
+function level->gain (x) (+ 0.25 (* 0.75 (max 0 (min 1 x))))
+
+# --- the orchestra: players, pairs, ossia -------------------------------------------------------------------
+# (orchestra spec)         the players: spec a list where a symbol is one player of that instrument, a string with
+#                          | is one player alternating between instruments (an ossia: "Fl|Picc"), and a list is a
+#                          group of players scheduled together (paired): (orchestra (list 'Fl 'Fl "Ob|EH" (list 'Vn 'Vc)))
+#                          => a list of player records (instrs, group)
+function orchestra (spec) {
+    var players (list)
+    var group 0
+    each spec (function (item) {
+        if (equal? (type item) "list") {
+            each item (function (i) (push players (record (list 'instrs (ossia i) 'group group 'busy-until 0 'last-pitch nil))))
+            set group (+ group 1)
+        } {
+            push players (record (list 'instrs (ossia item) 'group -1 'busy-until 0 'last-pitch nil))
+        }
+    })
+    return players
+}
+function ossia (item) (map (split (str item) "|") identity)
+# (orchestra-size orch)    how many players; (orchestra-instruments orch) every instrument they can play
+function orchestra-size (orch) (length orch)
+function orchestra-instruments (orch) (unique (reduce (map orch (function (p) (get p 'instrs))) concat-list (list)))
+
+# --- the orchestral granulator ------------------------------------------------------------------------------------
+# (orchestrate-granular db orch secs params)   orchestration as granular synthesis: a stochastic process realised by
+#     the players of an orchestra, never more at once than there are players, each event a note. params is a record;
+#     every parameter may be an env (see env) or a fixed value:
+#       'density    events per second, a range: (env (list 0 (list 4 6) 10 (list 0.5 1)))
+#       'register   octaves, a range: (env (list 0 (list 3 3) 10 (list 3 6)))   (octave 4 holds middle C)
+#       'duration   seconds, a range (default (list 0.2 1))
+#       'styles     a set of techniques: (env (list 0 (list 'ord) 10 (list 'pizz 'flatt)))
+#       'dynamics   a set of labels, (env (list 0 (list 'pp) 10 (list 'ff))), crossfaded by chance; or a level from 0
+#                   (ppp) to 1 (fff), a number or a range, interpolated: (env (list 0 0 40 1)) is a continuous
+#                   crescendo, mapped to the scale ppp pp p mp mf f ff fff for the sample and to a gain for the rest
+#       'chords     a set of chords (lists of pitches), or nil: any pitch of the register
+#       'chord-weight 0..1: how often a pitch comes from the chord rather than from the whole register (1 by
+#                   default); an envelope from 1 to 0 dissolves a chord into a cloud gradually
+#       'method     how a pitch is chosen: 'random (in the register, or of the chord), 'pivots (each player around
+#                   its chord pitch, within 'interval semitones), 'chordinterp (between the chords of the envelope,
+#                   voice by voice, as time passes), 'markov (from 'markov-score: a score whose lines train a
+#                   transition table per instrument), 'harmonic (a partial of 'fundamental with probability
+#                   'harmonicity, else random)
+#       'polyphony  how many players may sound at once at most (an envelope; the orchestra's size by default)
+#       'coupling   0..1: how often a paired group actually sounds together (1: always; 0: its players independent),
+#                   an envelope makes an orchestra synchronised at first and free later, or the reverse
+#       'solutions  how many realisations to make (default 1), each with its own random draws
+#     => an orchestration result with one segment; (best-connection result) is its fragment
+function orchestrate-granular (db orch secs params) {
+    var n (opt params 'solutions 1)
+    var sols (map (vec->list (range n)) (function (k) (list k (granulate db orch secs params))))
+    return (orchestration 'granular params (list (segment 0 secs sols)))
+}
+function param-at (params key t default) {
+    var v (opt params key default)
+    if (and (equal? (type v) "list") (> (length v) 0) (equal? (type (head v)) "list") (== (length (head v)) 2) (equal? (type (head (head v))) "scalar") (not (numeric-range? v))) { return (env-at v t) }   # an env
+    return v
+}
+function granulate (db orch secs params) {
+    var players (map orch (function (p) (map p (function (kv) (list (head kv) (last kv))))))   # fresh copies: the busy times
+    var method (opt params 'method 'random)
+    var table (if (equal? method 'markov) (markov-table (get params 'markov-score)) nil)
+    var out (list)
+    var t 0
+    var voice-k 0
+    while (< t secs) {
+        var density (param-at params 'density t (list 1 1))
+        var rate (max 0.01 (draw-in density))
+        var reg (param-at params 'register t (list 3 5))
+        var lo (* 12 (+ 1 (head reg)))
+        var hi (- (* 12 (+ 2 (last reg))) 1)
+        var dur (draw-in (param-at params 'duration t (list 0.2 1)))
+        var tech (pick-from (param-at params 'styles t (list 'ord)))
+        var dv (param-at params 'dynamics t (list 'mf))
+        var dyn (if (dynamics-level? dv) (level->dynamics (draw-in dv)) (pick-from dv))   # a level 0..1 (interpolated) or a set of labels
+        var gain (if (dynamics-level? dv) (level->gain (draw-in dv)) 1)
+        var chord-set (param-at params 'chords t nil)
+        var weight (draw-in (param-at params 'chord-weight t 1))
+        var chord (if (or (equal? (type chord-set) "nil") (>= (rand) weight)) nil (pick-from chord-set))     # one chord of the set, or free
+        # a free player (or a free paired group): the first whose last note is over; a group sounds together with
+        # probability 'coupling (1 by default), else its members go one at a time
+        var coupling (draw-in (param-at params 'coupling t 1))
+        var free (filter players (function (p) (<= (get p 'busy-until) t)))
+        var poly (round (draw-in (param-at params 'polyphony t 1000)))
+        var busy (- (length players) (length free))
+        if (and (> (length free) 0) (< busy poly)) {
+            var p (getidx free (floor (* (rand) (length free))))
+            var group (take (if (or (< (get p 'group) 0) (>= (rand) coupling)) (list p) (filter free (function (q) (== (get q 'group) (get p 'group))))) (max 1 (- poly busy)))   # within the polyphony
+            if (equal? method 'target) {
+                # the target's spectrum now, less what already sounds; a pursuit over the free players' sounds gives the
+                # atoms: one note each (instrument, pitch, technique from the atom; the dynamics from the level; the cents
+                # from the target's nearest peak); durations from the target's coherence time
+                var target (get params 'target)
+                var found (target-atoms db target t group (filter players (function (q) (> (get q 'busy-until) t))) params)
+                each found (function (f) {
+                    var q (head f)
+                    var n (last f)
+                    put! n 'gain gain
+                    put! n 'dyn (str dyn)
+                    var cdur (max (draw-in (param-at params 'duration t (list 0.1 0.3))) (atom-persistence target n t))   # how long this sound is heard in the target
+                    push out (list t cdur n)
+                    put! q 'busy-until (+ t cdur)
+                    put! q 'last-pitch (get n 'midi)
+                    put! q 'sounding n
+                    set voice-k (+ voice-k 1)
+                })
+            } {
+                each group (function (q) {
+                    var pitch (choose-pitch db q method lo hi chord params t table voice-k)
+                    var instr (instrument-for db (get q 'instrs) pitch)
+                    push out (list t dur (put (note db instr pitch dyn tech) 'gain gain))
+                    put! q 'busy-until (+ t dur)
+                    put! q 'last-pitch pitch
+                    set voice-k (+ voice-k 1)
+                })
+            }
+        }
+        set t (+ t (/ 1 rate))
+    }
+    return out
+}
+# the instrument of a player for a pitch: among its alternatives (an ossia), the one whose range holds the pitch,
+# else the nearest range
+function instrument-for (db instrs pitch) {
+    var holding (filter instrs (function (i) { var r (try (db-range-available db i) catch e (list 0 0))
+                                               return (and (>= pitch (head r)) (<= pitch (last r))) }))
+    if (> (length holding) 0) { return (head holding) }
+    return (min-by instrs (function (i) { var r (try (db-range-available db i) catch e (list 60 60))
+                                          return (min (abs (- pitch (head r))) (abs (- pitch (last r)))) }))
+}
+# a pitch for a player by the method, within lo..hi (MIDI)
+function choose-pitch (db player method lo hi chord params t table voice-k) {
+    var in-register (function (m) {                          # moved by octaves into lo..hi, then clamped
+        var q m
+        while (< q lo) { set q (+ q 12) }
+        while (> q hi) { set q (- q 12) }
+        return (max lo (min hi q)) })
+    var chord-pitches (if (equal? (type chord) "nil") nil (map chord pitch->number))
+    if (equal? method 'pivots) {
+        var centres (if (equal? (type chord-pitches) "nil") (list (/ (+ lo hi) 2)) chord-pitches)
+        var centre (in-register (getidx centres (mod voice-k (length centres))))
+        return (max lo (min hi (+ centre (round (* (draw-in (param-at params 'interval t 3)) (- (* 2 (rand)) 1))))))   # clamped, not folded
+    }
+    if (equal? method 'markov) {
+        var prev (get player 'last-pitch)
+        var row (if (equal? (type prev) "nil") nil (opt table prev nil))
+        if (not (equal? (type row) "nil")) { return (in-register (pick-from row)) }
+        if (> (length table) 0) { return (in-register (pick-from (keys table))) }    # start from a pitch the model knows
+        return (random-pitch lo hi chord-pitches)
+    }
+    if (equal? method 'harmonic) {
+        if (< (rand) (draw-in (param-at params 'harmonicity t 0.7))) {
+            var partials (filter (harmonic-series (opt params 'fundamental "C2") 16) (function (m) (and (>= m lo) (<= m hi))))
+            if (> (length partials) 0) { return (pick-from partials) }
+        }
+        return (random-pitch lo hi chord-pitches)
+    }
+    return (random-pitch lo hi chord-pitches)                    # 'random and 'chordinterp (the env already interpolates chords)
+}
+# a random pitch in lo..hi, from a chord's pitch classes when there is one (any octave in the register)
+function random-pitch (lo hi chord-pitches) {
+    if (equal? (type chord-pitches) "nil") { return (+ lo (floor (* (rand) (+ 1 (- hi lo))))) }
+    var candidates (filter (vec->list (range lo (+ hi 1))) (function (m) (any? chord-pitches (function (c) (== (mod m 12) (mod c 12))))))
+    if (== (length candidates) 0) { return (+ lo (floor (* (rand) (+ 1 (- hi lo))))) }
+    return (pick-from candidates)
+}
+# (markov-table s)         transitions learnt from a score's notes: a record from a pitch to the list of pitches that
+#                          followed it (per instrument, in time order); repeated followers weigh more
+function markov-table (s) {
+    var table (list)
+    var by (group-by (sort-by (filter (get s 'events) (function (e) (equal? (get e 'kind) 'note))) (function (e) (get e 'at))) (function (e) (get e 'instr)))
+    each by (function (g) {
+        var line (map (last g) (function (e) (get e 'midi)))
+        each (range (- (length line) 1)) (function (k) {
+            var from (getidx line k)
+            if (has? table from) { push (get table from) (getidx line (+ k 1)) } { put! table from (list (getidx line (+ k 1))) }
+        })
+    })
+    return table
+}
+# --- the target of a morphological orchestration: a sound analysed into curves over time --------------------------
+# (target-analyse x sr block hop)   the descriptors a morphological orchestration follows, computed once: the frame
+#                          spectra (block and hop as the database's features, so they compare), the event rate,
+#                          the polyphony, the register (centroid and spread), the loudness and the coherence time,
+#                          each as a curve sampled every hop; => a record ('sr 'block 'hop 'seconds 'times 'spectra
+#                          'rate 'polyphony 'centroid 'spread 'loudness 'coherence)
+function target-analyse (x sr block hop) {
+    var spectra (frame-spectra x block hop (/ block 2))
+    var er (event-rate x sr 1 hop)
+    var reg (register-curve spectra sr block)
+    var n (min (length spectra) (length (getidx er 1)))
+    return (record (list 'sr sr 'block block 'hop hop 'seconds (/ (length x) sr) 'times (take (head er) n) 'spectra (take spectra n)
+                         'rate (take (getidx er 1) n) 'events (last er) 'polyphony (take (polyphony-estimate spectra) n)
+                         'centroid (take (head reg) n) 'spread (take (getidx reg 1) n) 'low (take (last reg) n)
+                         'loudness (take (loudness-curve x sr hop) n) 'coherence (take (coherence-time spectra hop sr 0.75) n)))
+}
+# (target-at target key t)   a curve's value at a time
+function target-at (target key t) {
+    var v (get target key)
+    var k (max 0 (min (- (length v) 1) (floor (* t (/ (get target 'sr) (get target 'hop))))))
+    return (getidx v k)
+}
+# (curve->env times values step)   an env from a curve: one breakpoint every step seconds (the values averaged over the
+#                          step); ranged values come out as (list lo hi) when given a function making them
+function curve->env (times values step maker) {
+    var kv (list)
+    var t 0
+    var end (last times)
+    while (<= t end) {
+        var window (filter (vec->list (range (length times))) (function (k) (and (>= (getidx times k) t) (< (getidx times k) (+ t step)))))
+        if (> (length window) 0) {
+            var vals (vec (map window (function (k) (getidx values k))))
+            push kv t
+            push kv (maker (mean vals))
+        }
+        set t (+ t step)
+    }
+    return (env kv)
+}
+# (target-envelopes target orch opts)   the granulator's envelopes from a target's curves: density from the event rate
+#                          (a range around it), polyphony from the polyphony estimate, register from centroid and
+#                          spread (octaves), duration from the coherence time, dynamics as a level from the loudness
+#                          (-50 dB -> 0, -6 dB -> 1); opts 'step (seconds per breakpoint, 0.25) and 'follow (0..1, how
+#                          closely: 1 exact, lower widens every range)
+function target-envelopes (target orch opts) {
+    var step (opt opts 'step 0.25)
+    var loose (- 1 (opt opts 'follow 1))
+    var ts (get target 'times)
+    var dens (curve->env ts (get target 'rate) step (function (v) (list (max 0.1 (* v (- 0.7 (* 0.5 loose)))) (max 0.2 (* v (+ 1.3 (* 2 loose)))))))
+    var poly (curve->env ts (get target 'polyphony) step (function (v) (max 1 (min (orchestra-size orch) (round (+ v (* 3 loose)))))))
+    var lo (curve->env ts (- (/ (- (get target 'low) 12) 12) 0.5) step (function (v) (max 0 (- v loose))))                  # from half an octave under the lowest partial
+    var hi (curve->env ts (/ (- (get target 'centroid) 12) 12) step (function (v) (min 8 (+ v loose))))                     # up to the centroid
+    var reg (env (reduce (zip lo hi) (function (acc p) (concat-list acc (list (head (head p)) (list (last (head p)) (max (+ 0.5 (last (head p))) (last (last p))))))) (list)))
+    var dur (curve->env ts (get target 'coherence) step (function (v) (list (max 0.05 (* v 0.6)) (max 0.1 (* v (+ 1.2 loose))))))
+    var dyn (curve->env ts (get target 'loudness) step (function (v) (max 0 (min 1 (/ (+ v 50) 44)))))
+    return (record (list 'density dens 'polyphony poly 'register reg 'duration dur 'dynamics dyn))
+}
+# (target-atoms db target t group sounding params)   the notes for a group of free players at time t: the target's spectrum
+#                          at t, less the spectra of the notes still sounding (an orchestral residual), pursued over
+#                          the group's available sounds (every technique); => a list of (list player note)
+function target-atoms (db target t group sounding params) {
+    var spec (getidx (get target 'spectra) (max 0 (min (- (length (get target 'spectra)) 1) (floor (* t (/ (get target 'sr) (get target 'hop)))))))
+    var ncoeff (length spec)
+    var residual spec
+    each sounding (function (q) {
+        var n (opt q 'sounding nil)
+        if (not (equal? (type n) "nil")) {
+            var f (take (get (get n 'entry) 'features) ncoeff)
+            var g (* (/ (norm residual) (max 1e-9 (norm f))) 0.5)         # half its share: what sounds is already there
+            set residual (max 0 (- residual (* g f)))
+        }
+    })
+    # the dictionary: every available sound of every instrument any player of the group can play
+    var atoms (list)
+    each group (function (q) (each (get q 'instrs) (function (i) (each (get (opt (db-index! db) (str i) (record (list 'all (list)))) 'all) (function (e) (push atoms (list q e)))))))
+    if (== (length atoms) 0) { return (list) }
+    var D (map atoms (function (a) (take (get (last a) 'features) ncoeff)))
+    var r (mp (log (+ 1 residual)) (map D (function (f) (log (+ 1 f)))) (length group) (opt params 'threshold 0.2) (record (list 'nonneg 1)))
+    var out (list)
+    var taken (list)
+    each (get r 'atoms) (function (k) {
+        var a (getidx atoms k)
+        var q (head a)
+        if (not (contains? taken q)) {                                       # one note per player
+            push taken q
+            var e (last a)
+            var n (note db (get e 'instr) (get e 'midi) (get e 'dyn) (get e 'tech))
+            # the tuning: the target's peak nearest to the note's frequency, within a quarter tone, as cents
+            var peaks (head (spectral-peaks spec (get target 'sr) (get target 'block) 12))
+            var f0 (midi->hz (get e 'midi))
+            if (> (length peaks) 0) {
+                var near (getidx peaks (argmin (abs (- peaks f0))))
+                var cents (* 1200 (log2 (/ (max near 1) f0)))
+                if (< (abs cents) 50) { put! n 'cents (round cents) }
+            }
+            push out (list q n)
+        }
+    })
+    return out
+}
+# (atom-persistence target n t)   how long a note's sound goes on being part of the target from t: the frames ahead
+#                          whose spectrum still contains the atom (the correlation with the atom's spectrum stays at
+#                          least 70 % of what it was at t), up to 8 s; the duration a granulated note should hold
+function atom-persistence (target n t) {
+    var spectra (get target 'spectra)
+    var step (/ (get target 'hop) (get target 'sr))
+    var k0 (max 0 (min (- (length spectra) 1) (floor (/ t step))))
+    var f (log (+ 1 (take (get (get n 'entry) 'features) (length (head spectra)))))
+    var start (dot f (log (+ 1 (getidx spectra k0))))
+    if (<= start 1e-9) { return 0.1 }
+    var k (+ k0 1)
+    var cap (min (length spectra) (+ k0 (ceil (/ 8 step))))
+    while (and (< k cap) (>= (dot f (log (+ 1 (getidx spectra k)))) (* 0.7 start))) { set k (+ k 1) }
+    return (max 0.1 (* (- k k0) step))
+}
+# (orchestrate-morphological db orch target params)   orchestration as granular synthesis whose process is read off a
+#     target sound (target-analyse): its event rate gives the density, its polyphony the number of players at once,
+#     its centroid and spread the register, its loudness the dynamics, its coherence time the durations, and at every
+#     event a matching pursuit over the free players' sounds picks instruments, pitches and techniques for the
+#     target's spectrum at that instant (less what already sounds). No segmentation: a long sound under short ones
+#     comes out as a long note under short ones. params: 'follow (0..1), 'step, 'threshold (the pursuit's), 'solutions,
+#     and any granulator parameter to override the target's (a 'register or 'dynamics of your own, 'styles ...)
+function orchestrate-morphological (db orch target params) {
+    var envs (target-envelopes target orch params)
+    var p (record (list 'method 'target 'target target))
+    each envs (function (kv) (put! p (head kv) (last kv)))
+    each params (function (kv) (if (not (contains? (list 'follow 'step 'threshold 'solutions) (head kv))) (put! p (head kv) (last kv))))
+    put! p 'threshold (opt params 'threshold 0.2)
+    var n (opt params 'solutions 1)
+    var secs (get target 'seconds)
+    var sols (map (vec->list (range n)) (function (k) (list k (granulate db orch secs p))))
+    return (orchestration 'morphological params (list (segment 0 secs sols)))
+}
+# (chordinterp-env chords rhythm)   an env for 'chords that steps through chordinterp's chords over time: chords a
+#                          list of two chords, rhythm the times; use with 'method 'chordinterp (or 'random)
+function chordinterp-env (c1 c2 secs steps) {
+    var kv (list)
+    each (range steps) (function (k) {
+        var u (/ k (max 1 (- steps 1)))
+        var n (max (length c1) (length c2))
+        var ch (map (vec->list (range n)) (function (j) (round (+ (pitch->number (getidx c1 (min j (- (length c1) 1)))) (* u (- (pitch->number (getidx c2 (min j (- (length c2) 1)))) (pitch->number (getidx c1 (min j (- (length c1) 1))))))))))
+        push kv (* u secs)
+        push kv (list ch)                                        # a set of one chord
+    })
+    return (env kv)
+}
 
 # --- transformations: new events, the score untouched, or in place ------------------------------------
 # (score-shift! s dt) (score-scale! s f)   every event moved by dt seconds; every onset and duration multiplied by f

@@ -67,6 +67,19 @@ add!            : 3 events placed; 3 more at the left
 fragment->score : inner with 3 events
 a score inside  : kind score for 1.6 s (0 = its whole length); rendered 185220 samples; a score cannot contain itself
 
+--- midi, granular orchestration ---
+midi-read       : 4 notes in (Piano Bass) , 1.75 s
+midi->fragment  : 4 events; midi->score: an instrument per channel; velocity->dynamics f
+env, env-at     : (2.25 3.5) (ranges interpolated; sets crossfaded by chance)
+orchestra       : 5 players, (Ob Hn Vn Vc) ; an ossia Vn|Vc, a paired (Vn Vc)
+orchestrate-granular: 1 segment, 2 solutions; the best connection has 26 events; connect! places one
+db-index!       : 4 instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of (ord)
+
+--- morphological ---
+target-analyse  : 2.6 s, 111 frames; curves: rate, polyphony, centroid, low, loudness, coherence; events 2
+target-envelopes: the granulator's parameters from the curves: (density duration dynamics polyphony register)
+orchestrate-morphological: 3 notes with cents, e.g. Hn C4 mf 0 cents; a matching pursuit at every event, no segmentation
+
 --- queries, db-gen, playing ---
 db-query (lists): 16 string sounds, mf or ff
 db-grep         : 2 violin C4 and C#4 (a regular expression on the file name)

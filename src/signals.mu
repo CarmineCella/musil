@@ -69,9 +69,9 @@ function normalize-rms (x target) {
     if (== r 0) { return x }
     return (* x (/ target r))
 }
-# (db x) (undb d)          amplitude to decibels and back
-function db (x) (* 20 (log10 (max x 1e-12)))
-function undb (d) (pow 10 (/ d 20))
+# (amp->db x) (db->amp d)  amplitude to decibels and back
+function amp->db (x) (* 20 (log10 (max x 1e-12)))
+function db->amp (d) (pow 10 (/ d 20))
 
 # (next-pow2 n)            the smallest power of two >= n (fft sizes)
 function next-pow2 (n) (pow 2 (ceil (log2 (max n 1))))
@@ -465,6 +465,100 @@ function envelope-follow (x n) {
 # (envelope-from-values v hop)   piecewise-linear signal through successive values, hop samples apart
 function envelope-from-values (v hop) (bpf (head v) (map (vec->list (drop v 1)) (function (e) (list hop e))))
 
+# --- morphology: descriptors of a sound as curves over time (what a morphological orchestration follows) --------
+# (frame-spectra x block hop ncoeff)   the magnitude spectrum of every frame (a Hann window of block samples every
+#                          hop), the first ncoeff bins: the same space as a database's spectrum features, one
+#                          spectrum per frame instead of the average
+function frame-spectra (x block hop ncoeff) (map (stft (vec (zeros (/ block 2)) x) block hop) (function (f) (take (magnitudes f) ncoeff)))
+# (spectral-similarity a b)   the cosine similarity of two magnitude spectra on a log scale (1: alike; 0: unrelated)
+function spectral-similarity (a b) {
+    var la (log (+ 1 a))
+    var lb (log (+ 1 b))
+    return (/ (dot la lb) (max 1e-12 (* (norm la) (norm lb))))
+}
+# (event-rate x sr window hop)   how many new events a second around every instant: the onsets (spectral flux
+#                          peaks at least 80 ms apart) that really change the spectrum (the frames before and
+#                          after less than 0.9 alike, which a vibrato or a tremolo of a held sound does not do),
+#                          counted in a window of window seconds, one value every hop samples; => (list times rates)
+function event-rate (x sr window hop) {
+    var fn 2048
+    var fh 512
+    var spectra (frame-spectra x fn fh (/ fn 2))
+    var candidates (onsets x sr 1024 256 0.2)
+    var kept (list)
+    var last -1
+    each (vec->list candidates) (function (o) {
+        var k (floor (* o (/ sr fh)))
+        var before (getidx spectra (max 0 (- k 2)))
+        var after (getidx spectra (min (- (length spectra) 1) (+ k 2)))
+        if (and (>= (- o last) 0.08) (< (spectral-similarity before after) 0.9)) { push kept o
+                                                                                  set last o }
+    })
+    var times (* (range (ceil (/ (length x) hop))) (/ hop sr))
+    var rates (map times (function (t) (/ (length (filter kept (function (o) (< (abs (- o t)) (/ window 2))))) window)))
+    return (list times (vec rates) (vec kept))
+}
+# (polyphony-estimate spectra)   how many voices seem to sound in each frame: the spectral peaks standing above twice
+#                          the frame's mean (a lower bound, capped at 16); => a vector, one per frame
+function polyphony-estimate (spectra) (vec (map spectra (function (m) {
+    if (== (max m) 0) { return 0 }
+    var peaks (filter (vec->list (local-maxima m)) (function (k) (> (getidx m k) (* 0.15 (max m)))))
+    return (max 1 (min 16 (round (/ (length peaks) 3))))               # about three strong partials per voice
+})))
+# (register-curve spectra sr block)   where the sound sits: for each frame the centroid in MIDI pitch (the powers
+#                          weighting the pitch of every bin above 30 Hz, so an octave is an octave), the spread around
+#                          it in octaves, and the lowest strong partial in MIDI pitch (a tone's fundamental, more or
+#                          less: where the register begins); => (list centroids spreads lows)
+function register-curve (spectra sr block) {
+    var n (length (head spectra))
+    var freqs (* (range n) (/ sr block))
+    var keep (> freqs 30)
+    var pitches (* keep (+ 69 (* 12 (log2 (/ (max freqs 30) 440)))))
+    var cs (map spectra (function (m) { var w (* (* m m) keep)
+                                        return (if (<= (sum w) 1e-12) 60 (/ (dot w pitches) (sum w))) }))
+    var ss (map (zip spectra cs) (function (p) { var w (* (* (head p) (head p)) keep)
+                                                 return (if (<= (sum w) 1e-12) 1 (/ (sqrt (/ (dot w (* (- pitches (last p)) (- pitches (last p)))) (sum w))) 12)) }))
+    var lows (map spectra (function (m) {
+        if (== (max m) 0) { return 48 }
+        var strong (filter (vec->list (local-maxima m)) (function (k) (and (> (getidx freqs k) 30) (> (getidx m k) (* 0.15 (max m))))))
+        return (if (== (length strong) 0) 48 (getidx pitches (min-of strong)))
+    }))
+    return (list (vec cs) (vec ss) (vec lows))
+}
+# (loudness-curve x sr hop)   the level of every hop in dB, roughly as the ear weighs it (the extreme bass and treble
+#                          taken out); => a vector, one value per hop, -100 for silence
+function loudness-curve (x sr hop) {
+    var w (lowpass (highpass x sr 150 0.7) sr (min 8000 (* 0.45 sr)) 0.7)
+    var n (ceil (/ (length w) hop))
+    return (vec (map (vec->list (range n)) (function (k) { var seg (slice w (* k hop) hop)
+                                                          return (if (== (length seg) 0) -100 (max -100 (amp->db (+ 1e-6 (rms seg))))) })))
+}
+# (coherence-time spectra hop sr threshold)   how long the sound keeps its spectrum from each frame on: the time until
+#                          the spectral-similarity with the frame falls under threshold (0.75 is reasonable), at most
+#                          8 s; a sustained sound gives long times, a percussive one short; => a vector
+function coherence-time (spectra hop sr threshold) {
+    var n (length spectra)
+    var cap (ceil (/ (* 8 sr) hop))
+    return (vec (map (vec->list (range n)) (function (k) {
+        var j (+ k 1)
+        while (and (< j n) (< (- j k) cap) (>= (spectral-similarity (getidx spectra k) (getidx spectra j)) threshold)) { set j (+ j 1) }
+        return (* (- j k) (/ hop sr))
+    })))
+}
+# (spectral-peaks m sr block n)   the n strongest peaks of a magnitude spectrum as (list freqs mags), each frequency
+#                          refined by a parabola through the peak and its neighbours
+function spectral-peaks (m sr block n) {
+    var ks (take (sort-by (vec->list (local-maxima m)) (function (k) (- 0 (getidx m k)))) n)
+    var fine (map ks (function (k) {
+        var a (getidx m (- k 1))
+        var b (getidx m k)
+        var c (getidx m (+ k 1))
+        var d (- (+ a c) (* 2 b))
+        return (+ k (if (== d 0) 0 (/ (- a c) (* 2 d))))
+    }))
+    return (list (vec (map fine (function (k) (* k (/ sr block))))) (vec (map ks (function (k) (getidx m k)))))
+}
+
 # --- convolution reverb --------------------------------------------------------------------
 # (converb x ir dry wet)   x through an impulse response: x a vector or a list of channels, ir a vector (applied to every
 #                          channel) or a list of channels (one per output channel; a mono x is spread over them); => a
@@ -476,7 +570,7 @@ function converb (x ir dry wet) {
     return (map (vec->list (range nch)) (function (k) {
         var xc (getidx xs (min k (- (length xs) 1)))
         var ic (getidx irs (min k (- (length irs) 1)))
-        var w (conv xc ic)
+        var w (conv-fast xc ic)
         return (+ (* wet w) (* dry (vec xc (zeros (- (length w) (length xc))))))
     }))
 }

@@ -40,7 +40,7 @@ show f4
 var f5 (figure "biquad responses")
 each (list (list "lowpass" 500) (list "highpass" 1500) (list "bandpass" 1000)) (function (spec) {
     var ir (apply-filter (impulse 2048) (biquad (head spec) sr (last spec) 2 0))
-    add-line f5 (spectrum-freqs 2048 sr) (db (take (magnitudes (fft ir)) 1024)) (concat (head spec) " " (last spec))   # |H(f)|: the fft of the impulse response, unnormalised
+    add-line f5 (spectrum-freqs 2048 sr) (amp->db (take (magnitudes (fft ir)) 1024)) (concat (head spec) " " (last spec))   # |H(f)|: the fft of the impulse response, unnormalised
 })
 set-labels f5 "frequency (Hz)" "dB"
 set-yrange f5 -60 6

@@ -113,6 +113,34 @@ print "fragment->score :" (get inner 'name) "with" (length (score-events inner))
 var e-in (event sf 2 0 inner)
 print "a score inside  : kind" (get e-in 'kind) "for" (fixed (get e-in 'dur) 2) "s (0 = its whole length); rendered" (length (head (score-render sf "stereo"))) "samples; a score cannot contain itself"
 
+# --- 5c. MIDI files, envelopes, the orchestra, the granulator -------------------------------------------------
+print ""
+print "--- midi, granular orchestration ---"
+var mid (midi-read "data/test.mid")
+print "midi-read       :" (length (get mid 'notes)) "notes in" (get mid 'tracks) "," (get mid 'seconds) "s"
+print "midi->fragment  :" (length (midi->fragment "data/test.mid" db 'Vn 'ord)) "events; midi->score: an instrument per channel; velocity->dynamics" (velocity->dynamics 100)
+print "env, env-at     :" (env-at (env (list 0 (list 4 6) 10 (list 0.5 1))) 5) "(ranges interpolated; sets crossfaded by chance)"
+var orch (orchestra (list 'Ob 'Hn "Vn|Vc" (list 'Vn 'Vc)))
+print "orchestra       :" (orchestra-size orch) "players," (orchestra-instruments orch) "; an ossia Vn|Vc, a paired (Vn Vc)"
+seed 8
+var gr (orchestrate-granular db orch 6 (record (list 'density (env (list 0 (list 4 6) 6 (list 1 2))) 'register (list 3 4) 'dynamics (env (list 0 (list 'pp) 6 (list 'ff))) 'solutions 2)))
+print "orchestrate-granular:" (length (get gr 'segments)) "segment," (length (solutions gr 0)) "solutions; the best connection has" (length (best-connection gr)) "events; connect! places one"
+print "methods         : random, pivots (chords, interval), chordinterp (chordinterp-env), markov (markov-score), harmonic (fundamental, harmonicity); coupling: how often a group sounds together"
+print "db-index!       :" (length (keys (db-index! db))) "instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of" (db-techniques-of db 'Vn)
+
+# --- 5d. Morphological orchestration -------------------------------------------------------------------
+print ""
+print "--- morphological ---"
+var tsc (score "target" 44100)
+event tsc 0 2 (note db 'Vc "C4" 'mf 'ord)
+event tsc 0.5 0.3 (note db 'Ob "E4" 'mf 'ord)
+var tg (target-analyse (head (score-render tsc "mono")) 44100 (get db 'block) 1024)
+print "target-analyse  :" (fixed (get tg 'seconds) 2) "s," (length (get tg 'spectra)) "frames; curves: rate, polyphony, centroid, low, loudness, coherence; events" (length (get tg 'events))
+print "target-envelopes: the granulator's parameters from the curves:" (sort-list (map (keys (target-envelopes tg orch (record (list)))) str))
+seed 3
+var mo (orchestrate-morphological db orch tg (record (list 'solutions 1)))
+print "orchestrate-morphological:" (length (best-connection mo)) "notes with cents, e.g." (get (last (head (best-connection mo))) 'label) (get (last (head (best-connection mo))) 'cents) "cents; a matching pursuit at every event, no segmentation"
+
 # --- 6. More queries, making a database, playing ------------------------------------------------------
 print ""
 print "--- queries, db-gen, playing ---"

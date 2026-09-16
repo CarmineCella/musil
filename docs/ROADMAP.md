@@ -16,8 +16,9 @@ src/scientific.h .mu  matrices (a list of row vectors), decompositions, PCA, NMF
 src/signals.h  .mu    generators, FFT/STFT, phase vocoder (pvoc), descriptors, filters, reverb
 src/live.h  live.mu   audio device (miniaudio), voices, synths (functions compiled to graphs),
                       scheduler (loops in beats), controls, OSC; src/live/miniaudio.h vendored
-src/music.h music.mu  the score (events: files, buffers, notes, synths, calls), render/play/display,
-                      SOL-like databases (db-load reads the feature file; sounds opened on demand)
+src/music.h music.mu  the score (events: files, buffers, notes, synths, calls, scores), render/play/display,
+                      SOL-like databases (db-load reads the feature file; sounds opened on demand), the
+                      elements, orchestrations; src/music/midi.h reads MIDI files
 src/plot.h  plot.mu   figures (FLTK windows, PNG export), subplots; src/controls.h the controls window
 src/musil.h           umbrella: make_env registers every library
 cli/main.cpp          musil [-i] [-e code] [--serve PORT] [--send PORT [file]] files...
@@ -106,10 +107,20 @@ cmake --build build --target uninstall
 3. **Roll and export**: the roll is done (a `roll` layer in `plot`, drawn like music, a player of the
    code's score); MIDI and MusicXML export remain.
 4. **Elements** (done, round one): pitches, rhythms, chords, lines, textures, pivots, interpolations,
-   fragments and scores in scores (see the manual's music section); `minimalism.mu`,
-   `algorithmic_comp.mu`, `score_in_score.mu`. Known cost: preparing a long score for playback is the
-   hall convolution (about 3 s per minute of music); notes and the hall's response are cached.
-5. **Next**: the orchestral granulator, Orchidea, sound types, Maple, all as functions returning fragments.
+   fragments and scores in scores (see the manual's music section); `algorithmic_comp.mu`,
+   `score_in_score.mu`. Known cost: preparing a long score for playback is the hall convolution
+   (about 3 s per minute of music); notes and the hall's response are cached.
+5. **Orchestrations** (round one done): a result record (segments, solutions, connections) shared by
+   every orchestrator; `orchestrate-granular` with envelopes, an orchestra of players (ossia, pairs)
+   and five ways of choosing pitches; `midi-read` and MIDI files as fragments (src/music/midi.h).
+   `orchestrate-morphological` (done): `target-analyse` (descriptors in signals), envelopes from the
+   curves, a matching pursuit (`mp` in scientific) at every event over the free players' sounds with an
+   orchestral residual, atom persistence for durations, cents from the target's peaks; no segmentation.
+   Next: `orchestrate-mimetic` (Orchidea: the search over combinations for a target's spectrum, sharing
+   target-analyse and mp), then sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and
+   MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
+   for databases). A `player` bundle (instrument + what it can play)
+   replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.
 4. **Generators**: random score generator, orchestral granulator.
 5. **C++ ports**, each as a C++ core + Musil surface returning events: sound types, Maple (matching
    pursuit), Orchidea (assisted orchestration).

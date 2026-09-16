@@ -41,7 +41,7 @@ inline std::vector<std::string>& plot_pending() { static std::vector<std::string
 struct figure;
 // A roll: rows (a name and a clef: "treble", "bass" or "none") and bars (row, start, duration, a lane within the
 // row, a MIDI pitch or -1, a dynamics label) with a tooltip: a score drawn like music, note heads and duration lines
-struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; double midi = -1; std::string dyn; int event_id = -1; };
+struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; double midi = -1; std::string dyn; int event_id = -1; std::string tech; double cents = 0; };
 struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows, clefs; std::vector<roll_bar> bars; int score_id = -1; };
 struct figure {
     std::string title, xlabel, ylabel;
@@ -82,6 +82,8 @@ inline figure parse_figure(const vptr& v) {
                 if (b->l.size() > 8 && b->l[8]->t == Value::NUM) bar.midi = b->l[8]->num[0];
                 if (b->l.size() > 9) bar.dyn = str_of(b->l[9]);
                 if (b->l.size() > 10 && b->l[10]->t == Value::NUM) bar.event_id = (int)b->l[10]->num[0];
+                if (b->l.size() > 11) bar.tech = str_of(b->l[11]);
+                if (b->l.size() > 12 && b->l[12]->t == Value::NUM) bar.cents = b->l[12]->num[0];
                 p.bars.push_back(bar);
             }
         } else if (p.kind == "image" || p.kind == "surface") {
@@ -320,7 +322,7 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
     fl_push_clip(g.left, g.top, (int)g.pw, (int)g.ph);
     std::vector<size_t> order(L.bars.size()); for (size_t k = 0; k < order.size(); k++) order[k] = k;
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b2) { return L.bars[a].row != L.bars[b2].row ? L.bars[a].row < L.bars[b2].row : L.bars[a].start < L.bars[b2].start; });
-    std::vector<std::string> last_dyn(g.rows); std::vector<int> last_dyn_x(g.rows, -100000);
+    std::vector<std::string> last_dyn(g.rows), last_tech(g.rows); std::vector<int> last_dyn_x(g.rows, -100000), last_tech_x(g.rows, -100000);
     for (size_t oi = 0; oi < order.size(); oi++) {
         size_t k = order[oi]; const roll_bar& b = L.bars[k]; if (b.row < 0 || b.row >= g.rows) continue;
         std::string clef = b.row < (int)L.clefs.size() ? L.clefs[b.row] : "none"; staff_geom st = roll_staff(g, b.row, clef);
@@ -345,6 +347,20 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
                 bool changed = b.dyn != last_dyn[b.row], room = x0 - (int)head > last_dyn_x[b.row] + 6;
                 int dx = std::max(g.left + 2, x0 - (int)head);
                 if (changed && room) { fl_color(80, 80, 80); fl_draw(b.dyn.c_str(), dx, (int)(g.top_rows + (b.row + 1) * g.row_h - 3)); last_dyn[b.row] = b.dyn; last_dyn_x[b.row] = dx + dw; }
+            }
+            // the playing technique (when it changes, and there is room) and the tuning in cents (when not zero), in a tiny
+            // script above the head
+            if (g.row_h > 60) {
+                fl_font(FL_HELVETICA_ITALIC, (int)std::max(7.0, st.sp * 1.1));
+                std::string mark;
+                bool changed = !b.tech.empty() && b.tech != last_tech[b.row];
+                if (changed) mark = b.tech;
+                if (std::fabs(b.cents) >= 1) { char cb[16]; std::snprintf(cb, sizeof cb, "%+d", (int)std::lround(b.cents)); mark += (mark.empty() ? "" : " ") + std::string(cb); }
+                if (!mark.empty()) {
+                    int mw = (int)fl_width(mark.c_str()); int mx = std::max(g.left + 2, x0 - (int)head);
+                    bool room = mx > last_tech_x[b.row] + 4;
+                    if (room) { fl_color(90, 90, 110); fl_draw(mark.c_str(), mx, (int)(y - head - 3)); last_tech_x[b.row] = mx + mw; if (changed) last_tech[b.row] = b.tech; }
+                }
             }
         } else {                                              // unpitched: a square head on the row's line (lanes when they overlap)
             double lane_h = g.row_h / b.lanes; double y = g.top_rows + b.row * g.row_h + (b.lanes == 1 ? g.row_h * 0.55 : lane_h * (b.lane + 0.5));
@@ -778,7 +794,13 @@ inline void add_plot(Interp& i) {
     if (!plot_submit()) {                                    // a window's request is kept until the event loop has repainted, then run from the idle hook (the IDE queues on its own)
         plot_submit() = [](const std::string& code) { plot_pending().push_back(code); };
         Interp* ip = &i; auto prev2 = i.idle_fn;
-        i.idle_fn = [ip, prev2]() { if (prev2) prev2(); while (!plot_pending().empty()) { std::string code = plot_pending().front(); plot_pending().erase(plot_pending().begin()); try { ip->run(code, "<window>"); } catch (std::exception& e) { *ip->out << "window: " << e.what() << "\n" << std::flush; } } };
+        i.idle_fn = [ip, prev2]() { if (prev2) prev2(); if (ip->stack_depth > 0) return;   // a window's request waits until the interpreter is idle
+            while (!plot_pending().empty()) {
+                std::string code = plot_pending().front(); plot_pending().erase(plot_pending().begin());
+                bool was = ip->in_idle; ip->in_idle = false;              // lifted: the request's own evaluation must reach idle (Fl::check), or the window freezes for its length
+                try { ip->run(code, "<window>"); } catch (std::exception& e) { *ip->out << "window: " << e.what() << "\n" << std::flush; }
+                ip->in_idle = was;
+            } };
     }
 }
 

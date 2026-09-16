@@ -70,8 +70,9 @@ check (equal? (head (head (getidx roll 1))) "roll") "score-roll: a roll layer"
 check (== (length (getidx (head (getidx roll 1)) 2)) 7) "score-roll: one bar per event"
 check (equal? (event-lanes (list (record (list 'at 0 'dur 2)) (record (list 'at 1 'dur 1)) (record (list 'at 3 'dur 1)))) (list 0 1 0)) "event-lanes: overlaps get their own lane"
 var bar (head (getidx (head (getidx roll 1)) 2))
-check (== (length bar) 11) "score-roll: a bar is row start dur label tip group lane lanes midi dyn event-id"
+check (== (length bar) 13) "score-roll: a bar is row start dur label tip group lane lanes midi dyn event-id tech cents"
 check (== (getidx bar 8) -1) "score-roll: an unpitched event has no pitch"
+check (== (length bar) 13) "score-roll: ... tech cents at the end"
 check (== (last (head (getidx roll 1))) (register-score s)) "score-roll: carries the score's number"
 check (equal? (displayed-score (register-score s)) s) "displayed-score"
 check (equal? (type (play-event (register-score s) (get e1 'id))) "nil") "play-event: one event, alone"
@@ -224,6 +225,14 @@ check (equal? (transpose-pitches (list "C4" nil "E4") 2) (list 62 nil 66)) "tran
 check (equal? (invert (list 60 64) "C4") (list 60 56)) "invert"
 check (equal? (scale-pitches "D4" 'dorian (list 0 1 2 7)) (list 62 64 65 74)) "scale-pitches"
 check (== (get (note db 'Vn 62 'mf 'ord) 'midi) 62) "note: a MIDI number is a pitch too"
+var nc (note-cents! (note db 'Vn "E4" 'mf 'ord) 50)
+check (== (get nc 'cents) 50) "note-cents!"
+var sc2 (score "cents" 44100)
+var ec (event sc2 0 0.5 nc)
+var plain (render-event (event sc2 0 0.5 (note db 'Vn "E4" 'mf 'ord)) 44100)
+check (not (near? (head (render-event ec 44100)) (head plain) 1e-6)) "note-cents!: the sound is shifted by the cents"
+check (equal? (getidx (head (getidx (head (getidx (score-roll sc2) 1)) 2)) 11) "ord") "score-roll: the technique in the bar"
+check (== (getidx (head (getidx (head (getidx (score-roll sc2) 1)) 2)) 12) 50) "score-roll: the cents in the bar"
 var placed (add! sc 1 ln)
 check (== (length placed) 3) "add!: the fragment's events in the score"
 check (== (get (head placed) 'at) 1) "add!: at the offset"
@@ -288,6 +297,124 @@ var deep (score "deep" 44100)
 event deep 0 0 outer
 check (== (length (score-render deep "stereo")) 2) "score-render: two levels"
 check (equal? (type (play-event (register-score outer) (get se (quote id)))) "nil") "play-event: on a score inside, its roll is opened (nothing shown under MUSIL_NOSHOW)"
+
+# --- MIDI files ---
+var mid (midi-read "../examples/data/test.mid")
+check (== (get mid 'ppq) 480) "midi-read: ppq"
+check (equal? (get mid 'tracks) (list "Piano" "Bass")) "midi-read: track names"
+check (== (length (get mid 'notes)) 4) "midi-read: notes paired on and off"
+check (near? (get mid 'seconds) 1.75 1e-6) "midi-read: the tempo map (a change to 240 bpm)"
+var mn (getidx (get mid 'notes) 3)
+check (and (== (get mn 'pitch) 67) (near? (get mn 'at) 0.5 1e-6) (near? (get mn 'dur) 1.25 1e-6)) "midi-read: a note across the tempo change"
+check (equal? (map (list 0 30 60 90 120 127) velocity->dynamics) (list 'pp 'p 'mp 'f 'ff 'ff)) "velocity->dynamics"
+var mf (midi->fragment "../examples/data/test.mid" db 'Vn 'ord)
+check (== (length mf) 4) "midi->fragment"
+check (equal? (get (last (head mf)) 'instr) "Vn") "midi->fragment: on the instrument"
+var ms (midi->score "../examples/data/test.mid" db (list 'Vn 'Vc) 'ord "m")
+check (equal? (map (score-rows ms) head) (list "Vn" "Vc")) "midi->score: an instrument per channel"
+check (contains? (error-of (function () (midi-read "/nope.mid"))) "cannot open") "midi-read: missing file"
+
+# --- the index ---
+var idx (db-index! db)
+check (equal? (sort-by (keys idx) instrument-rank) (list "Ob" "Hn" "Vn" "Vc")) "db-index!: an entry per instrument on disk"
+check (== (length (get (get idx "Vn") 'all)) 8) "db-index!: the instrument's pitched available sounds"
+check (== (length (db-candidates db 'Vn 'mf 'ord)) 8) "db-candidates: by dynamics and technique"
+check (== (length (db-candidates db 'Vc 'pp 'ord)) 8) "db-candidates: falls back to the technique when the dynamics are missing"
+check (== (length (db-candidates db 'Nope 'mf 'ord)) 0) "db-candidates: unknown instrument"
+check (equal? (db-range-available db 'Hn) (list 60 76)) "db-range-available"
+check (equal? (db-techniques-of db 'Vn) (list "ord")) "db-techniques-of"
+check (equal? (sort-list (db-dynamics-of db (quote Vc))) (list "ff" "mf")) "db-dynamics-of"
+check (has? db 'index) "db-index!: kept on the database"
+
+# --- envelopes, the orchestra, the granulator ---
+seed 5
+var en (env (list 0 (list 4 6) 10 (list 0.5 1)))
+check (equal? (env-at en 0) (list 4 6)) "env-at: at the first breakpoint"
+check (equal? (env-at en 5) (list 2.25 3.5)) "env-at: ranges interpolated"
+check (equal? (env-at en 20) (list 0.5 1)) "env-at: after the last"
+check (== (env-at (env (list 0 0 10 1)) 2.5) 0.25) "env-at: numbers interpolated"
+check (equal? (env-at (env (list 0 (list 'ord) 10 (list 'pizz))) 0) (list 'ord)) "env-at: a set at a breakpoint"
+var draws (map (vec->list (range 200)) (function (k) (env-at (env (list 0 (list 'a) 10 (list 'b))) 9)))
+check (> (length (filter draws (function (d) (equal? d (list 'b))))) 100) "env-at: sets crossfaded by chance, the nearer one more often"
+var orch (orchestra (list 'Ob 'Hn "Vn|Vc" (list 'Vn 'Vc)))
+check (== (orchestra-size orch) 5) "orchestra: one player per symbol, per ossia, per member of a group"
+check (equal? (get (getidx orch 2) 'instrs) (list "Vn" "Vc")) "orchestra: an ossia has two instruments"
+check (equal? (map orch (function (p) (get p 'group))) (list -1 -1 -1 0 0)) "orchestra: paired players share a group"
+check (equal? (orchestra-instruments orch) (list "Ob" "Hn" "Vn" "Vc")) "orchestra-instruments"
+var gp (record (list 'density (env (list 0 (list 6 9) 10 (list 0.5 1))) 'register (env (list 0 (list 3 3) 10 (list 3 6))) 'duration (list 0.2 0.8) 'styles (env (list 0 (list 'ord) 10 (list 'pizz))) 'dynamics (env (list 0 (list 'pp) 10 (list 'ff))) 'solutions 2))
+var gr (orchestrate-granular db orch 10 gp)
+check (equal? (get gr 'kind) 'orchestration) "orchestrate-granular: a result"
+check (== (length (get gr 'segments)) 1) "orchestrate-granular: one segment"
+check (== (length (solutions gr 0)) 2) "solutions: as many as asked"
+var gf (best-connection gr)
+check (> (length gf) 20) "best-connection: a fragment"
+check (equal? (get (last (head gf)) 'dyn) "pp") "granular: dynamics from the envelope at the start"
+check (equal? (get (last (last gf)) 'dyn) "ff") "granular: ... and at the end"
+check (all? (map (take gf 3) (function (x) (and (>= (get (last x) 'midi) 48) (<= (get (last x) 'midi) 61)))) identity) "granular: the register at the start (octave 3, its top creeping up as the envelope moves)"
+function active-at (f t) (length (filter f (function (x) (and (<= (head x) t) (> (+ (head x) (getidx x 1)) t)))))
+check (<= (max-of (map (vec->list (range 0 10 0.1)) (function (t) (active-at gf t)))) (orchestra-size orch)) "granular: never more sounding than there are players"
+var gs (score "gran" 44100)
+connect! gs 0 gr (list 1)
+check (== (length (score-events gs)) (length (solution gr 0 1))) "connect!: the chosen solution in the score"
+check (equal? (map (connection gr (list 0)) head) (map (best-connection gr) head)) "connection: choices"
+var pv2 (best-connection (orchestrate-granular db orch 4 (record (list 'method 'pivots 'chords (list (list "C4" "G4")) 'interval 1 'register (list 4 4) 'density (list 5 5)))))
+check (all? (map pv2 (function (x) (contains? (list 59 60 61 66 67 68) (get (last x) 'midi)))) identity) "granular: pivots within the interval of the chord's pitches"
+var hm2 (best-connection (orchestrate-granular db orch 4 (record (list 'method 'harmonic 'fundamental "C2" 'harmonicity 1 'register (list 2 6) 'density (list 5 5)))))
+check (all? (map hm2 (function (x) (contains? (harmonic-series "C2" 16) (get (last x) 'midi)))) identity) "granular: harmonicity 1 draws only partials"
+var model (fragment->score "model" 44100 (notes db 'Ob 'mf 'ord (list "C4" "D4" "E4") (rhythm (list 0.5))))
+var tbl (markov-table model)
+check (equal? (get tbl 60) (list 62)) "markov-table: transitions"
+var mk2 (best-connection (orchestrate-granular db orch 4 (record (list 'method 'markov 'markov-score model 'register (list 4 4) 'density (list 5 5)))))
+check (all? (map mk2 (function (x) (contains? (list 60 62 64) (get (last x) 'midi)))) identity) "granular: markov stays in the model's pitches"
+check (equal? (list (level->dynamics 0) (level->dynamics 0.5) (level->dynamics 1)) (list 'ppp 'mf 'fff)) "level->dynamics"
+check (near? (dynamics->level "mf") (/ 4 7) 1e-9) "dynamics->level"
+check (and (== (level->gain 0) 0.25) (== (level->gain 1) 1)) "level->gain"
+var cres (best-connection (orchestrate-granular db orch 10 (record (list 'density (list 4 4) 'dynamics (env (list 0 0 10 1)) 'register (list 4 4)))))
+check (and (equal? (get (last (head cres)) 'dyn) "ppp") (equal? (get (last (last cres)) 'dyn) "fff")) "granular: a dynamics level interpolates ppp to fff"
+check (< (get (last (head cres)) 'gain) (get (last (last cres)) 'gain)) "granular: ... and the gain with it"
+var dissolve (best-connection (orchestrate-granular db orch 10 (record (list 'density (list 6 6) 'chords (list (list "E4")) 'chord-weight (env (list 0 1 3 1 10 0)) 'register (list 4 4)))))
+check (all? (map (take dissolve 6) (function (x) (== (get (last x) 'midi) 64))) identity) "granular: chord-weight 1 at the start keeps the unison"
+check (any? (drop dissolve (- (length dissolve) 12)) (function (x) (!= (get (last x) 'midi) 64))) "granular: chord-weight 0 at the end frees the pitches"
+var cp (record (list 'density (list 8 8) 'duration (list 0.05 0.1) 'coupling 0))
+var uncoupled (best-connection (orchestrate-granular db (orchestra (list (list 'Vn 'Vc))) 3 cp))
+check (== (length (unique (map uncoupled head))) (length uncoupled)) "granular: coupling 0, a paired group's players sound one at a time"
+var coupled (best-connection (orchestrate-granular db (orchestra (list (list 'Vn 'Vc))) 3 (put cp 'coupling 1)))
+check (< (length (unique (map coupled head))) (length coupled)) "granular: coupling 1, they sound together"
+var cie (chordinterp-env (list "C4") (list "C5") 10 3)
+check (equal? (map cie head) (list 0 5 10)) "chordinterp-env: breakpoints over the time"
+check (equal? (env-at cie 5) (list (list 66))) "chordinterp-env: the chord halfway"
+var merged (merge-continuations (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "D4" 'mf 'ord))))
+check (and (== (length merged) 2) (== (getidx (head merged) 1) 2)) "merge-continuations: a note continued becomes one longer note"
+
+# --- morphological orchestration ---
+seed 6
+var tsc (score "target" 44100)
+event tsc 0 3 (note db 'Vc "C4" 'mf 'ord)
+each (range 6) (function (k) (event tsc (* k 0.4) 0.2 (note db 'Ob (+ 62 (mod (* k 3) 6)) 'mf 'ord)))
+var tx (head (score-render tsc "mono"))
+var tg (target-analyse tx 44100 (get db 'block) 1024)
+check (equal? (get tg 'block) 2048) "target-analyse: the database's block"
+check (== (length (get tg 'spectra)) (length (get tg 'rate))) "target-analyse: one spectrum per curve sample"
+check (and (has? tg 'polyphony) (has? tg 'centroid) (has? tg 'low) (has? tg 'loudness) (has? tg 'coherence) (has? tg 'events)) "target-analyse: every curve"
+check (near? (get tg 'seconds) 3.6 0.01) "target-analyse: the length"
+check (== (length (target-at tg 'spectra 0)) 1024) "target-at: a curve's value at a time"
+var envs (target-envelopes tg orch (record (list 'step 0.25)))
+check (equal? (sort-list (map (keys envs) str)) (list "density" "duration" "dynamics" "polyphony" "register")) "target-envelopes: the granulator's parameters"
+check (numeric-range? (env-at (get envs 'register) 1)) "target-envelopes: the register as a range of octaves"
+var mo (orchestrate-morphological db orch tg (record (list 'solutions 2)))
+check (equal? (get mo 'method) 'morphological) "orchestrate-morphological: a result"
+check (== (length (solutions mo 0)) 2) "orchestrate-morphological: solutions"
+var mf (best-connection mo)
+check (> (length mf) 3) "orchestrate-morphological: events"
+check (all? (map mf (function (x) (equal? (get (last x) 'kind) 'note))) identity) "orchestrate-morphological: notes"
+check (any? mf (function (x) (== (get (last x) 'midi) 60))) "orchestrate-morphological: the cello's C4 is found by the pursuit"
+check (all? (map mf (function (x) (has? (last x) 'cents))) identity) "orchestrate-morphological: cents on every note"
+check (all? (map mf (function (x) (<= (abs (get (last x) 'cents)) 50))) identity) "orchestrate-morphological: cents within a quarter tone"
+check (> (max-of (map mf (function (x) (getidx x 1)))) 1) "orchestrate-morphological: a held sound gets a long note (atom-persistence)"
+var ap (atom-persistence tg (last (head mf)) 0)
+check (and (>= ap 0.1) (<= ap 8)) "atom-persistence: seconds, bounded"
+var polyf (best-connection (orchestrate-granular db orch 4 (record (list 'density (list 20 20) 'duration (list 2 2) 'polyphony 2))))
+check (<= (max-of (map (vec->list (range 0 4 0.1)) (function (t) (active-at polyf t)))) 2) "granular: 'polyphony caps the players sounding at once"
 
 # --- several databases at once ---
 var both (db-merge (list db db))

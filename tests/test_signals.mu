@@ -29,9 +29,9 @@ check (equal? (fade-out (ones 4) 2) (vec 1 1 0.5 0)) "fade-out"
 check (equal? (normalize-peak (vec 1 -4 2)) (vec 0.25 -1 0.5)) "normalize-peak"
 check (equal? (normalize-peak (zeros 3)) (zeros 3)) "normalize-peak: silence"
 check (near? (rms (normalize-rms s440 0.1)) 0.1 1e-12) "normalize-rms"
-check (== (db 1) 0) "db"
-check (near? (undb -6.0206) 0.5 1e-4) "undb"
-check (near? (db (undb -20)) -20 1e-12) "db round trip"
+check (== (amp->db 1) 0) "db"
+check (near? (db->amp -6.0206) 0.5 1e-4) "undb"
+check (near? (amp->db (db->amp -20)) -20 1e-12) "db round trip"
 
 # --- oscillator (C++) ---
 var o (osc 8 (+ (zeros 8) 1) (vec 0 1 0 -1 0))
@@ -154,8 +154,8 @@ check (== (length ring) 400) "reson: lasts tau seconds"
 check (near? (acf-f0 (take ring 400) sr) 440 20) "reson: rings at its frequency"
 var rev (schroeder-reverb (impulse 100) sr 0.5)
 check (== (length rev) (+ 100 4000)) "schroeder-reverb: input plus rt60 seconds"
-var early (db (rms (slice rev 100 800)))
-var late (db (rms (slice rev 3300 800)))
+var early (amp->db (rms (slice rev 100 800)))
+var late (amp->db (rms (slice rev 3300 800)))
 check (< late (- early 30)) "schroeder-reverb: the tail decays"
 check (> late -120) "schroeder-reverb: but is still there at the end"
 check (equal? (delay (vec 1 2 3 4) 1) (vec 0 1 2 3)) "delay: integer"
@@ -261,6 +261,29 @@ check (and (> (corr (head (head sup)) pa) 0.85) (> (corr (last (head sup)) pb) 0
 check (< (max (abs (- (+ (head (head sup)) (last (head sup))) (+ pa pb)))) 1e-6) "nmf-separate-with: the sources add up to the mix"
 check (== (nrows (last sup)) 4) "nmf-separate-with: the activations, one row per part"
 
+# --- morphology descriptors ---
+var m1 (vec (* 0.5 (sine sr 220 1)) (* (noise sr) (exp (* -20 (/ (range sr) sr)))) (zeros sr) (* 0.3 (sine sr 880 1)))
+var spm (frame-spectra m1 2048 512 1024)
+check (== (length (head spm)) 1024) "frame-spectra: ncoeff bins per frame"
+check (> (spectral-similarity (head spm) (getidx spm 1)) 0.9) "spectral-similarity: a held tone's frames are alike"
+check (< (spectral-similarity (getidx spm 5) (getidx spm 20)) 0.6) "spectral-similarity: a tone and noise are not"
+var erm (event-rate m1 sr 1 512)
+check (== (length erm) 3) "event-rate: times, rates, and the events kept"
+check (and (> (length (last erm)) 0) (< (length (last erm)) 8)) "event-rate: a few events, not the vibrato's flux peaks"
+var pe (polyphony-estimate spm)
+check (and (== (length pe) (length spm)) (>= (min pe) 0)) "polyphony-estimate: one value per frame"
+var rcm (register-curve spm sr 2048)
+check (== (length rcm) 3) "register-curve: centroids, spreads, lows"
+check (near? (getidx (last rcm) 5) 57 1) "register-curve: the lowest partial of A3 is A3"
+check (< (getidx (head rcm) 5) (getidx (head rcm) (- (length (head rcm)) 5))) "register-curve: the centroid rises with the octave"
+var lc (loudness-curve m1 sr 512)
+check (< (getidx lc 40) (getidx lc 5)) "loudness-curve: silence is quieter"
+var ctm (coherence-time spm 512 sr 0.75)
+check (> (getidx ctm 2) 0.5) "coherence-time: a held tone persists"
+check (< (getidx ctm 40) 0.2) "coherence-time: silence has none"
+var pk (spectral-peaks (getidx spm 5) sr 2048 3)
+check (near? (min (head pk)) 220 2) "spectral-peaks: the fundamental, refined by a parabola"
+
 # --- convolution reverb ---
 var imp (vec 1 (zeros 100))
 var cv (converb imp (vec 0.5 0 0.25) 1 1)
@@ -270,6 +293,10 @@ check (== (length (converb imp (list (vec 1) (vec 0.5)) 1 1)) 2) "converb: one r
 check (== (length (head (converb imp (vec 1 0 0) 0 1))) 103) "converb: as long as the input plus the response (n + m - 1)"
 var hall (concerthall (sine sr 440 0.1) sr 0.7 0.3)
 check (== (length hall) 2) "concerthall: stereo"
+check (near? (conv-fast (vec 1 0 0.5) (vec 1 1)) (vec 1 1 0.5 0.5) 1e-12) "conv-fast: a small case"
+var cx (noise 5000)
+var ch (noise 300)
+check (< (max (abs (- (conv cx ch) (conv-fast cx ch)))) 1e-9) "conv-fast: equals conv (overlap-add over blocks)"
 check (> (length (head hall)) (* 2 sr)) "concerthall: the tail of the Concertgebouw follows"
 check (> (rms (take (head hall) 800)) 0.2) "concerthall: the dry part is there"
 check (near? (sqrt (sum (* (head (hall-ir 44100)) (head (hall-ir 44100))))) 1 0.02) "hall-ir: the response has unit energy at its own rate (the wet part keeps the level)"

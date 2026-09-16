@@ -97,6 +97,10 @@ nmf V 2 200      : W (4 2) H (2 4) ; W H reconstructs V within 0
 nmf-error        : 0 (the KL divergence the updates decrease)
 mat-min, mat-max : 0 3  mat-div: ((1 2))
 
+--- mp ---
+mp               : atoms (3 1) weights (2.5 0.5) error 0.139 (greedy, non-negative)
+mp orthogonal    : error 0 (weights refitted by least squares)
+
 --- display ---
 mat-str M 2:
  1.00   2.00   3.00

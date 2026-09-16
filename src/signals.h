@@ -529,6 +529,28 @@ inline vptr sig_ambi_rotate(vlist& a, Interp& i) {
     }
     return v_list(std::move(out));
 }
+// (conv-fast x h) => the linear convolution of x and h (length n + m - 1), by overlap-add over blocks the size
+//   of h: the same result as conv, faster on long inputs, and the interpreter breathes between blocks (the
+//   windows stay responsive while a long score goes through the hall)
+inline vptr sig_conv_fast(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); const varr& h = i.num(a[1]);
+    size_t n = x.size(), m = h.size(); if (n == 0 || m == 0) return v_arr(varr());
+    size_t B = 1; while (B < m) B <<= 1; size_t N = 2 * B;
+    std::vector<double> H(2 * N, 0.0); for (size_t k = 0; k < m; k++) H[2 * k] = h[k]; fft_inplace(H.data(), N, -1);
+    varr out(n + m - 1); std::fill(std::begin(out), std::end(out), 0.0);
+    std::vector<double> X(2 * N);
+    for (size_t start = 0; start < n; start += B) {
+        size_t len = std::min(B, n - start);
+        std::fill(X.begin(), X.end(), 0.0); for (size_t k = 0; k < len; k++) X[2 * k] = x[start + k];
+        fft_inplace(X.data(), N, -1);
+        for (size_t k = 0; k < N; k++) { double ar = X[2 * k], ai = X[2 * k + 1], br = H[2 * k], bi = H[2 * k + 1]; X[2 * k] = ar * br - ai * bi; X[2 * k + 1] = ar * bi + ai * br; }
+        fft_inplace(X.data(), N, 1);
+        size_t take = std::min(len + m - 1, out.size() - start);
+        for (size_t k = 0; k < take; k++) out[start + k] += X[2 * k] / N;
+        i.yield_check(); i.idle();                              // the UI, the scheduler, between blocks
+    }
+    return v_arr(std::move(out));
+}
 // --- measured HRTFs: a table of directions with the two ears' impulse responses ---
 // (hrtf-load path) load a set from a CSV: each row azimuth, elevation, then the left ear's samples and the right's
 //   (as src/hrtf_kemar.csv, the MIT KEMAR compact set at 44100 Hz, found on the load path); => the number of directions.
@@ -621,7 +643,7 @@ inline void add_signals(Interp& i) {
     i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
     i.def("pvoc", sig_pvoc, 2, 2);
     i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3); i.def("hpss", sig_hpss, 4, 4);
-    i.def("ambi-gains", sig_ambi_gains, 3, 3); i.def("ambi-rotate", sig_ambi_rotate, 2, 2); i.def("hrir", sig_hrir, 3, 3); i.def("hrir-model", sig_hrir_model, 3, 3);
+    i.def("conv-fast", sig_conv_fast, 2, 2); i.def("ambi-gains", sig_ambi_gains, 3, 3); i.def("ambi-rotate", sig_ambi_rotate, 2, 2); i.def("hrir", sig_hrir, 3, 3); i.def("hrir-model", sig_hrir_model, 3, 3);
     i.def("hrtf-load", sig_hrtf_load, 1, 1); i.def("hrtf-unload", sig_hrtf_unload, 0, 0); i.def("hrtf-loaded", sig_hrtf_loaded, 0, 0);
 }
 

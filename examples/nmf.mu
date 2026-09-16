@@ -51,7 +51,7 @@ print "wrote /tmp/musil_nmf_drums.wav, _bass, _chords, _melody"
 # --- 3. picture: the learnt parts and the activations of the supervised separation --------------------
 var freqs (* (range (+ (/ n 2) 1)) (/ sr n))
 var figw (figure "learnt parts (W): three per stem")
-each (range (ncols W)) (function (j) (add-line figw freqs (db (mat-col W j)) (getidx names (floor (/ j 3)))))
+each (range (ncols W)) (function (j) (add-line figw freqs (amp->db (mat-col W j)) (getidx names (floor (/ j 3)))))
 set-labels figw "frequency (Hz)" "dB"
 set-xrange figw 0 6000
 var H (last sep2)
