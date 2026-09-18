@@ -13,8 +13,8 @@
 # Usage: musil modulations.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 7)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL
-# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every technique
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL
+var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every technique
 var sr 44100
 var k 0.2                                                     # the timeline, compressed
 

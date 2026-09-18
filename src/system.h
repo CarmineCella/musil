@@ -45,6 +45,9 @@ inline vptr sys_interactive(vlist&, Interp&) {
     return v_bool(true);
 #endif
 }
+// (breathe) let the background work run once (windows, schedulers, the score player): for a long computation
+//   done from a window's button, once per step
+inline vptr sys_breathe(vlist&, Interp& i) { if (i.yield_fn) i.yield_fn(); i.idle(); return v_nil(); }
 inline vptr sys_sleep(vlist& a, Interp& i) {   // in slices, so a stop request and background work (live loops) get through
     double secs = i.scalar(a[0]); auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(secs);
     while (true) {
@@ -244,7 +247,7 @@ inline void add_serve(Interp& i) {         // called by add_system: the port is 
 
 
 inline void add_system(Interp& i) {
-    i.def("exec", sys_exec, 1, 1); i.def("getenv", sys_getenv, 1, 1); i.def("sleep", sys_sleep, 1, 1); i.def("interactive?", sys_interactive, 0, 0); i.def("now", sys_now, 0, 0);
+    i.def("exec", sys_exec, 1, 1); i.def("getenv", sys_getenv, 1, 1); i.def("sleep", sys_sleep, 1, 1); i.def("breathe", sys_breathe, 0, 0); i.def("interactive?", sys_interactive, 0, 0); i.def("now", sys_now, 0, 0);
     i.def("find-file", sys_find_file, 1, 1); i.def("resolve-path", sys_resolve_path, 1, 1);
     add_serve(i);
     i.def("cwd", sys_cwd, 0, 0); i.def("ls", sys_ls, 0, 1); i.def("mkdir", sys_mkdir, 1, 1); i.def("remove", sys_remove, 1, 1); i.def("stat", sys_stat, 1, 1);

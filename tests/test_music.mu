@@ -466,20 +466,29 @@ check (exists? "/tmp/musil_test_staff.png") "the staff draws"
 check (equal? (get s2 'reverb) (list 0.7 0.3)) "score: in the hall by default"
 score-reverb! s2 1 0
 check (equal? (get s2 'reverb) (list 1 0)) "score-reverb!: dry"
-check (equal? (type (play-score s2 0.8)) "nil") "play-score: renders, puts in the hall, plays, waits"
+check (equal? (type (play-score s2 0.8)) "nil") "play-score: streams the events through the engine, waits"
 var end (score-play-now s2 1 0.5)
 check (> end (audio-time)) "score-play-now: returns at once with the end time"
-check (has? s2 'cache) "score-play-now: the hall mix is cached on the score"
-var sig1 (head (get s2 'cache))
-score-play-now s2 1 0
-check (equal? (head (get s2 'cache)) sig1) "score-hall-mix: the same score plays from the cache"
+check (not (equal? (type score-player) "nil")) "score-play-now: a player is up"
+check (> (get score-player 'cues) 0) "score-play-now: the events handed to the engine as cues"
+check (head (cues-status)) "play-cues: the loader is active"
+check (>= (bus-reverb-latency) 0) "bus-reverb-latency: seconds"
+check (equal? bus-hall-state (list 44100 1 0)) "bus-hall!: the score's mix on the bus"
+sleep 0.3
+check (>= (getidx (cues-status) 3) 1) "the loader thread has read and queued the first sounds"
+check (== (getidx (cues-status) 4) 0) "no cue failed"
+check (near? (azimuth->pan 90) -1 1e-9) "azimuth->pan: left is -1"
 event s2 3 0.2 (sine 44100 660 0.2)
-score-play-now s2 1 0
-check (not (equal? (head (get s2 'cache)) sig1)) "score-hall-mix: a new event renders again"
-score-clear-cache! s2
-check (equal? (type (opt s2 'cache nil)) "nil") "score-clear-cache!"
 check (head (playhead)) "score-play-now: the playhead is on"
 check (== (last (playhead)) (register-score s2)) "score-play-now: the playhead names the score, so only its roll follows"
+var hm (score-hall-mix s2 44100)
+check (and (== (length hm) 2) (has? s2 'cache)) "score-hall-mix: the offline mix, cached on the score"
+score-clear-cache! s2
+check (equal? (type (opt s2 'cache nil)) "nil") "score-clear-cache!"
+var nested (score "outer" 44100)
+event nested 1 0 s2
+check (all? (map (score-flatten nested 0) (function (e) (>= (get e 'at) 1))) identity) "score-flatten: the inner events at absolute times"
+check (== (length (score-flatten nested 0)) (length (get s2 'events))) "score-flatten: every inner event"
 stop-score
 check (not (head (playhead))) "stop-score: the playhead is off"
 var rh (render-hall s2 "/tmp/musil_test_hall.wav")
@@ -488,6 +497,21 @@ check (<= (max-of (map rh (function (c) (max (abs c))))) 0.981) "render-hall: ne
 check (> (length (head rh)) (length (head (score-render s2 "stereo")))) "render-hall: the hall's tail follows"
 check (== (head (read-wav "/tmp/musil_test_hall.wav")) 44100) "render-hall: the file"
 check (== (length (roll-render (register-score s2) "/tmp/musil_test_hall2.wav")) 2) "roll-render: by the score's number"
+var saved (score "to save" 44100)
+event saved 0 1 (note-cents! (note db 'Vn "C4" 'mf 'ord) 12)
+event saved 0 0.5 (note db 'Ob "E4" 'mf 'ord)
+event saved 1.5 0.25 (note db 'Hn "G4" 'mf 'ord)
+event saved 2 0.2 (sine 44100 440 0.2)
+check (== (score-save saved "/tmp/musil_test_connection.txt") 3) "score-save: the notes written, the buffer left out"
+var ctext (read "/tmp/musil_test_connection.txt")
+check (starts-with? ctext "[ orchestra Vn Ob Hn ]") "score-save: the orchestra line"
+check (contains? ctext "[ segment 1500") "score-save: segments by onset, in ms"
+check (contains? ctext "[ note 1000 Vn ord C4 mf") "score-save: a note line as Orchidea writes it"
+var loaded (score-load db "/tmp/musil_test_connection.txt" "back")
+check (== (length (get loaded 'events)) 3) "score-load: the notes back"
+check (equal? (map (get loaded 'events) (function (e) (get e 'source))) (map (take (get saved 'events) 3) (function (e) (get e 'source)))) "score-load: the same sounds, by file"
+check (== (get (head (get loaded 'events)) 'cents) 12) "score-load: the cents"
+check (near? (get (last (get loaded 'events)) 'at) 1.5 1e-6) "score-load: the onsets"
 var sched (score-schedule s2 1 0.7)
 check (== (length sched) 3) "score-schedule: synths, end, start (the live way)"
 check (> (getidx sched 1) (getidx sched 2)) "score-schedule: ends after it starts"

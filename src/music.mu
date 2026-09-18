@@ -51,7 +51,7 @@ function event-at (s at dur what az el) {
     if (< dur 0) { error "event: the duration must be >= 0" }
     var e (payload->event what)
     if (equal? (get e 'kind) 'score) {
-        if (equal? (get e 'source) s) { error "event: a score cannot contain itself" }
+        if (same? (get e 'source) s) { error "event: a score cannot contain itself" }
         if (== dur 0) { set dur (+ (score-duration (get e 'source)) 0.6) }        # 0: the whole sub-score, with its releases
     }
     put! e 'at at
@@ -108,8 +108,16 @@ function load-sound (path) {
     if (not (equal? (type hit) "nil")) { return hit }
     var w (read-wav path)
     push sound-cache (list path w)
+    set sound-cache-bytes (+ sound-cache-bytes (* 8 (length (getidx w 1)) (length (head (getidx w 1)))))
+    while (and (> sound-cache-bytes sound-cache-limit) (> (length sound-cache) 1)) {          # bounded: a long score with thousands of files must not fill the memory
+        var old (last (head sound-cache))
+        set sound-cache-bytes (- sound-cache-bytes (* 8 (length (getidx old 1)) (length (head (getidx old 1)))))
+        set sound-cache (drop sound-cache 1)
+    }
     return w
 }
+var sound-cache-bytes 0
+var sound-cache-limit 400000000                                             # 400 MB of samples kept; (set sound-cache-limit ...) to change
 # (note-sound e sr)        a note's channels at a rate: the file's, shifted by resampling when the pitch was not
 #                          the recording's; only what the event's duration needs is resampled (a little more for
 #                          the fade), and the result is kept in the cache under file, shift, rate and length
@@ -128,12 +136,20 @@ function note-sound (e sr) {
     set chans (to-rate chans (head w) sr)
     if (!= shift 0) { set chans (map chans (function (c) (resample c ratio))) }
     push note-cache (list key chans)
-    if (> (length note-cache) 400) { set note-cache (drop note-cache 100) }        # a bounded cache
+    set note-cache-bytes (+ note-cache-bytes (* 8 (length chans) (length (head chans))))
+    while (and (> note-cache-bytes 200000000) (> (length note-cache) 1)) {          # a bounded cache: 200 MB
+        var old (last (head note-cache))
+        set note-cache-bytes (- note-cache-bytes (* 8 (length old) (length (head old))))
+        set note-cache (drop note-cache 1)
+    }
     return chans
 }
+var note-cache-bytes 0
 # (clear-sound-cache)      forget the loaded files and the notes made from them
 function clear-sound-cache () { set sound-cache (list)
-                                 set note-cache (list) }
+                                 set note-cache (list)
+                                 set sound-cache-bytes 0
+                                 set note-cache-bytes 0 }
 # (to-rate channels from to)   channels resampled from one rate to another (nothing to do when equal)
 function to-rate (channels from to) (if (== from to) channels (map channels (function (c) (resample-to c from to))))
 # (render-event e sr)      the sound of an event at the score's rate: a list of channels, cut to its duration
@@ -229,6 +245,7 @@ function score-render-at-depth (s layout sr depth) {
             var room (- total start)
             if (> room 0) { add-at! (head p) start (take (last p) (min (length (last p)) room)) }
         })
+        breathe                                                            # the windows stay alive during a long render
     })
     return out
 }
@@ -242,10 +259,17 @@ function render (s path layout) {
     return safe
 }
 
-# --- playing: the events through live, ahead of the clock ----------------------------------------
+# --- playing: the score handed to the engine, its sounds read by a thread ahead of the clock ---------------------
+# A score is played by the engine's cue player (play-cues of live): score-play-now turns every event into a cue (a
+# file to read, or a buffer already made) at a clock time, hands the whole list to the engine and returns; from then
+# on the interpreter is not involved: the loader thread reads each sound a few seconds before it is due (a cache of
+# decoded files, 2 GB by default: cue-cache-limit), cuts it to its duration at its own rate, and queues it as a voice
+# that the audio thread plays at the note's pitch shift. The concert hall sits on the output bus (bus-reverb, on a
+# thread of its own). So Play starts at once whatever the score's length, and neither the windows nor the interpreter
+# can stall the music, nor the music them.
 # (play-score s gain)      play the score now (the device is opened if needed) and wait until it ends or is stopped
-#                          (stop-score): the whole score is rendered in stereo, put in the concert hall (see
-#                          score-reverb!) and played as one buffer; gain scales it; the roll's cursor follows
+#                          (stop-score); gain scales it, with the score's 'level (0.5 by default: many players at
+#                          fff add up; the bus limiter catches the rest); the roll's cursor follows
 function play-score (s gain) (play-score-from s gain 0)
 # (play-score-from s gain from)   the same from a time in seconds
 function play-score-from (s gain from) {
@@ -253,21 +277,83 @@ function play-score-from (s gain from) {
     while (head (playhead)) { sleep 0.05 }
     return nil
 }
+var score-player nil                                                         # what is playing: the score, its synths, the end
+var bus-hall-state nil
+# (bus-hall! sr dry wet)   the concert hall on the output bus at a rate and mix, set only when it changes (setting it
+#                          again would cut the tail)
+function bus-hall! (sr dry wet) {
+    var want (list sr dry wet)
+    if (not (equal? bus-hall-state want)) { bus-reverb (hall-ir sr) dry wet
+                                           set bus-hall-state want }
+    return nil
+}
 # (score-play-now s gain from)   start playing and return at once (what the roll's Play button does); => the end time on
 #                          the clock. stop-score stops it.
 function score-play-now (s gain from) {
     if (not (opt (audio-status) "open" 0)) { audio-init }
+    stop-score
     var sr (audio-sr)
-    var hall (score-hall-mix s sr)
-    var peak (max-of (map hall (function (c) (max (abs c)))))
-    var norm (if (> (* gain peak) 0.98) (/ 0.98 peak) gain)                  # never clip: scaled down when the hall's tail pushes it over
-    var skip (floor (* from sr))
-    var out (map hall (function (c) (* norm (drop c (min skip (length c))))))
-    var t0 (+ (audio-time) 0.1)
-    play-buffer out sr 1 0 1 0 t0
-    var end (+ t0 (/ (length (head out)) sr))
-    playhead! t0 from end (register-score s)                                  # only this score's roll follows
+    var rv (opt s 'reverb (list 0.7 0.3))
+    bus-hall! sr (head rv) (last rv)
+    var level (* gain (opt s 'level 0.5))
+    var t0 (+ (audio-time) 0.3)
+    var cues (list)
+    var synths (list)
+    each (score-flatten s 0) (function (e) (if (> (event-end e) from) {
+        var when (+ t0 (max 0 (- (get e 'at) from)))
+        var skip (max 0 (- from (get e 'at)))
+        var kind (get e 'kind)
+        if (or (equal? kind 'note) (equal? kind 'file)) {
+            var rate (if (equal? kind 'note) (pow 2 (/ (+ (opt e 'shift 0) (/ (opt e 'cents 0) 100)) 12)) 1)
+            push cues (list when (if (equal? kind 'note) (note-path e) (get e 'source)) skip (- (get e 'dur) skip) rate (* level (get e 'gain)) (azimuth->pan (get e 'az)))
+        } {
+            if (equal? kind 'synth) {
+                var id (try (synth (get e 'source)) catch err nil)
+                if (equal? (type id) "nil") { print "play-score: the instrument of event" (get e 'id) "does not stream, left out" } {
+                    push synths id
+                    if (contains? (synth-params id) "amp") { set-param id 'amp (* level (get e 'gain)) 0 when }
+                    each (get e 'params) (function (q) (set-param id (head q) (last q) 0 when))
+                    note-at when id (- (get e 'dur) skip)
+                }
+            } {                                                                # a buffer, a call, a chord: made now
+                var made (try (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) catch err nil)
+                if (equal? (type made) "nil") { print "play-score: event" (get e 'id) (get e 'label) "could not be made, left out" } {
+                    var chans (if (> skip 0) (map made (function (c) (drop c (min (length c) (floor (* skip sr)))))) made)
+                    push cues (list when chans sr 0 (- (get e 'dur) skip) 1 level 0)
+                }
+            }
+        }
+    }))
+    var end (+ t0 (- (score-duration s) from) 1)
+    play-cues cues
+    set score-player (record (list 'score s 'synths synths 'end end 'cues (length cues)))
+    playhead! (+ t0 (bus-reverb-latency)) from end (register-score s)     # the cursor lags by the hall's latency, as the sound does
     return end
+}
+# (azimuth->pan az)        an azimuth in degrees (0 in front, left positive) as the engine's pan, -1 (left) to 1 (right)
+function azimuth->pan (az) {
+    var a (max -90 (min 90 (if (> az 90) (- 180 az) (if (< az -90) (- -180 az) az))))
+    return (/ (- 0 a) 90)
+}
+# (score-flatten s depth)  the score's events with those of the scores inside brought to the top: copies at absolute
+#                          times, the gains multiplied, cut to their score's event; => a list
+function score-flatten (s depth) {
+    if (> depth 16) { error "score-flatten: scores nested more than 16 deep (a score inside itself?)" }
+    var out (list)
+    each (get s 'events) (function (e) {
+        if (equal? (get e 'kind) 'score) {
+            var inner (get e 'source)
+            var window (get e 'dur)
+            each (score-flatten inner (+ depth 1)) (function (x) {
+                var at (+ (get e 'at) (get x 'at))
+                if (< (get x 'at) window) {
+                    var c (put (put (put x 'at at) 'dur (min (get x 'dur) (- window (get x 'at)))) 'gain (* (get e 'gain) (get x 'gain)))
+                    push out c
+                }
+            })
+        } { push out e }
+    })
+    return out
 }
 # (score-hall-mix s sr)    the score rendered in stereo and put in the hall, at a rate; kept in the score (its
 #                          'cache) with a signature of the events, so playing again without a change is instant
@@ -282,9 +368,14 @@ function score-hall-mix (s sr) {
 }
 # (score-clear-cache! s)   forget the rendered mix (an event's sound changed in a way the signature cannot see)
 function score-clear-cache! (s) (put! s 'cache nil)
-# (stop-score)             stop whatever score is playing
+# (stop-score)             stop whatever score is playing, at once
 function stop-score () {
-    if (opt (audio-status) "open" 0) { stop-all }
+    if (opt (audio-status) "open" 0) { stop-cues
+                                       stop-all }
+    if (not (equal? (type score-player) "nil")) {
+        each (get score-player 'synths) (function (id) (try (free id) catch err nil))
+        set score-player nil
+    }
     playhead-off!
     return nil
 }
@@ -387,7 +478,7 @@ function score-roll (s) {
 var displayed-scores (list)
 # (register-score s)       remember a score under a number (the roll carries it); => the number
 function register-score (s) {
-    var hit (find-first displayed-scores (function (p) (equal? (last p) s)))
+    var hit (find-first displayed-scores (function (p) (same? (last p) s)))
     if (not (equal? (type hit) "nil")) { return (head hit) }
     var id (+ 1 (length displayed-scores))
     push displayed-scores (list id s)
@@ -400,6 +491,10 @@ function displayed-score (id) (get displayed-scores id)
 function roll-play (score-id from) (score-play-now (displayed-score score-id) 1 from)
 function roll-stop () (stop-score)
 function roll-render (score-id path) (render-hall (displayed-score score-id) path)
+# (roll-save score-id path)   the score's notes as a connection file (the roll's Save button; score-save)
+function roll-save (score-id path) { var n (score-save (displayed-score score-id) path)
+                                     print "saved" n "notes to" path
+                                     return n }
 # (render-hall s path)     the score rendered in stereo through the concert hall (score-reverb!), written as a WAV,
 #                          scaled so that it never clips; => the channels
 function render-hall (s path) {
@@ -426,9 +521,8 @@ function play-event (score-id event-id) {
         return nil
     }
     var rv (opt s 'reverb (list 0.7 0.3))
-    var hall (concerthall (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr (head rv) (last rv))
-    var peak (max-of (map hall (function (c) (max (abs c)))))
-    play-buffer hall sr (if (> peak 0.98) (/ 0.98 peak) 1) 0 1 0 (+ (audio-time) 0.05)
+    bus-hall! sr (head rv) (last rv)                                                     # the hall is on the bus
+    play-buffer (place (render-event e sr) "stereo" (get e 'az) (get e 'el) sr) sr (opt s 'level 0.5) 0 1 0 (+ (audio-time) 0.05)
     return nil
 }
 # (event-lanes events)     a lane number per event such that events sharing a lane do not overlap in time
@@ -549,8 +643,10 @@ function db-range (db instr) {
 function db-range-available (db instr) {
     var slot (opt (db-index! db) (str instr) nil)
     if (equal? (type slot) "nil") { error "db-range-available: no pitched sound of " instr " on disk" }
+    if (has? slot 'range) { return (get slot 'range) }
     var ms (vec (map (get slot 'all) (function (e) (get e 'midi))))
-    return (list (min ms) (max ms))
+    put! slot 'range (list (min ms) (max ms))                                # kept: the orchestrators ask for it at every note
+    return (get slot 'range)
 }
 # (db-path db entry)       the sound file of an entry, on disk: under the sounds' folder at the path the feature file
 #                          gives when it exists, else found by its file name anywhere under that folder (the folders
@@ -985,7 +1081,7 @@ function solution (result k n) (last (getidx (solutions result k) n))
 function connection (result choices) {
     var segs (get result 'segments)
     var out (list)
-    each (zip segs choices) (function (p) (each (solution result (find segs (head p)) (last p)) (function (x) (push out x))))
+    each (range (length segs)) (function (k) (each (solution result k (getidx choices k)) (function (x) (push out x))))
     return (merge-continuations (sort-by out head))
 }
 # (best-connection result)   the first solution of every segment
@@ -996,10 +1092,20 @@ function connect! (s at result choices) (add! s at (connection result choices))
 #                          the continuation of that note (one longer event), as an orchestration's connection does
 function merge-continuations (f) {
     var out (list)
+    var by-key (list)                                                       # instrument|pitch -> the notes so far of that sound (a few), not the whole list
     each f (function (x) {
         var pl (last x)
-        var prev (if (equal? (get pl 'kind) 'note) (find-first out (function (y) (and (equal? (get (last y) 'kind) 'note) (equal? (get (last y) 'instr) (get pl 'instr)) (== (get (last y) 'midi) (get pl 'midi)) (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.03)))) nil)
-        if (equal? (type prev) "nil") { push out (list (head x) (getidx x 1) pl) } { setidx prev 1 (+ (getidx prev 1) (getidx x 1)) }
+        var prev nil
+        var key (if (equal? (get pl 'kind) 'note) (concat (get pl 'instr) "|" (str (get pl 'midi))) nil)
+        if (not (equal? (type key) "nil")) {
+            var same (opt by-key key nil)
+            if (not (equal? (type same) "nil")) { set prev (find-first same (function (y) (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.03))) }
+        }
+        if (equal? (type prev) "nil") {
+            var fresh (list (head x) (getidx x 1) pl)
+            push out fresh
+            if (not (equal? (type key) "nil")) { if (has? by-key key) { push (get by-key key) fresh } { put! by-key key (list fresh) } }
+        } { setidx prev 1 (+ (getidx prev 1) (getidx x 1)) }
     })
     return out
 }
@@ -1179,11 +1285,24 @@ function granulate (db orch secs params) {
 # the instrument of a player for a pitch: among its alternatives (an ossia), the one whose range holds the pitch,
 # else the nearest range
 function instrument-for (db instrs pitch) {
-    var holding (filter instrs (function (i) { var r (try (db-range-available db i) catch e (list 0 0))
-                                               return (and (>= pitch (head r)) (<= pitch (last r))) }))
-    if (> (length holding) 0) { return (head holding) }
-    return (min-by instrs (function (i) { var r (try (db-range-available db i) catch e (list 60 60))
-                                          return (min (abs (- pitch (head r))) (abs (- pitch (last r)))) }))
+    if (== (length instrs) 1) { return (head instrs) }
+    var idx (db-index! db)
+    var ranges (map instrs (function (i) { var slot (opt idx (str i) nil)
+                                          if (equal? (type slot) "nil") { return (list 0 0) }
+                                          if (not (has? slot 'range)) { db-range-available db i }
+                                          return (get slot 'range) }))
+    var k 0
+    var best -1
+    var best-d 1e9
+    while (< k (length instrs)) {
+        var r (getidx ranges k)
+        if (and (>= pitch (head r)) (<= pitch (last r))) { return (getidx instrs k) }
+        var d (min (abs (- pitch (head r))) (abs (- pitch (last r))))
+        if (< d best-d) { set best-d d
+                          set best k }
+        set k (+ k 1)
+    }
+    return (getidx instrs best)
 }
 # a pitch for a player by the method, within lo..hi (MIDI)
 function choose-pitch (db player method lo hi chord params t table voice-k) {
@@ -1538,6 +1657,86 @@ function chordinterp-env (c1 c2 secs steps) {
         push kv (list ch)                                        # a set of one chord
     })
     return (env kv)
+}
+
+# --- saving and loading: Orchidea's connection format --------------------------------------------------------
+# A score's notes can be written as an Orchidea "connection" (the text Orchidea exports and its Max patches read):
+#   [ orchestra Fl Ob Vn ... ]
+#   [ segment <onset ms>
+#       [ solution 1
+#           [ note <duration ms> <instrument> <style> <pitch> <dynamics> <other> <file> <cents> ]
+#       ] ]
+# One segment per distinct onset, one solution each. Only notes travel: a file, buffer, synth, call or inner score has
+# no place in the format and is left out (score-save says how many); a note's gain is not kept either (the sample's
+# dynamics are). Loading finds each note's sound in a database by its file (any of the database's folders), or by
+# instrument, pitch, dynamics and style when the file is not there; an unpitched sound (pitch N) becomes a file event.
+# (score-save s path)      write the score's notes as a connection; => the number of notes written
+function score-save (s path) {
+    var notes (sort-by (filter (get s 'events) (function (e) (equal? (get e 'kind) 'note))) (function (e) (get e 'at)))
+    var skipped (- (length (get s 'events)) (length notes))
+    var lines (list (concat "[ orchestra " (join (unique (map notes (function (e) (get e 'instr)))) " ") " ]"))
+    var k 0
+    while (< k (length notes)) {
+        var at (get (getidx notes k) 'at)
+        push lines (concat "[ segment " (fixed (* 1000 at) 2))
+        push lines "\t[ solution 1"
+        while (and (< k (length notes)) (< (abs (- (get (getidx notes k) 'at) at)) 0.0005)) {
+            var e (getidx notes k)
+            var entry (get e 'entry)
+            push lines (concat "\t\t[ note " (fixed (* 1000 (get e 'dur)) 2) " " (get e 'instr) " " (get e 'tech) " " (get e 'pitch) " " (get e 'dyn) " " (opt entry 'other "N") " " (get e 'source) " " (str (round (opt e 'cents 0))) " ]")
+            set k (+ k 1)
+        }
+        push lines "\t]"
+        push lines "]"
+    }
+    write path (join lines "\n")
+    if (> skipped 0) { print "score-save:" skipped "events that are not notes left out (files, buffers, synths, calls, scores)" }
+    return (length notes)
+}
+# (score-load db path name)   a score from a connection file, its notes' sounds from db; => the score
+function score-load (db path name) {
+    var s (score name 44100)
+    var at 0
+    var missing 0
+    each (split (read path) "\n") (function (line) {
+        var toks (filter (split (trim line) " ") (function (t) (not (equal? t ""))))
+        if (>= (length toks) 3) {
+            if (equal? (getidx toks 1) "segment") { set at (/ (num (getidx toks 2)) 1000) }
+            if (and (equal? (getidx toks 1) "note") (>= (length toks) 10)) {
+                var dur (/ (num (getidx toks 2)) 1000)
+                var instr (getidx toks 3)
+                var tech (getidx toks 4)
+                var pitch (getidx toks 5)
+                var dyn (getidx toks 6)
+                var file (getidx toks 8)
+                var cents (num (getidx toks 9))
+                var n (try (note-from-file db file instr pitch dyn tech) catch err nil)
+                if (equal? (type n) "nil") { set missing (+ missing 1) } {
+                    if (not (equal? (get n 'kind) 'note)) { event s at dur n } {
+                        put! n 'cents cents
+                        put! n 'dyn dyn
+                        put! n 'label (concat instr " " pitch " " dyn)
+                        event s at dur n
+                    }
+                }
+            }
+        }
+    })
+    if (> missing 0) { print "score-load:" missing "notes whose sound is not in the database were left out" }
+    return s
+}
+# (note-from-file db file instr pitch dyn tech)   a note whose sound is the database entry with that file name (the
+#                          folder may differ); when the file is not there, the note by its fields; an unpitched sound
+#                          (pitch N) as a file event
+function note-from-file (db file instr pitch dyn tech) {
+    var name (filename file)
+    var slot (opt (db-index! db) instr nil)
+    var hit (if (equal? (type slot) "nil") nil (find-first (get slot 'all) (function (e) (equal? (filename (get e 'file)) name))))
+    if (equal? (type hit) "nil") { set hit (find-first (get db 'entries) (function (e) (and (equal? (filename (get e 'file)) name) (db-available? db e)))) }
+    if (and (not (equal? (type hit) "nil")) (< (get hit 'midi) 0)) { return (payload->event (db-path db hit)) }
+    if (not (equal? (type hit) "nil")) { return (note db (get hit 'instr) (get hit 'midi) (get hit 'dyn) (get hit 'tech)) }
+    if (equal? pitch "N") { error "note-from-file: unpitched sound not in the database: " file }
+    return (note db instr pitch dyn tech)
 }
 
 # --- transformations: new events, the score untouched, or in place ------------------------------------

@@ -145,19 +145,34 @@ inline vptr sig_delay(vlist& a, Interp& i) {
 inline varr resample_sinc(const varr& x, double factor) {
     size_t in = x.size(); if (in == 0) return varr();
     size_t out_len = std::max<size_t>(1, (size_t)std::floor(in * factor + 0.5));
-    const int half = 24; const double pi = 3.14159265358979323846;
+    const int half = 24, taps = 2 * half; const double pi = 3.14159265358979323846;
     double fc = factor < 1 ? factor : 1.0;                 // cutoff relative to the input Nyquist
+    // the windowed sinc tabulated over Q fractional phases (interpolated between them), normalised so that a constant
+    // stays a constant; kept between calls with the same cutoff (a note's pitch shift is asked for thousands of times)
+    static const int Q = 512; static double table_fc = -1; static std::vector<double> table;
+    if (fc != table_fc) {
+        table.assign((size_t)(Q + 1) * taps, 0.0);
+        for (int q = 0; q <= Q; q++) {
+            double phase = (double)q / Q, wsum = 0; double* row = &table[(size_t)q * taps];
+            for (int m = -half + 1; m <= half; m++) {
+                double d = phase - m, win = 0.5 + 0.5 * std::cos(pi * d / half);   // Hann-windowed sinc
+                double sn = d == 0 ? fc : std::sin(pi * fc * d) / (pi * d);
+                row[m + half - 1] = sn * win; wsum += sn * win;
+            }
+            if (wsum != 0) for (int m = 0; m < taps; m++) row[m] /= wsum;
+        }
+        table_fc = fc;
+    }
     varr out(0.0, out_len);
     for (size_t k = 0; k < out_len; k++) {
-        double t = (double)k / factor; long c = (long)std::floor(t);
-        double acc = 0, wsum = 0;
-        for (long j = c - half + 1; j <= c + half; j++) {
-            double d = t - (double)j, win = 0.5 + 0.5 * std::cos(pi * d / half);   // Hann-windowed sinc
-            double s = d == 0 ? fc : std::sin(pi * fc * d) / (pi * d);
-            double wgt = s * win; wsum += wgt;
-            if (j >= 0 && (size_t)j < in) acc += x[j] * wgt;
-        }
-        out[k] = wsum != 0 ? acc / wsum : 0;         // weights normalised to one: a constant stays a constant
+        double t = (double)k / factor; long c = (long)std::floor(t); double phase = t - (double)c;
+        double qf = phase * Q; int q = (int)qf; double u = qf - q; if (q >= Q) { q = Q - 1; u = 1; }
+        const double* r0 = &table[(size_t)q * taps]; const double* r1 = r0 + taps;
+        double acc = 0;
+        long j0 = c - half + 1, j1 = c + half;
+        long lo = std::max(j0, 0L), hi = std::min(j1, (long)in - 1);
+        for (long j = lo; j <= hi; j++) { int m = (int)(j - j0); acc += x[(size_t)j] * ((1 - u) * r0[m] + u * r1[m]); }
+        out[k] = acc;
     }
     return out;
 }

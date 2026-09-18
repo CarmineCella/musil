@@ -268,6 +268,35 @@ inline staff_geom roll_staff(const roll_geom& g, int r, const std::string& clef)
     return st;
 }
 inline double roll_note_y(const staff_geom& st, int midi) { bool sh; int step = roll_step(midi, sh); return st.y_bottom - (step - st.bottom_step) * st.sp / 2; }
+// The roll's picture is drawn once into an offscreen image and blitted at every frame while a score plays: drawing
+// thousands of heads, sharps and marks (fonts and text measurements on every one) at twenty frames a second is what
+// starved the interpreter, the audio and the events on a long score. Only the playhead is drawn on top each time.
+inline bool& roll_static_only() { static bool b = false; return b; }
+inline void render_roll_playhead(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
+    roll_geom g = roll_geometry(f, ox, oy, w, h, view);
+    auto X = [&](double x) { return g.left + (x - g.xmin) / (g.xmax - g.xmin) * g.pw; };
+    playhead_state& ph = playhead(); double now = live_now();
+    bool playing = ph.on && now < ph.end && (ph.owner < 0 || ph.owner == L.score_id); double t = playing ? ph.from + (now - ph.t0) : view.cursor_time;
+    if (t >= g.xmin && t <= g.xmax) { fl_color(playing ? 200 : 120, playing ? 30 : 120, playing ? 30 : 120); fl_line_style(FL_SOLID, 2); fl_line((int)X(t), g.top, (int)X(t), g.top + (int)g.ph); fl_line_style(0); }
+}
+// the hovered bar, darkened, over the cached picture
+inline void render_roll_hot(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
+    if (!view.has_pick || view.px < 0 || (size_t)view.px >= L.bars.size()) return;
+    roll_geom g = roll_geometry(f, ox, oy, w, h, view); const roll_bar& b = L.bars[(size_t)view.px]; if (b.row < 0 || b.row >= g.rows) return;
+    auto X = [&](double x) { return g.left + (x - g.xmin) / (g.xmax - g.xmin) * g.pw; };
+    std::string clef = b.row < (int)L.clefs.size() ? L.clefs[b.row] : "none"; staff_geom st = roll_staff(g, b.row, clef);
+    int x0 = (int)X(b.start), x1 = (int)X(b.start + b.dur); if (x1 <= x0 + 2) x1 = x0 + 2;
+    fl_color(30, 30, 30);
+    if (st.has_staff && b.midi >= 0) {
+        double y = roll_note_y(st, (int)std::lround(b.midi)); double head = std::max(3.0, st.sp * 0.62);
+        fl_line_style(FL_SOLID, std::max(2, (int)(head * 0.5))); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0);
+        fl_pie(x0 - (int)head, (int)(y - head), (int)(2 * head), (int)(2 * head), 0, 360);
+    } else {
+        double lane_h = g.row_h / b.lanes; double y = g.top_rows + b.row * g.row_h + (b.lanes == 1 ? g.row_h * 0.55 : lane_h * (b.lane + 0.5));
+        int head = std::max(3, (int)std::min(6.0, lane_h * 0.25));
+        fl_line_style(FL_SOLID, 2); fl_line(x0, (int)y, x1, (int)y); fl_line_style(0); fl_rectf(x0 - head, (int)y - head, 2 * head, 2 * head);
+    }
+}
 inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, int w, int h, const plot_view& view) {
     fl_color(250, 250, 250); fl_rectf(ox, oy, w, h);
     const int fs = 13; roll_geom g = roll_geometry(f, ox, oy, w, h, view);
@@ -329,6 +358,12 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
         bool hot = view.has_pick && (size_t)view.px == k;
         rgb c = plot_palette((size_t)b.group); if (hot) c = { 30, 30, 30 };
         int x0 = (int)X(b.start), x1 = (int)X(b.start + b.dur); if (x1 <= x0 + 2) x1 = x0 + 2;
+        int row_top = g.top_rows + (int)(b.row * g.row_h);
+        if (x1 < g.left - 40 || x0 > g.left + (int)g.pw + 40 || row_top + (int)g.row_h < g.top || row_top > g.top + (int)g.ph) {   // out of view: only its marks' bookkeeping
+            if (!b.dyn.empty()) last_dyn[b.row] = b.dyn;
+            if (!b.tech.empty()) last_tech[b.row] = b.tech;
+            continue;
+        }
         if (st.has_staff && b.midi >= 0) {
             int midi = (int)std::lround(b.midi); bool sharp; int step = roll_step(midi, sharp);
             double y = roll_note_y(st, midi); double head = std::max(3.0, st.sp * 0.62);
@@ -370,10 +405,8 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
             if (x1 - x0 > 30 && lane_h > 16) { fl_font(FL_HELVETICA, std::min(fs - 2, (int)lane_h - 4)); fl_color(80, 80, 80); fl_push_clip(x0 + head + 3, (int)y - (int)lane_h / 2, x1 - x0 - head - 4, (int)lane_h); fl_draw(b.label.c_str(), x0 + head + 4, (int)y - 4); fl_pop_clip(); }
         }
     }
-    // the cursor (where Play starts), and the playhead while a score plays
-    playhead_state& ph = playhead(); double now = live_now();
-    bool playing = ph.on && now < ph.end && (ph.owner < 0 || ph.owner == L.score_id); double t = playing ? ph.from + (now - ph.t0) : view.cursor_time;
-    if (t >= g.xmin && t <= g.xmax) { fl_color(playing ? 200 : 120, playing ? 30 : 120, playing ? 30 : 120); fl_line_style(FL_SOLID, 2); fl_line((int)X(t), g.top, (int)X(t), g.top + (int)g.ph); fl_line_style(0); }
+    // the cursor (where Play starts), and the playhead while a score plays (drawn apart when the picture is cached)
+    if (!roll_static_only()) render_roll_playhead(f, L, ox, oy, w, h, view);
     fl_pop_clip(); fl_pop_clip();
     fl_color(120, 120, 120); fl_rect(g.left, g.top, (int)g.pw, (int)g.ph);
     fl_font(FL_HELVETICA, fs); fl_color(60, 60, 60); fl_draw((f.xlabel.empty() ? "time (s)" : f.xlabel).c_str(), g.left + (int)(g.pw / 2) - 20, oy + h - 6);
@@ -634,6 +667,7 @@ struct plot_widget : Fl_Widget {
     void roll_toggle() {
         if (!plot_submit() || score_id() < 0) return;
         if (roll_playing()) { plot_submit()("(roll-stop)"); if (play_btn) play_btn->copy_label("Play"); }
+        else if (play_btn && !play_btn->active()) return;          // preparing: a second press is not a second play
         else {
             if (play_btn) { play_btn->copy_label("preparing"); play_btn->deactivate(); play_btn->redraw(); }   // grey until the sound starts (the request runs after this repaint)
             plot_submit()("(roll-play " + std::to_string(score_id()) + " " + std::to_string(view.cursor_time) + ")");
@@ -652,8 +686,30 @@ struct plot_widget : Fl_Widget {
         Fl::repeat_timeout(0.05, follow_playhead, p);
     }
     plot_widget(int x, int y, int w, int h, figure fig) : Fl_Widget(x, y, w, h), f(std::move(fig)) {}
+    // the roll's cached picture: valid for one view, size and hovered bar
+    Fl_RGB_Image* roll_cache = nullptr; std::string roll_cache_key;
+    ~plot_widget() override { delete roll_cache; }
+    std::string roll_key() {
+        char b[256]; std::snprintf(b, sizeof b, "%d %d %d %.6g %.6g %.6g %.6g %.6g %.6g", w(), h(), (int)view.zoomed, view.xmin, view.xmax, view.ymin, view.ymax, view.row_scale, view.row_offset);
+        return b;
+    }
     void draw() override {
-        render_figure_at(f, x(), y(), w(), h() - 18, view);
+        if (has_roll) {
+            int pw = w(), ph = h() - 18; std::string key = roll_key();
+            if (!roll_cache || key != roll_cache_key) {
+                delete roll_cache; roll_cache = nullptr;
+                Fl_Image_Surface surf(pw, ph, 1);
+                Fl_Surface_Device::push_current(&surf);
+                roll_static_only() = true;
+                plot_view v = view; v.has_pick = false; render_figure_at(f, 0, 0, pw, ph, v);      // the hovered bar is drawn on top, not in the picture
+                roll_static_only() = false;
+                roll_cache = surf.image();
+                Fl_Surface_Device::pop_current();
+                if (roll_cache) { roll_cache->scale(pw, ph, 1, 1); roll_cache_key = key; }
+            }
+            if (roll_cache) roll_cache->draw(x(), y()); else render_figure_at(f, x(), y(), pw, ph, view);
+            for (auto& L : f.layers) if (L.kind == "roll") { fl_push_clip(x(), y(), pw, ph); render_roll_hot(f, L, x(), y(), pw, ph, view); render_roll_playhead(f, L, x(), y(), pw, ph, view); fl_pop_clip(); break; }
+        } else render_figure_at(f, x(), y(), w(), h() - 18, view);
         fl_color(246, 246, 244); fl_rectf(x(), y() + h() - 18, w(), 18);
         fl_font(FL_HELVETICA, 11); fl_color(150, 150, 150);
         fl_draw(has_roll ? "A D pan   + - zoom in time   W S scroll rows   Z X zoom rows   R reset   wheel scrolls (Ctrl: zooms)   click places the cursor, Space or Play plays from it   double-click plays an event   Esc or q closes"
@@ -748,6 +804,14 @@ inline void plot_open_window(figure f, int w, int h) {
             if (ch.show() != 0) return; std::string path = ch.filename(); if (path.size() < 4 || path.substr(path.size() - 4) != ".wav") path += ".wav";
             std::string q = "\""; for (char c : path) { if (c == '"' || c == '\\') q += '\\'; q += c; } q += "\"";
             plot_submit()("(roll-render " + std::to_string(w->score_id()) + " " + q + ")");
+        }, pw);
+        Fl_Button* sb = new Fl_Button(282, 5, 70, 24, "Save..."); sb->clear_visible_focus(); sb->tooltip("the score's notes as an Orchidea connection (a text file score-load reads back)");
+        sb->callback([](Fl_Widget*, void* d) {
+            plot_widget* w = (plot_widget*)d; if (!plot_submit() || w->score_id() < 0) return;
+            Fl_Native_File_Chooser ch; ch.title("Save the score as a connection"); ch.type(Fl_Native_File_Chooser::BROWSE_SAVE_FILE); ch.filter("Text\t*.txt"); ch.preset_file((w->f.title + ".txt").c_str()); ch.options(Fl_Native_File_Chooser::SAVEAS_CONFIRM);
+            if (ch.show() != 0) return; std::string path = ch.filename();
+            std::string q = "\""; for (char c : path) { if (c == '"' || c == '\\') q += '\\'; q += c; } q += "\"";
+            plot_submit()("(roll-save " + std::to_string(w->score_id()) + " " + q + ")");
         }, pw);
     }
     win->resizable(pw); win->end(); win->size_range(300, 200);

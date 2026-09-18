@@ -1303,14 +1303,25 @@ display s                                                  # the roll, drawn lik
 A sound longer than its event is faded out at the end; a shorter one is left as it is; a
 synth's gate is the duration and its release plays on. A mono sound is spatialised at its
 position; a sound with as many channels as the layout goes in as it is. \musil{play-score}
-(with a gain for the whole; \musil{play-score-from} from a time) renders the score in
-stereo, puts it in the concert hall (\musil{concerthall} of \texttt{signals}: the
-Concertgebouw's response, shipped with the libraries; \musil{score-reverb!} sets the dry
-and wet amounts, \musil{(score-reverb! s 1 0)} plays it dry) and plays it as one buffer,
-waiting until it ends or \musil{stop-score}; \musil{score-play-now} starts and returns.
-\musil{score-schedule} is the live way, every event on the clock with the synths compiled
-(it refuses one that does not stream); \musil{play} and \musil{play-file} of \texttt{live}
-still play a buffer or a file.
+(with a gain for the whole; \musil{play-score-from} from a time) hands the score to the
+engine and returns: nothing is rendered in advance and the interpreter is not involved
+while it plays. Every event becomes a \emph{cue} at a clock time (a file to read, or a
+buffer already made; a synth is compiled and gated), the list goes to the engine's cue
+player (\musil{play-cues} of \texttt{live}), and a loader thread reads each sound a few
+seconds before it is due (\musil{cue-lookahead}; a cache of decoded files, 2\,GB by
+default, \musil{cue-cache-limit}), cuts it to its duration at its own rate and queues it as
+a voice that the audio thread plays at the note's pitch shift (a linear interpolation; the
+offline render keeps the windowed sinc). The concert hall sits on the output bus as a
+convolution on a thread of its own (\musil{bus-reverb}: partitioned, a latency of 93\,ms
+that the playhead allows for; \musil{score-reverb!} sets the dry and wet amounts,
+\musil{(score-reverb! s 1 0)} plays dry), and a peak limiter (\musil{bus-limiter}) ducks a
+tutti at $fff$ rather than clipping it; a score's \musil{'level} (0.5 by default) scales it
+before that. So Play starts within a second whatever the score's length, Stop stops at
+once, and neither the windows nor the interpreter can stall the music, nor the music them;
+\musil{cues-status} says how the loader is doing. \musil{render} and \musil{render-hall}
+are the offline way, the whole score as one buffer (\musil{score-hall-mix}, cached on the
+score); \musil{score-schedule} is the older live way, every event on the clock at once;
+\musil{play} and \musil{play-file} of \texttt{live} still play a buffer or a file.
 
 \textbf{The roll} (\musil{display}) draws the score like music: one staff per instrument
 for the notes, in orchestral order, with a drawn treble or bass clef chosen by the
@@ -1326,9 +1337,12 @@ Shift, time; with Ctrl it zooms), and scrollbars show the visible part once zoom
 hovering shows an event's data and the time; a double-click plays that event alone; a
 click in the background places the cursor, \textbf{Play} (or Space) plays the score from
 it, in the hall, \textbf{Stop} stops, and the red playhead follows (any \musil{play-score}
-too, through \musil{playhead}); \textbf{Render...} asks for a file name and writes the
-score in the hall (\musil{render-hall}), scaled so that it never clips, as \musil{play-score}
-is. It is a player of the code's score, not an editor: the
+too, through \musil{playhead}); the roll's picture is drawn once and kept, only the
+playhead and the hovered event are drawn at each frame, so a score of thousands of notes
+plays without the drawing taking the machine; \textbf{Render...} asks for a file name and writes the
+score in the hall (\musil{render-hall}), scaled so that it never clips (the window is slow
+to answer meanwhile: a render is the whole score at once); \textbf{Save...} writes the
+score's notes as an Orchidea connection (below). It is a player of the code's score, not an editor: the
 score lives in the code, and a change is a line of Musil. \musil{score-shift!}, \musil{score-scale!},
 \musil{score-select}, \musil{score-sort!}, \musil{score-remove!}, \musil{score-merge} are the
 transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!},
@@ -1336,6 +1350,18 @@ transformations; \musil{event-move!}, \musil{event-length!}, \musil{event-gain!}
 layout with its own positions kept, cut to the event's duration with a fade (0 means its
 whole length), at any depth; a score cannot contain itself, and the roll opens a score
 inside on a double-click.
+
+\textbf{Saving and loading.} \musil{score-save} writes a score's notes as an Orchidea
+\emph{connection}, the text Orchidea exports and its Max patches read: an orchestra line,
+then one segment per onset (in ms) holding one solution whose lines are \musil{[ note
+duration instrument style pitch dynamics other file cents ]}. Only notes travel: a file, a
+buffer, a synth, a call or a score inside has no place in the format and is left out
+(the count is printed), and a note's gain is not kept (the sample's dynamics are).
+\musil{score-load db path name} reads one back into a score, each note's sound found in
+the database by its file name under any of the database's folders, or by instrument,
+pitch, dynamics and style when that file is not there; an unpitched sound becomes a file
+event. So an orchestration made by a script can be kept, reloaded, displayed and played
+later, and a connection exported by Orchidea can be played and shown here.
 
 \textbf{Elements.} Pitches are names (\musil{"C4"}, \musil{"F\#3"}) or MIDI numbers, nil a
 rest; a \musil{rhythm} is a list of durations in seconds, negative for a pause
@@ -1569,7 +1595,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{modulations.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; Grisey's \emph{Modulations} simulated section by section; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off a waveform; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

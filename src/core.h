@@ -158,6 +158,7 @@ inline std::string str_of(const vptr& v) {
     return "";
 }
 inline bool equal(const vptr& a, const vptr& b) {
+    if (a == b) return true;                       // the same object: equal without a walk (a score holds thousands of notes, each its database)
     if (!a || !b) return (!a || a->t == Value::NIL) && (!b || b->t == Value::NIL);
     if (a->t != b->t) return false;
     switch (a->t) {
@@ -769,6 +770,9 @@ inline vptr fn_ne(vlist& a, Interp& i) {
     return v_bool(!equal(a[0], a[1])); }
 // (equal? a b) structural equality as a single 1/0, also for vectors and nested lists
 inline vptr fn_equalp(vlist& a, Interp&) { return v_bool(equal(a[0], a[1])); }
+// (same? a b) are a and b the same object (not merely equal in value)? For records and lists: the very one, however
+//   large; a number or a string is never the same object as another copy of it
+inline vptr fn_samep(vlist& a, Interp&) { return v_bool(a[0] == a[1]); }
 // (sin x) (cos x) (tan x) (asin x) (acos x) (atan x) (sqrt x) (exp x) (log x) (log2 x) (log10 x) trigonometry and logs, elementwise
 // (abs x) (floor x) (ceil x) (round x) rounding and magnitude, elementwise
 // (tanh x) hyperbolic tangent, elementwise (a soft clip for signals)
@@ -956,7 +960,7 @@ inline Interp::Interp() {
     // Arithmetic                                   name        fn        min max
     a("+", fn_add, 0, N); a("-", fn_sub, 0, N); a("*", fn_mul, 0, N); a("/", fn_div, 0, N);
     a("<", fn_lt, 2, 2); a(">", fn_gt, 2, 2); a("<=", fn_le, 2, 2); a(">=", fn_ge, 2, 2);
-    a("==", fn_eq, 2, 2); a("!=", fn_ne, 2, 2); a("equal?", fn_equalp, 2, 2);
+    a("==", fn_eq, 2, 2); a("!=", fn_ne, 2, 2); a("equal?", fn_equalp, 2, 2); a("same?", fn_samep, 2, 2);
     for (auto& u : { std::pair<const char*, op_t>{"sin", fn_sin}, {"cos", fn_cos}, {"tan", fn_tan}, {"asin", fn_asin}, {"acos", fn_acos}, {"atan", fn_atan},
                      {"sqrt", fn_sqrt}, {"exp", fn_exp}, {"log", fn_log}, {"log2", fn_log2}, {"log10", fn_log10}, {"tanh", fn_tanh},
                      {"abs", fn_abs}, {"floor", fn_flr}, {"ceil", fn_cei}, {"round", fn_rnd}, {"not", fn_not} })

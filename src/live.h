@@ -27,6 +27,7 @@
 
 #pragma once
 #include "core.h"
+#include "signals.h"
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_ENCODING
 #define MA_NO_DECODING
@@ -49,6 +50,8 @@
 #include <deque>
 #include <map>
 #include <random>
+#include <thread>
+#include <condition_variable>
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -72,7 +75,9 @@ struct command_queue {                        // fixed ring, no allocation on th
     static const int CAP = 4096;
     audio_command slots[CAP];
     std::atomic<int> head{0}, tail{0};
-    bool push(audio_command c) {              // called by the interpreter thread only
+    std::mutex producers;                     // the interpreter and the cue loader both push; the audio thread only pops
+    bool push(audio_command c) {
+        std::lock_guard<std::mutex> g(producers);
         int t = tail.load(std::memory_order_relaxed), n = (t + 1) % CAP;
         if (n == head.load(std::memory_order_acquire)) return false;
         slots[t] = std::move(c); tail.store(n, std::memory_order_release); return true;
@@ -364,6 +369,116 @@ struct synth_instance {
     void render(int n) { for (auto& nd : nodes) nd->process(nodes, n); }
 };
 
+
+// --- the bus reverb: the whole output through an impulse response (the concert hall), partitioned convolution on a
+//     thread of its own. The callback hands it the mix in hops of P frames and takes the wet signal back DELAY_HOPS
+//     later (the dry signal is delayed the same, so they meet); the thread does the FFT work, however long the
+//     response is, and the callback never waits for it (a late hop plays without its reverb rather than glitching).
+//     Set from the interpreter with (bus-reverb ir dry wet), taken off with (bus-reverb-off).
+struct bus_reverb_ir {
+    size_t parts = 0; int channels = 1;
+    std::vector<std::vector<double>> H;       // [channel] parts * 2N doubles: the partitions' spectra, interleaved complex
+};
+struct bus_reverb {
+    static const size_t P = 2048, N = 4096, DELAY_HOPS = 2, RING = 16;
+    std::atomic<bus_reverb_ir*> pending{nullptr};   // a new response from the interpreter, taken by the worker
+    std::atomic<double> dry{1.0}, wet{0.0};
+    std::atomic<bool> on{false};
+    int channels = 2;
+    std::vector<float> in_ring, out_ring, dry_ring;   // RING hops in, RING hops out, DELAY_HOPS hops of dry
+    std::atomic<size_t> in_hops{0}, out_hops{0};      // hops completed by the callback / by the worker
+    size_t fill = 0, dry_pos = 0;
+    std::thread worker; std::atomic<bool> quit{false};
+    bus_reverb_ir* ir = nullptr;                      // worker side
+    std::vector<std::vector<double>> fdl;             // [channel] parts * 2N: the ring of past input spectra
+    std::vector<std::vector<double>> prev;            // [channel] the last P input samples (overlap-save)
+    std::vector<double> X, Y; size_t fdl_pos = 0, processed = 0;
+    void setup(int ch) {
+        channels = ch; in_ring.assign(RING * P * ch, 0.0f); out_ring.assign(RING * P * ch, 0.0f); dry_ring.assign(DELAY_HOPS * P * ch, 0.0f);
+        fill = 0; dry_pos = 0; in_hops = 0; out_hops = 0; processed = 0; fdl_pos = 0; X.assign(2 * N, 0.0); Y.assign(2 * N, 0.0);
+    }
+    void start() { quit = false; worker = std::thread([this]() { run(); }); }
+    void stop() { quit = true; if (worker.joinable()) worker.join(); bus_reverb_ir* p = pending.exchange(nullptr); delete p; delete ir; ir = nullptr; }
+    ~bus_reverb() { stop(); }
+    // the callback: one frame in and out, in place
+    inline void process_frame(float* frame) {
+        size_t hop = in_hops.load(std::memory_order_relaxed), slot = hop % RING;
+        double d = dry.load(std::memory_order_relaxed), w = wet.load(std::memory_order_relaxed);
+        bool have = hop >= DELAY_HOPS && out_hops.load(std::memory_order_acquire) > hop - DELAY_HOPS;
+        size_t oslot = hop >= DELAY_HOPS ? (hop - DELAY_HOPS) % RING : 0;
+        for (int ch = 0; ch < channels; ch++) {
+            float x = frame[ch];
+            in_ring[(slot * P + fill) * channels + ch] = x;
+            float wv = have ? out_ring[(oslot * P + fill) * channels + ch] : 0.0f;
+            float dv = dry_ring[dry_pos * channels + ch]; dry_ring[dry_pos * channels + ch] = x;
+            frame[ch] = (float)(d * dv + w * wv);
+        }
+        if (++dry_pos >= DELAY_HOPS * P) dry_pos = 0;
+        if (++fill >= P) { fill = 0; in_hops.store(hop + 1, std::memory_order_release); }
+    }
+    void run() {
+        while (!quit) {
+            bus_reverb_ir* fresh = pending.exchange(nullptr);
+            if (fresh) { delete ir; ir = fresh; fdl.assign((size_t)channels, std::vector<double>(ir->parts * 2 * N, 0.0)); prev.assign((size_t)channels, std::vector<double>(P, 0.0)); fdl_pos = 0; }
+            if (in_hops.load(std::memory_order_acquire) <= processed) { std::this_thread::sleep_for(std::chrono::milliseconds(1)); continue; }
+            size_t h = processed, slot = h % RING;
+            for (int ch = 0; ch < channels; ch++) {
+                float* out = &out_ring[(slot * P) * channels];
+                if (!ir || ir->parts == 0) { for (size_t k = 0; k < P; k++) out[k * channels + ch] = 0.0f; continue; }
+                std::fill(X.begin(), X.end(), 0.0);
+                for (size_t k = 0; k < P; k++) { X[2 * k] = prev[(size_t)ch][k]; X[2 * (P + k)] = in_ring[(slot * P + k) * channels + ch]; prev[(size_t)ch][k] = X[2 * (P + k)]; }
+                fft_inplace(X.data(), N, -1);
+                std::copy(X.begin(), X.end(), fdl[(size_t)ch].begin() + (long)(fdl_pos * 2 * N));
+                std::fill(Y.begin(), Y.end(), 0.0);
+                const std::vector<double>& Hc = ir->H[(size_t)std::min(ch, ir->channels - 1)];
+                for (size_t k = 0; k < ir->parts; k++) {
+                    size_t idx = (fdl_pos + ir->parts - k) % ir->parts;
+                    const double* F = &fdl[(size_t)ch][idx * 2 * N]; const double* G = &Hc[k * 2 * N];
+                    for (size_t b = 0; b < N; b++) { double ar = F[2 * b], ai = F[2 * b + 1], br = G[2 * b], bi = G[2 * b + 1]; Y[2 * b] += ar * br - ai * bi; Y[2 * b + 1] += ar * bi + ai * br; }
+                }
+                fft_inplace(Y.data(), N, 1);
+                for (size_t k = 0; k < P; k++) out[k * channels + ch] = (float)(Y[2 * (P + k)] / (double)N);
+            }
+            if (ir && ir->parts) fdl_pos = (fdl_pos + 1) % ir->parts;
+            processed = h + 1; out_hops.store(processed, std::memory_order_release);
+        }
+    }
+};
+
+
+// --- the cue player: a whole score handed to the engine, its sounds read from disk by a thread ahead of the clock ---
+//     A cue is a sound to play at a clock time: a file (read, cut to its duration with a fade, and played at its own
+//     rate and at the note's pitch shift by the voice) or a buffer already in memory. The interpreter builds the list
+//     once (score-play-now) and is not involved again: a loader thread wakes every 20 ms, reads the files of the cues
+//     due within the next seconds (a cache of decoded files, bounded in bytes) and queues them as voices, so a stall
+//     of the interpreter or of the windows cannot stop the music, and the music cannot stall them.
+struct cue { double when = 0; std::string path; std::shared_ptr<const std::vector<float>> buffer; int channels = 1; double buffer_sr = 44100; double rate = 1, amp = 1, pan = 0, skip = 0, dur = 0; };
+struct decoded_sound { std::vector<float> data; int channels = 1; double sr = 44100; size_t frames = 0; long long used = 0; };
+struct cue_player {
+    std::vector<cue> cues; size_t next = 0; std::atomic<bool> active{false}, quit{false}; std::mutex m; std::thread loader;
+    std::map<std::string, decoded_sound> cache; size_t cache_bytes = 0, cache_limit = (size_t)2 << 30; long long tick = 0;   // 2 GB of decoded sounds by default
+    double lookahead = 3.0; std::atomic<size_t> loaded{0}, failed{0}; std::string last_error;
+    void start() { quit = false; loader = std::thread([this]() { run(); }); }
+    void stop() { quit = true; if (loader.joinable()) loader.join(); }
+    ~cue_player() { stop(); }
+    void set(std::vector<cue> list) { std::lock_guard<std::mutex> g(m); cues = std::move(list); next = 0; loaded = 0; failed = 0; active = true; }
+    void clear() { std::lock_guard<std::mutex> g(m); active = false; cues.clear(); next = 0; }
+    const decoded_sound& get(const std::string& path) {          // loader thread only
+        auto it = cache.find(path);
+        if (it != cache.end()) { it->second.used = ++tick; return it->second; }
+        WAVHeader h; std::vector<std::vector<double>> ch = read_wav_raw(path.c_str(), h);
+        decoded_sound d; d.channels = (int)std::max<size_t>(1, ch.size()); d.sr = h.sampleRate; d.frames = ch.empty() ? 0 : ch[0].size();
+        d.data.resize(d.frames * d.channels); for (size_t k = 0; k < d.frames; k++) for (int c = 0; c < d.channels; c++) d.data[k * d.channels + c] = (float)ch[(size_t)c][k];
+        cache_bytes += d.data.size() * sizeof(float);
+        while (cache_bytes > cache_limit && cache.size() > 0) {  // the least recently used goes
+            auto oldest = cache.begin(); for (auto j = cache.begin(); j != cache.end(); ++j) if (j->second.used < oldest->second.used) oldest = j;
+            cache_bytes -= oldest->second.data.size() * sizeof(float); cache.erase(oldest);
+        }
+        d.used = ++tick; return cache[path] = std::move(d);
+    }
+    void run();
+};
+
 // --- the engine ---
 struct audio_engine {
     ma_device device{}; bool open = false, running = false, null_backend = false;
@@ -372,13 +487,16 @@ struct audio_engine {
     std::atomic<double> master{1.0}, load{0.0}, peak{0.0};
     std::atomic<int> active_voices{0};
     command_queue queue;
-    static const int MAX_VOICES = 128;
+    static const int MAX_VOICES = 256;
     voice voices[MAX_VOICES];
     std::vector<std::shared_ptr<synth_instance>> synths;   // owned by the audio thread once added
     std::map<long, std::shared_ptr<synth_instance>> compiled;   // interpreter side: every instance created, for parameter lookups
     std::atomic<long> next_id{1};
     std::vector<float> bus;                   // channels * frames, reused
     std::vector<audio_command> pending;       // timed commands not yet due (audio thread only)
+    bus_reverb reverb;                        // the hall on the whole output, when on
+    cue_player cues;                          // a score's sounds, read and queued by the loader thread
+    std::atomic<bool> limiter{true}; double limit_gain = 1.0;   // the bus limiter (audio thread state)
 
     static void callback(ma_device* dev, void* out, const void*, ma_uint32 frames) {
         static_cast<audio_engine*>(dev->pUserData)->render(static_cast<float*>(out), (int)frames);
@@ -437,8 +555,14 @@ struct audio_engine {
             for (int ch = 0; ch < channels; ch++) { const float* src = o.out[std::min(ch, o.channels - 1)].data(); for (int f = 0; f < frames; f++) out[f * channels + ch] += src[f]; }
         }
         synths.erase(std::remove_if(synths.begin(), synths.end(), [](const std::shared_ptr<synth_instance>& sy) { return !sy->active; }), synths.end());
+        if (reverb.on.load(std::memory_order_relaxed)) for (int f = 0; f < frames; f++) reverb.process_frame(out + f * channels);
         double m = master.load();
         for (int k = 0; k < frames * channels; k++) { out[k] *= (float)m; pk = std::max(pk, (double)std::fabs(out[k])); }
+        if (limiter.load(std::memory_order_relaxed)) {           // a peak limiter on the bus: a tutti adds up, and clipping is worse than a dip
+            double target = pk * limit_gain > 0.95 ? 0.95 / pk : 1.0;
+            limit_gain += (target - limit_gain) * (target < limit_gain ? 0.6 : 0.02);   // fast to duck, slow to come back
+            if (limit_gain < 0.999) { for (int k = 0; k < frames * channels; k++) out[k] *= (float)limit_gain; pk *= limit_gain; }
+        }
         active_voices = active; peak = pk; clock += frames;
         double us = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         load = us / ((double)frames / sr);
@@ -483,14 +607,114 @@ inline vptr live_open(vlist& a, Interp& i) {
     e.sr = e.device.sampleRate; e.channels = e.device.playback.channels; e.block = (int)e.device.playback.internalPeriodSizeInFrames;
     e.clock = 0; e.open = true; e.running = false;
     for (auto& v : e.voices) v.active = false;
+    e.reverb.stop(); e.reverb.on = false; e.reverb.setup(e.channels); e.reverb.start();
+    e.cues.stop(); e.cues.clear(); e.cues.start();
     return v_nil();
 }
 // (audio-close) stop and close the device
 inline vptr live_close(vlist&, Interp&) {
     audio_engine& e = engine(); if (!e.open) return v_nil();
     ma_device_uninit(&e.device); e.open = false; e.running = false; e.synths.clear(); e.compiled.clear(); e.pending.clear();
+    e.reverb.on = false; e.reverb.stop(); e.cues.clear(); e.cues.stop();
     sched_reset(); controls().clear(); return v_nil();
 }
+// the loader: the cues due within the lookahead are made into voices (the file read once, cut, faded, queued at their time)
+inline void cue_player::run() {
+    while (!quit) {
+        if (!active) { std::this_thread::sleep_for(std::chrono::milliseconds(20)); continue; }
+        audio_engine& e = engine(); double now = (double)e.clock.load() / e.sr;
+        std::vector<cue> due;
+        { std::lock_guard<std::mutex> g(m);
+          while (active && next < cues.size() && cues[next].when < now + lookahead) due.push_back(cues[next++]);
+          if (next >= cues.size() && cues.size() > 0 && now > cues.back().when + cues.back().dur + 1) active = false; }
+        for (cue& c : due) {
+            audio_command cmd; cmd.kind = audio_command::PLAY; cmd.id = e.next_id++; cmd.rate = c.rate; cmd.amp = c.amp; cmd.pan = std::max(-1.0, std::min(1.0, c.pan)); cmd.loop = false;
+            cmd.at = (long long)(std::max(0.0, c.when) * e.sr);
+            if (c.buffer) { cmd.buffer = c.buffer; cmd.channels = c.channels; cmd.buffer_sr = c.buffer_sr; }
+            else {
+                try {
+                    const decoded_sound& d = get(c.path);
+                    size_t start = (size_t)std::floor(c.skip * d.sr * c.rate), need = (size_t)std::floor(c.dur * d.sr * c.rate);
+                    if (start >= d.frames) { failed++; continue; }
+                    size_t n = std::min(need, d.frames - start);
+                    auto buf = std::make_shared<std::vector<float>>(d.data.begin() + (long)(start * d.channels), d.data.begin() + (long)((start + n) * d.channels));
+                    if (n < d.frames - start) {                               // cut short: a fade over the last 20 ms (or a quarter of it)
+                        size_t fade = std::max<size_t>(1, std::min<size_t>((size_t)(0.02 * d.sr * c.rate), n / 4));
+                        for (size_t k = 0; k < fade; k++) { float g = (float)k / fade; for (int ch = 0; ch < d.channels; ch++) (*buf)[(n - 1 - k) * d.channels + ch] *= g; }
+                    }
+                    cmd.buffer = buf; cmd.channels = d.channels; cmd.buffer_sr = d.sr;
+                } catch (std::exception& ex) { failed++; last_error = ex.what(); continue; }
+            }
+            if (!e.queue.push(cmd)) { failed++; last_error = "the command queue is full"; }
+            else loaded++;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+}
+// (play-cues cues) hand a list of cues to the engine: each (list when path skip dur rate amp pan) for a file (when in
+//   seconds on the clock; skip: seconds of the sound left out at its start; dur: seconds to play) or (list when buffer
+//   sr 0 dur rate amp pan) for a buffer (a vector or a list of channels) already in memory. The loader thread reads
+//   and queues them ahead of the clock; the interpreter is free. => the number of cues
+inline vptr live_play_cues(vlist& a, Interp& i) {
+    audio_engine& e = need_open(i); std::vector<cue> list;
+    for (auto& item : i.list(a[0])) {
+        vlist& f = i.list(item); if (f.size() < 7) i.bad("play-cues: a cue is (list when path skip dur rate amp pan) or (list when buffer sr 0 dur rate amp pan)");
+        cue c; c.when = i.scalar(f[0]);
+        if (f[1]->t == Value::STR) { c.path = i.read_path(i.str(f[1])); c.skip = i.scalar(f[2]); c.dur = i.scalar(f[3]); c.rate = i.scalar(f[4]); c.amp = i.scalar(f[5]); c.pan = i.scalar(f[6]); }
+        else {
+            if (f.size() < 8) i.bad("play-cues: a buffer cue is (list when buffer sr 0 dur rate amp pan)");
+            std::vector<const varr*> ch; if (f[1]->t == Value::NUM) ch.push_back(&f[1]->num); else for (auto& cc : i.list(f[1])) ch.push_back(&i.num(cc));
+            if (ch.empty() || ch[0]->size() == 0) continue;
+            auto buf = std::make_shared<std::vector<float>>(ch[0]->size() * ch.size());
+            for (size_t k = 0; k < ch[0]->size(); k++) for (size_t cc = 0; cc < ch.size(); cc++) (*buf)[k * ch.size() + cc] = (float)(*ch[cc])[k];
+            c.buffer = buf; c.channels = (int)ch.size(); c.buffer_sr = i.scalar(f[2]); c.dur = i.scalar(f[4]); c.rate = i.scalar(f[5]); c.amp = i.scalar(f[6]); c.pan = i.scalar(f[7]);
+        }
+        if (c.rate <= 0) c.rate = 1;
+        list.push_back(std::move(c));
+    }
+    std::sort(list.begin(), list.end(), [](const cue& x, const cue& y) { return x.when < y.when; });
+    size_t n = list.size(); e.cues.set(std::move(list)); return v_num((double)n);
+}
+// (stop-cues) drop the cues not yet played (the voices playing are stopped by stop-all)
+inline vptr live_stop_cues(vlist&, Interp&) { engine().cues.clear(); return v_nil(); }
+// (cues-status) => (list active next total loaded failed cache-mb last-error)
+inline vptr live_cues_status(vlist&, Interp&) {
+    cue_player& c = engine().cues; std::lock_guard<std::mutex> g(c.m);
+    return v_list({ v_bool(c.active), v_num((double)c.next), v_num((double)c.cues.size()), v_num((double)c.loaded), v_num((double)c.failed), v_num((double)c.cache_bytes / 1e6), v_str(c.last_error) });
+}
+// (cue-cache-limit bytes) how much decoded sound the loader keeps (2 GB by default); (cue-lookahead seconds) how far
+//   ahead of the clock it reads (3 s)
+inline vptr live_cue_cache_limit(vlist& a, Interp& i) { engine().cues.cache_limit = (size_t)std::max(0.0, i.scalar(a[0])); return v_nil(); }
+inline vptr live_cue_lookahead(vlist& a, Interp& i) { engine().cues.lookahead = std::max(0.5, i.scalar(a[0])); return v_nil(); }
+// (bus-reverb ir dry wet) the whole output through an impulse response (a vector, or a list of one response per
+//   channel, at the device's rate), mixed dry and wet; a delay of (bus-reverb-latency) seconds applies to everything
+//   while it is on. (bus-reverb-off) takes it off; (bus-reverb-latency) => seconds (0 when off)
+inline vptr live_bus_reverb(vlist& a, Interp& i) {
+    audio_engine& e = need_open(i);
+    vlist chans; if (a[0]->t == Value::LIST) chans = i.list(a[0]); else chans.push_back(a[0]);
+    if (chans.empty()) i.bad("bus-reverb: an empty response");
+    bus_reverb_ir* ir = new bus_reverb_ir(); ir->channels = (int)chans.size();
+    size_t longest = 0; for (auto& c : chans) longest = std::max(longest, i.num(c).size());
+    const size_t P = bus_reverb::P, N = bus_reverb::N; ir->parts = (longest + P - 1) / P;
+    for (auto& c : chans) {
+        const varr& h = i.num(c); std::vector<double> H(ir->parts * 2 * N, 0.0);
+        for (size_t k = 0; k < ir->parts; k++) {
+            double* part = &H[k * 2 * N];
+            for (size_t j = 0; j < P && k * P + j < h.size(); j++) part[2 * j] = h[k * P + j];
+            fft_inplace(part, N, -1);
+        }
+        ir->H.push_back(std::move(H));
+    }
+    bus_reverb_ir* old = e.reverb.pending.exchange(ir); delete old;
+    e.reverb.dry = i.scalar(a[1]); e.reverb.wet = i.scalar(a[2]); e.reverb.on = true;
+    return v_num((double)ir->parts);
+}
+inline vptr live_bus_reverb_off(vlist&, Interp&) { engine().reverb.on = false; return v_nil(); }
+// (bus-limiter on) the peak limiter on the output (on by default): the bus is held under 0.95 with a fast duck and a
+//   slow recovery instead of clipping; (bus-limiter 0) takes it off
+inline vptr live_bus_limiter(vlist& a, Interp& i) { engine().limiter = i.scalar(a[0]) != 0; return v_nil(); }
+inline vptr live_bus_reverb_latency(vlist&, Interp&) { audio_engine& e = engine(); return v_num(e.open && e.reverb.on ? (double)(bus_reverb::DELAY_HOPS * bus_reverb::P) / e.sr : 0.0); }
+
 // (audio-start) (audio-stop) run or pause the callback; the clock advances only while running
 inline vptr live_start(vlist&, Interp& i) { audio_engine& e = need_open(i); if (!e.running) { if (ma_device_start(&e.device) != MA_SUCCESS) i.bad("cannot start the device"); e.running = true; } return v_nil(); }
 inline vptr live_stop(vlist&, Interp& i) { audio_engine& e = need_open(i); if (e.running) { ma_device_stop(&e.device); e.running = false; } return v_nil(); }
@@ -818,8 +1042,27 @@ struct control_edit_queue { std::mutex m; std::deque<std::pair<std::string, doub
 inline control_edit_queue& control_edits() { static control_edit_queue q; return q; }
 inline void queue_control_edit(const std::string& name, double value) { std::lock_guard<std::mutex> g(control_edits().m); control_edits().edits.push_back({ name, value }); }
 
-// The idle work: control edits, due loops, incoming OSC. Called from the interpreter's idle hook (never re-entered).
+// --- idle hooks: Musil functions called by name from the idle work, at most every 10 ms (a score player's tick) ---
+inline std::vector<std::string>& idle_hooks() { static std::vector<std::string> h; return h; }
+// (idle-hook! name) call the global function of that name from the idle work, until (idle-hook-off! name); an error
+//   in it is printed and takes it off
+inline vptr live_idle_hook(vlist& a, Interp& i) { std::string n = str_of(a[0]); for (auto& h : idle_hooks()) if (h == n) return v_nil(); idle_hooks().push_back(n); return v_nil(); }
+// (idle-hooks) => the names hooked
+inline vptr live_idle_hooks(vlist&, Interp&) { vlist out; for (auto& n : idle_hooks()) out.push_back(v_str(n)); return v_list(std::move(out)); }
+inline vptr live_idle_hook_off(vlist& a, Interp& i) { std::string n = str_of(a[0]); auto& h = idle_hooks(); h.erase(std::remove(h.begin(), h.end(), n), h.end()); return v_nil(); }
+inline void run_idle_hooks(Interp& i) {
+    static auto last = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now(); if (std::chrono::duration<double>(now - last).count() < 0.01) return; last = now;
+    std::vector<std::string> names = idle_hooks();
+    for (auto& n : names) {
+        vptr fn = i.global->find(n);
+        if (!fn || fn->t != Value::FN) { vlist a{ v_str(n) }; live_idle_hook_off(a, i); continue; }
+        try { i.call_fn(fn, {}); } catch (std::exception& e) { *i.out << "idle hook " << n << ": " << e.what() << "\n" << std::flush; vlist a{ v_str(n) }; live_idle_hook_off(a, i); }
+    }
+}
+// The idle work: control edits, due loops, incoming OSC, the idle hooks. Called from the interpreter's idle hook (never re-entered).
 inline void live_idle(Interp& i) {
+    run_idle_hooks(i);
     scheduler_state& s = sched();
     { std::deque<std::pair<std::string, double>> edits; { std::lock_guard<std::mutex> g(control_edits().m); edits.swap(control_edits().edits); }
       for (auto& e : edits) { control* c = find_control(e.first); if (c) { c->value = std::max(c->lo, std::min(c->hi, e.second)); apply_control(i, *c); } } }
@@ -973,7 +1216,9 @@ inline void add_live(Interp& i) {
     i.def("audio-start", live_start, 0, 0); i.def("audio-stop", live_stop, 0, 0);
     i.def("audio-status", live_status, 0, 0); i.def("audio-devices", live_devices, 0, 0); i.def("audio-time", live_time, 0, 0);
     i.def("play-buffer", live_play_buffer, 7, 7); i.def("stop", live_stop_voice, 1, 1); i.def("stop-all", live_stop_all, 0, 0);
-    i.def("master-gain", live_master, 1, 1); i.def("voice-set", live_voice_set, 3, 3); i.def("voices", live_voices, 0, 0);
+    i.def("master-gain", live_master, 1, 1); i.def("bus-reverb", live_bus_reverb, 3, 3); i.def("bus-reverb-off", live_bus_reverb_off, 0, 0); i.def("bus-limiter", live_bus_limiter, 1, 1);
+    i.def("play-cues", live_play_cues, 1, 1); i.def("stop-cues", live_stop_cues, 0, 0); i.def("cues-status", live_cues_status, 0, 0); i.def("cue-cache-limit", live_cue_cache_limit, 1, 1); i.def("cue-lookahead", live_cue_lookahead, 1, 1); i.def("bus-reverb-latency", live_bus_reverb_latency, 0, 0);
+    i.def("idle-hook!", live_idle_hook, 1, 1); i.def("idle-hook-off!", live_idle_hook_off, 1, 1); i.def("idle-hooks", live_idle_hooks, 0, 0); i.def("voice-set", live_voice_set, 3, 3); i.def("voices", live_voices, 0, 0);
     i.def("synth", live_synth, 1, 1); i.def("set-param", live_set_param, 3, 5); i.def("free", live_free, 1, 1);
     i.def("synth-params", live_synth_params, 1, 1); i.def("synths", live_synths, 0, 0); i.def("streamable", live_streamable, 0, 0);
     i.def("synth-render", live_synth_render, 3, 4);

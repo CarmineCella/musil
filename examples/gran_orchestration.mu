@@ -9,9 +9,9 @@
 # Usage: musil gran_orchestration.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 4)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4, ordinario only
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4, ordinario only
 # var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh
-# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every technique
+var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every technique
 var sr 44100
 
 # --- the orchestra from the database: every instrument on disk, the strings doubled ----------------------------

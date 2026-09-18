@@ -124,6 +124,18 @@ cmake --build build --target uninstall
    "wetness" of the target (the decay after each attack) would be the per-frame alternative; short
    techniques are chosen by a table of names because the average spectra in a database do not tell a
    short sound from a long one.
+   Playback (done): a score is handed to the engine as cues and a loader thread reads the sounds ahead of
+   the clock (`play-cues` in live: the interpreter is not involved while a score plays); the hall is a
+   partitioned convolution on the output bus, on its own thread (`bus-reverb`), with a limiter. The old
+   whole-score render before playing froze the window for minutes on a long FullSOL score and filled the
+   memory; and `register-score` compared a score with itself by value (every note carrying its database),
+   which cost a minute on FullSOL at every Play: `equal?` now answers at once for the same object, and
+   `same?` asks for identity. The roll's picture is cached; only the playhead is drawn per frame. `score-save` / `score-load` in Orchidea's connection format (notes only; Save... in the
+   roll). Speed: `connection` no longer compares segments by value, `merge-continuations` is indexed,
+   instrument ranges are cached, the sinc resampler is tabulated (10x).
+   Open: dynamic features per sound (following the whole file rather than its average spectrum) would let
+   the morphological pursuit choose playing styles by their evolution in time, and are what Maple needs;
+   they would be a second feature file next to the published ones, not a change to those.
    Next: `orchestrate-mimetic` (Orchidea: the search over combinations for a target's spectrum, sharing
    target-analyse and mp), then sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and
    MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
