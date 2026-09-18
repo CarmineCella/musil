@@ -238,7 +238,7 @@ if(MUSIL_TESTS)
   set(NEEDS_algorithmic_comp "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_gran_orchestration "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_modulations "${D}/microsol/microsol.spectrum.db")
-  set(NEEDS_morph_orchestration "${D}/microsol/microsol.spectrum.db")
+  set(NEEDS_morph_orchestration "${D}/A_minor.wav")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test

@@ -113,9 +113,17 @@ cmake --build build --target uninstall
 5. **Orchestrations** (round one done): a result record (segments, solutions, connections) shared by
    every orchestrator; `orchestrate-granular` with envelopes, an orchestra of players (ossia, pairs)
    and five ways of choosing pitches; `midi-read` and MIDI files as fragments (src/music/midi.h).
-   `orchestrate-morphological` (done): `target-analyse` (descriptors in signals), envelopes from the
-   curves, a matching pursuit (`mp` in scientific) at every event over the free players' sounds with an
-   orchestral residual, atom persistence for durations, cents from the target's peaks; no segmentation.
+   `orchestrate-morphological` (done, rebuilt from first principles): `target-analyse` (descriptors in
+   signals: flux peaks counted a second for the density, centroid and spread for the register, loudness
+   for the dynamics), the granulator driven by those envelopes, and at every event a matching pursuit
+   (`mp` in scientific) over the free players' sounds at the target's spectral peaks against the
+   target's spectrum less what sounds (an orchestral residual): instrument, pitch and technique from the
+   atom, the length from how long the target keeps the sound (atom-persistence), cents from the peaks
+   against the sound's own frequency; no segmentation; no change to the published database formats.
+   Open: the length of a note is the persistence of its atom in the target (a per-note measure); a
+   "wetness" of the target (the decay after each attack) would be the per-frame alternative; short
+   techniques are chosen by a table of names because the average spectra in a database do not tell a
+   short sound from a long one.
    Next: `orchestrate-mimetic` (Orchidea: the search over combinations for a target's spectrum, sharing
    target-analyse and mp), then sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and
    MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free

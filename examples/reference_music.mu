@@ -135,11 +135,12 @@ var tsc (score "target" 44100)
 event tsc 0 2 (note db 'Vc "C4" 'mf 'ord)
 event tsc 0.5 0.3 (note db 'Ob "E4" 'mf 'ord)
 var tg (target-analyse (head (score-render tsc "mono")) 44100 (get db 'block) 1024)
-print "target-analyse  :" (fixed (get tg 'seconds) 2) "s," (length (get tg 'spectra)) "frames; curves: rate, polyphony, centroid, low, loudness, coherence; events" (length (get tg 'events))
-print "target-envelopes: the granulator's parameters from the curves:" (sort-list (map (keys (target-envelopes tg orch (record (list)))) str))
+print "target-analyse  :" (fixed (get tg 'seconds) 2) "s," (length (get tg 'spectra)) "frames; curves: density (flux peaks a second), centroid, spread, low, loudness;" (length (get tg 'attacks)) "flux peaks"
+print "target-envelopes: the granulator's parameters from the curves:" (sort-list (map (keys (target-envelopes tg (record (list)))) str))
+print "target-peaks    : the pitches the notes may take, at 1 s:" (map (vec->list (target-peaks tg 1 6)) (function (f) (midi->pitch (round (hz->midi f)))))
 seed 3
 var mo (orchestrate-morphological db orch tg (record (list 'solutions 1)))
-print "orchestrate-morphological:" (length (best-connection mo)) "notes with cents, e.g." (get (last (head (best-connection mo))) 'label) (get (last (head (best-connection mo))) 'cents) "cents; a matching pursuit at every event, no segmentation"
+print "orchestrate-morphological:" (length (best-connection mo)) "notes with cents, e.g." (get (last (head (best-connection mo))) 'label) (get (last (head (best-connection mo))) 'cents) "cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation"
 
 # --- 6. More queries, making a database, playing ------------------------------------------------------
 print ""

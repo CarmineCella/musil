@@ -270,6 +270,12 @@ check (< (spectral-similarity (getidx spm 5) (getidx spm 20)) 0.6) "spectral-sim
 var erm (event-rate m1 sr 1 512)
 check (== (length erm) 3) "event-rate: times, rates, and the events kept"
 check (and (> (length (last erm)) 0) (< (length (last erm)) 8)) "event-rate: a few events, not the vibrato's flux peaks"
+var fp (flux-peaks m1 sr 1024 256 2 21)
+check (and (>= (length fp) 1) (<= (length fp) 8)) "flux-peaks: the noise burst and the tones' starts, not the vibrato"
+check (all? (map (vec->list (diff fp)) (function (d) (>= d 0.05))) identity) "flux-peaks: at least 50 ms apart"
+var pd (peak-density (vec 0.5 0.6 0.7 2.5) 4 1 0.5)
+check (== (length pd) 8) "peak-density: one value per step"
+check (and (== (getidx pd 1) 3) (== (getidx pd 5) 1) (== (getidx pd 7) 0)) "peak-density: the count within the window, per second"
 var pe (polyphony-estimate spm)
 check (and (== (length pe) (length spm)) (>= (min pe) 0)) "polyphony-estimate: one value per frame"
 var rcm (register-curve spm sr 2048)

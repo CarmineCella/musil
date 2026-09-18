@@ -1408,22 +1408,40 @@ technique), so a note costs nothing on a large set; \musil{db-techniques-of} and
 \musil{db-dynamics-of} say what an instrument was recorded with, which is how an example
 builds its orchestra and its palette from whatever database is loaded.
 \textbf{Morphological orchestration.} \musil{target-analyse} turns a sound into curves
-over time (the descriptors of \texttt{signals}: \musil{event-rate}, the onsets that change
-the spectrum, counted a second; \musil{polyphony-estimate}; \musil{register-curve}, the
-centroid and the lowest strong partial in pitch; \musil{loudness-curve};
-\musil{coherence-time}, how long the spectrum persists; and the frame spectra in the
-database's feature space). \musil{orchestrate-morphological db orch target params} makes
-the granulator follow them (\musil{target-envelopes}: density, polyphony, register,
-duration and dynamics from the curves; \musil{'follow} loosens the fit, any parameter of
-your own overrides) and, at every event, runs a matching pursuit (\musil{mp} of
-\texttt{scientific}, non-negative, on log magnitudes) over the free players' sounds
-against the target's spectrum at that instant less what already sounds (an orchestral
-residual): each atom is a note with its instrument, pitch and technique, its dynamics from
-the level, its tuning in cents from the target's nearest peak, held as long as its sound
-persists in the target (\musil{atom-persistence}). Nothing is segmented: a long sound
-under short ones comes out as a long note under short ones, which is what granulating
-rather than cutting is for. \texttt{morph\_orchestration.mu} orchestrates a recording
-and places the target after it to compare.
+over time, computed once (the descriptors of \texttt{signals}): the frame spectra in the
+database's feature space, and a second set with a long window (5\,Hz bins) that the peaks
+are read from; the attacks as the peaks of the spectral flux (\musil{flux-peaks}: those
+standing above the local median, 50\,ms apart at least) and their density in events a
+second (\musil{peak-density}); the register (\musil{register-curve}: the centroid in pitch,
+the spread around it in octaves, the lowest strong partial); and the loudness
+(\musil{loudness-curve}); the estimates smoothed by a moving median.
+\musil{orchestrate-morphological db orch target params} is the granulator driven by those
+curves (\musil{target-envelopes}: the density from the flux peaks a second, times
+\musil{'density-scale}, at least \musil{'min-density}; the register as the centroid $\pm$ \musil{'width} spreads, extended down
+to the lowest partial, since a bass note lies under the centroid of its own spectrum; the
+dynamics as a level from the loudness, from $fff$ at the target's loudest point to $ppp$
+\musil{'range} dB under it; any parameter of your own overrides, \musil{'styles} restricts
+the techniques). At every event the note is chosen by a matching pursuit (\musil{mp} of
+\texttt{scientific}, non-negative, on the square roots of the magnitudes: between the
+linear, where one strong partial decides everything, and the log, where the noise between
+partials does): the dictionary is the free players' sounds whose pitch is one of the
+target's spectral peaks at that instant (\musil{target-peaks}, \musil{target-dictionary}:
+the partials of a sound are the pitches an orchestra can double it with, and the register
+and the dynamics of the moment narrow the choice), the signal is the target's spectrum
+over the next 100\,ms less what already sounds (\musil{target-residual}: the sounding
+notes refitted to the frame together), and each atom is a note with its instrument, pitch
+and technique (\musil{target-notes}: the best atom always, more up to \musil{'voices} when
+each accounts for \musil{'min-gain} of the residual; when the sounding notes explain the
+frame the pursuit doubles it instead). A note lasts as long as the target keeps its sound
+(\musil{atom-persistence}: the projection of the frames ahead on the sound's spectrum stays
+above \musil{'persist} of its peak, 6\,dB by default, up to \musil{'max-length}); a life
+shorter than \musil{'short} takes a short technique of the same sound when the database
+has one (\musil{technique-short?}, a table of names); the tuning in cents is the target's
+nearest peak against the sound's own frequency (\musil{entry-f0}). When every player is
+busy and an event is due the oldest note gives way (\musil{'steal}). Nothing is segmented:
+a long sound under short ones comes out as a long note under short ones, which is what
+granulating rather than cutting is for. \texttt{morph\_orchestration.mu} orchestrates a
+recording this way and places the target after it to compare.
 
 \texttt{gran\_orchestration.mu} realises a unison that accelerates into a storm of every
 style over five octaves and then slows down towards the harmonic series of E2;

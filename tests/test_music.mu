@@ -390,17 +390,30 @@ check (and (== (length merged) 2) (== (getidx (head merged) 1) 2)) "merge-contin
 seed 6
 var tsc (score "target" 44100)
 event tsc 0 3 (note db 'Vc "C4" 'mf 'ord)
-each (range 6) (function (k) (event tsc (* k 0.4) 0.2 (note db 'Ob (+ 62 (mod (* k 3) 6)) 'mf 'ord)))
+each (range 6) (function (k) (event tsc (* k 0.4) 0.2 (put (note db 'Ob (+ 62 (mod (* k 3) 6)) 'mf 'ord) 'gain 2)))
 var tx (head (score-render tsc "mono"))
 var tg (target-analyse tx 44100 (get db 'block) 1024)
 check (equal? (get tg 'block) 2048) "target-analyse: the database's block"
-check (== (length (get tg 'spectra)) (length (get tg 'rate))) "target-analyse: one spectrum per curve sample"
-check (and (has? tg 'polyphony) (has? tg 'centroid) (has? tg 'low) (has? tg 'loudness) (has? tg 'coherence) (has? tg 'events)) "target-analyse: every curve"
+check (== (length (get tg 'spectra)) (length (get tg 'density))) "target-analyse: one spectrum per curve sample"
+check (== (length (get tg 'fine)) (length (get tg 'spectra))) "target-analyse: the fine spectra alongside"
+check (and (has? tg 'attacks) (has? tg 'centroid) (has? tg 'spread) (has? tg 'low) (has? tg 'loudness)) "target-analyse: every curve"
 check (near? (get tg 'seconds) 3.6 0.01) "target-analyse: the length"
+check (and (>= (length (get tg (quote attacks))) 4) (<= (length (get tg (quote attacks))) 12)) "target-analyse: the oboe's attacks are the flux peaks"
+check (> (max (get tg 'density)) 2) "target-analyse: the density counts them a second"
+check (< (length (get (target-analyse-with tx 44100 (get db 'block) 1024 (record (list 'threshold 4))) 'attacks)) (length (get tg 'attacks))) "target-analyse-with: a higher threshold keeps fewer peaks"
 check (== (length (target-at tg 'spectra 0)) 1024) "target-at: a curve's value at a time"
-var envs (target-envelopes tg orch (record (list 'step 0.25)))
-check (equal? (sort-list (map (keys envs) str)) (list "density" "duration" "dynamics" "polyphony" "register")) "target-envelopes: the granulator's parameters"
+check (near? (target-level tg 0.5 40) 1 0.15) "target-level: the loudest point is 1"
+var envs (target-envelopes tg (record (list 'step 0.25)))
+check (equal? (sort-list (map (keys envs) str)) (list "density" "dynamics" "register")) "target-envelopes: density, register, dynamics"
 check (numeric-range? (env-at (get envs 'register) 1)) "target-envelopes: the register as a range of octaves"
+check (>= (env-at (get envs 'density) 1) 0.5) "target-envelopes: the density is at least min-density"
+check (near? (env-at (get (target-envelopes tg (record (list 'step 0.25 'density-scale 2))) 'density) 1) (* 2 (env-at (get envs 'density) 1)) 1e-9) "target-envelopes: 'density-scale multiplies the target's density"
+var tpk (target-peaks tg 1 12)
+check (any? (vec->list tpk) (function (f) (< (abs (- (hz->midi f) 60)) 0.3))) "target-peaks: the cello's C4 among the peaks, within 30 cents"
+var tdict (target-dictionary db tpk orch 0 127 'mf nil)
+check (all? (map tdict (function (a) (any? (vec->list tpk) (function (f) (<= (abs (- (hz->midi f) (get (last a) 'midi))) 0.6))))) identity) "target-dictionary: every sound at a peak"
+check (== (length (target-dictionary db tpk orch 0 127 'mf (list 'pizz))) 0) "target-dictionary: 'styles restricts the techniques"
+check (near? (entry-f0 (get (note db 'Vn "C4" 'mf 'ord) 'entry) 44100 2048) 261.6 8) "entry-f0: the sound's own frequency, near its pitch"
 var mo (orchestrate-morphological db orch tg (record (list 'solutions 2)))
 check (equal? (get mo 'method) 'morphological) "orchestrate-morphological: a result"
 check (== (length (solutions mo 0)) 2) "orchestrate-morphological: solutions"
@@ -410,9 +423,21 @@ check (all? (map mf (function (x) (equal? (get (last x) 'kind) 'note))) identity
 check (any? mf (function (x) (== (get (last x) 'midi) 60))) "orchestrate-morphological: the cello's C4 is found by the pursuit"
 check (all? (map mf (function (x) (has? (last x) 'cents))) identity) "orchestrate-morphological: cents on every note"
 check (all? (map mf (function (x) (<= (abs (get (last x) 'cents)) 50))) identity) "orchestrate-morphological: cents within a quarter tone"
-check (> (max-of (map mf (function (x) (getidx x 1)))) 1) "orchestrate-morphological: a held sound gets a long note (atom-persistence)"
-var ap (atom-persistence tg (last (head mf)) 0)
-check (and (>= ap 0.1) (<= ap 8)) "atom-persistence: seconds, bounded"
+check (> (max-of (map mf (function (x) (getidx x 1)))) 1) "orchestrate-morphological: the held cello gets a long note (atom-persistence)"
+check (any? mf (function (x) (< (getidx x 1) 0.5))) "orchestrate-morphological: the short oboe notes get short ones"
+check (<= (max-of (map (vec->list (range 0 3.5 0.05)) (function (t) (active-at mf t)))) (orchestra-size orch)) "orchestrate-morphological: never more than the players"
+var ap (atom-persistence tg (get (get (last (head mf)) 'entry) 'features) (head (head mf)) 0.5 8)
+check (and (>= ap 0) (<= ap 8)) "atom-persistence: seconds, bounded"
+check (and (technique-short? "pizz-lv") (technique-short? 'stac) (not (technique-short? "ord"))) "technique-short?"
+var kts (score "known" 44100)
+event kts 0 2 (note db 'Vc "C4" 'mf 'ord)
+event kts 0 2 (note db 'Ob "E4" 'mf 'ord)
+var ktg (target-analyse (* 0.02 (head (score-render kts "mono"))) 44100 (get db 'block) 1024)
+var kf (best-connection (orchestrate-morphological db orch ktg (record (list))))
+check (and (any? kf (function (x) (equal? (get (last x) 'pitch) "C4"))) (any? kf (function (x) (equal? (get (last x) 'pitch) "E4")))) "orchestrate-morphological: the target's pitches are found at any level"
+check (all? (map kf (function (x) (<= (abs (get (last x) 'cents)) 25))) identity) "orchestrate-morphological: a target made of the sounds themselves is in tune"
+var kd (best-connection (orchestrate-morphological db orch ktg (record (list 'duration (list 0.2 0.2)))))
+check (all? (map kd (function (x) (near? (getidx x 1) 0.2 1e-9))) identity) "orchestrate-morphological: a 'duration of your own replaces the persistence"
 var polyf (best-connection (orchestrate-granular db orch 4 (record (list 'density (list 20 20) 'duration (list 2 2) 'polyphony 2))))
 check (<= (max-of (map (vec->list (range 0 4 0.1)) (function (t) (active-at polyf t)))) 2) "granular: 'polyphony caps the players sounding at once"
 

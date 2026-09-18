@@ -94,7 +94,7 @@ nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source al
 --- morphology ---
 frame-spectra    : 61 frames of 1024 bins (the database's feature space, per frame)
 spectral-similarity: tone vs itself 0.98 , tone vs noise 0.06
-event-rate       : 2 events that change the spectrum; rates up to 1 a second
+event-rate       : 3 events that change the spectrum; rates up to 1 a second
 polyphony-estimate: (1 1 1 1)  register-curve: centroid 57 lowest partial 57 (MIDI)
 loudness-curve   : (-10 -9.9 -9.9) dB; coherence-time: (0.13 0.06 0.83) s
 spectral-peaks   : 219.8 Hz (parabolic)

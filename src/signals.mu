@@ -476,27 +476,46 @@ function spectral-similarity (a b) {
     var lb (log (+ 1 b))
     return (/ (dot la lb) (max 1e-12 (* (norm la) (norm lb))))
 }
-# (event-rate x sr window hop)   how many new events a second around every instant: the onsets (spectral flux
-#                          peaks at least 80 ms apart) that really change the spectrum (the frames before and
-#                          after less than 0.9 alike, which a vibrato or a tremolo of a held sound does not do),
-#                          counted in a window of window seconds, one value every hop samples; => (list times rates)
+# (event-rate x sr window hop)   how many attacks a second around every instant: the peaks of the spectral flux
+#                          that stand above its moving median (twice it, at least 60 ms apart: a held
+#                          sound's tremolo or vibrato ripples at the floor and does not count), counted in a
+#                          window of window seconds, one value every hop samples; => (list times rates peaks)
 function event-rate (x sr window hop) {
-    var fn 2048
-    var fh 512
-    var spectra (frame-spectra x fn fh (/ fn 2))
-    var candidates (onsets x sr 1024 256 0.2)
+    var peaks (vec->list (onsets-adaptive x sr 1024 256 2 21))
     var kept (list)
     var last -1
-    each (vec->list candidates) (function (o) {
-        var k (floor (* o (/ sr fh)))
-        var before (getidx spectra (max 0 (- k 2)))
-        var after (getidx spectra (min (- (length spectra) 1) (+ k 2)))
-        if (and (>= (- o last) 0.08) (< (spectral-similarity before after) 0.9)) { push kept o
-                                                                                  set last o }
-    })
+    each peaks (function (o) (if (>= (- o last) 0.06) { push kept o
+                                                        set last o }))
     var times (* (range (ceil (/ (length x) hop))) (/ hop sr))
     var rates (map times (function (t) (/ (length (filter kept (function (o) (< (abs (- o t)) (/ window 2))))) window)))
     return (list times (vec rates) (vec kept))
+}
+# (flux-peaks x sr n hop threshold width)   the times (seconds) of the peaks of the spectral flux (the rectified change
+#                          of the magnitude spectrum, n and hop as onset-strength) that stand above threshold times the
+#                          flux's moving median over width frames (odd): every noticeable spectral change, an attack or
+#                          not, counted as the target's activity; threshold 2 keeps the attacks, 1.5 admits the ripples
+#                          of a held sound too; peaks within 50 ms of the previous one count as one; => a vector
+function flux-peaks (x sr n hop threshold width) {
+    var flux (onset-strength x n hop)
+    if (< (length flux) 3) { return (vec) }
+    var level (* threshold (+ (median-filter flux width) (* 0.01 (max flux))))
+    var out (list)
+    var last -1
+    each (filter (vec->list (local-maxima flux)) (function (k) (> (getidx flux k) (getidx level k)))) (function (k) {
+        var t (* k (/ hop sr))
+        if (>= (- t last) 0.05) { push out t
+                                  set last t }
+    })
+    return (vec out)
+}
+# (peak-density times secs window hop)   how many of some times (a vector, seconds) fall a second around every instant:
+#                          the count within window seconds centred on each hop-second step over secs seconds, divided by
+#                          the window; => a vector, one value per step (a density in events a second)
+function peak-density (times secs window hop) {
+    var steps (range (ceil (/ secs hop)))
+    var ts (vec->list times)
+    return (vec (map (vec->list steps) (function (k) { var t (* k hop)
+                                                      return (/ (length (filter ts (function (o) (< (abs (- o t)) (/ window 2))))) window) })))
 }
 # (polyphony-estimate spectra)   how many voices seem to sound in each frame: the spectral peaks standing above twice
 #                          the frame's mean (a lower bound, capped at 16); => a vector, one per frame

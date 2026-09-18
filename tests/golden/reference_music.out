@@ -76,9 +76,10 @@ orchestrate-granular: 1 segment, 2 solutions; the best connection has 26 events;
 db-index!       : 4 instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of (ord)
 
 --- morphological ---
-target-analyse  : 2.6 s, 111 frames; curves: rate, polyphony, centroid, low, loudness, coherence; events 2
-target-envelopes: the granulator's parameters from the curves: (density duration dynamics polyphony register)
-orchestrate-morphological: 3 notes with cents, e.g. Hn C4 mf 0 cents; a matching pursuit at every event, no segmentation
+target-analyse  : 2.6 s, 111 frames; curves: density (flux peaks a second), centroid, spread, low, loudness; 1 flux peaks
+target-envelopes: the granulator's parameters from the curves: (density dynamics register)
+target-peaks    : the pitches the notes may take, at 1 s: (C5 A#6 C4 G5 D7 E7)
+orchestrate-morphological: 2 notes with cents, e.g. Vc C4 mf -13 cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation
 
 --- queries, db-gen, playing ---
 db-query (lists): 16 string sounds, mf or ff
