@@ -160,6 +160,10 @@ cmake --build build --target uninstall
    partials in just intonation, `just-cents` on the notes), `'player` on every note (continuations merge only
    within a player, which the validation needs). Example: `haas.mu` (after *in vain*: cascades, the overtone
    chord swelling in waves, the beating near-unison, the return).
+   IDE (0.8.0): the variables panel's preview stringified every global whole (a database with its feature
+   vectors: minutes after every command, the Stop button lit meanwhile, Play in the roll queued behind it, Quit
+   waiting for it); it now stops at its 60 characters, the console's echo of a value is bounded, and Quit
+   interrupts a running program.
    Open: the physical limits beyond the samples (a recovery time per instrument and technique, a maximum
    sustained duration for winds and brass followed by a breath, what happens when the duration asked for is
    longer than the sample: cut or loop, to be chosen), a per-instrument loudness for the levels.
