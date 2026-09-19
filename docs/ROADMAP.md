@@ -145,6 +145,20 @@ cmake --build build --target uninstall
    Speed: `get`, `opt`, `has?` and `put!` are builtins (they were interpreted scans over every pair, at every
    event and note); the granulator's playability test is a vector range test with a per-event memo per ossia
    spec. A 60-s tutti of 45 ossia players with three styles: 1.5 s (52 s with the first strict version).
+   The players as people (done): per-player state (`'seat`: an ossia player keeps its instrument; `'inertia`:
+   its technique; `'leap`: steps from its last pitch), the dynamics as a constraint (`'dynamics-strict`,
+   substitutions counted; `'balance` in dB per instrument or family), `'method 'cluster` (every pitch of the
+   band once before any repeats) with `'weight` and `'tilt`, `'spread` (a group's attack scattered),
+   `'duration-law`, `'group-density`, one orchestra shared by several calls (`'continue`, `'start`: the
+   player records keep their bookings, so overlapping sections in any order never book a player twice),
+   a report per run (events due, played, skipped busy = the saturation, unplayable, substituted, each
+   player's share) and `score-validate` (a matching of sounding notes to players, ossia included; shifted
+   notes reported). `merge-continuations` no longer lengthens a note by the few ms two players' notes
+   overlapped. `sort-by` on numeric keys uses the `argsort` builtin. Example: `gran_orchestration3.mu`;
+   `atmospheres.mu` is now a seated orchestra (Ligeti's halved) sharing its players across the sections.
+   Open: the physical limits beyond the samples (a recovery time per instrument and technique, a maximum
+   sustained duration for winds and brass followed by a breath, what happens when the duration asked for is
+   longer than the sample: cut or loop, to be chosen), a per-instrument loudness for the levels.
    Open: dynamic features per sound (following the whole file rather than its average spectrum) would let
    the morphological pursuit choose playing styles by their evolution in time, and are what Maple needs;
    they would be a second feature file next to the published ones, not a change to those.

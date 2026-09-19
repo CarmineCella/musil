@@ -125,7 +125,17 @@ print "orchestra       :" (orchestra-size orch) "players," (orchestra-instrument
 seed 8
 var gr (orchestrate-granular db orch 6 (record (list 'density (env (list 0 (list 4 6) 6 (list 1 2))) 'register (list 3 4) 'dynamics (env (list 0 (list 'pp) 6 (list 'ff))) 'solutions 2)))
 print "orchestrate-granular:" (length (get gr 'segments)) "segment," (length (solutions gr 0)) "solutions; the best connection has" (length (best-connection gr)) "events; connect! places one"
-print "methods         : random, pivots (chords, interval), chordinterp (chordinterp-env), markov (markov-score), harmonic (fundamental, harmonicity); coupling: how often a group sounds together"
+print "methods         : random, cluster (every pitch of the band once before any repeats), pivots (chords, interval), chordinterp (chordinterp-env), markov (markov-score), harmonic (fundamental, harmonicity); coupling: how often a group sounds together"
+print "playability     : a note is a sample the player's instrument has (player-styles, player-pitches, db-pitches-at); 'dynamics-strict makes the dynamics a constraint too; what no player can play is reported and left out"
+var rep (get gr 'report)
+print "report          :" (get rep 'due) "events due," (get rep 'notes) "notes," (get rep 'skipped-busy) "skipped with every able player busy," (get rep 'skipped-unplayable) "unplayable," (get rep 'substituted) "at another dynamics; a line per player (notes, busy fraction, seat); granulation-report prints it"
+print "the players     : 'seat (an ossia player keeps its instrument), 'leap (steps from its last pitch), 'inertia (keeps its technique), 'weight and 'tilt (where in the band), 'spread (a group's attack scattered), 'duration-law ('log or an exponent), 'group-density (a rate per group), 'balance (dB per instrument or family:" (fixed (balance-gain (record (list 'brass -6)) 'Hn) 3) "for the Hn)"
+var shared (orchestra (list 'Ob 'Hn 'Vn 'Vc))
+var vs (score "shared" 44100)
+connect! vs 0 (orchestrate-granular db shared 4 (record (list 'continue 1 'start 0 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))) (list 0)
+connect! vs 2 (orchestrate-granular db shared 4 (record (list 'continue 1 'start 2 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))) (list 0)
+var val (score-validate vs shared)
+print "continue, start : two granulators on one orchestra, overlapping, book the same people once; score-validate:" (if (get val 'ok) "playable" "NOT playable") "(a player of its own for every note, at a recorded pitch); peak" (get val 'peak) "; validation-print prints it; orchestra-rest! clears the state"
 print "db-index!       :" (length (keys (db-index! db))) "instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of" (db-techniques-of db 'Vn)
 
 # --- 5d. Morphological orchestration -------------------------------------------------------------------

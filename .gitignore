@@ -15,6 +15,6 @@ src/help.txt
 .DS_Store
 .vscode/
 .idea/
-examples/data/microsol/example.spectrum.db
+
 # full sample databases fetched by fetch_tinysol.sh, or placed there by hand (see examples/data/microsol/README.md)
 datasets/

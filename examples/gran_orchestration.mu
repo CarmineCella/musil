@@ -58,6 +58,8 @@ var s (score "granular" sr)
 connect! s 0 r1 (list 0)
 connect! s 50 r2 (list 0)                                        # (list 1) for the other realisation
 score-print s
+granulation-report r2                                            # events due and played, the saturation, every player's share
+validation-print (score-validate s orch)                         # every note has a player of its own, at a recorded pitch
 render s "/tmp/musil_gran_orchestration.wav" "stereo"
 print "wrote /tmp/musil_gran_orchestration.wav (in the hall, as the roll plays it)"
 display s

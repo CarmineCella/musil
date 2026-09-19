@@ -9,8 +9,8 @@
 load "music.mu"
 load "plot.mu"
 seed (if (> (length args) 1) (num (getidx args 1)) 3)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument and technique (short ones too)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument and technique (short ones too)
 var path (if (> (length args) 0) (getidx args 0) "data/A_minor.wav")
 
 # --- the target and its analysis: the same spectral space as the database's features ------------------------------
@@ -37,9 +37,10 @@ print (orchestra-size orch) "players:" (orchestra-instruments orch)
 
 # --- the orchestration ---------------------------------------------------------------------------------------------
 set t0 (clock)
-var r (orchestrate-morphological db orch target (record (list 'solutions 1 'density-scale 5)))
+var r (orchestrate-morphological db orch target (record (list 'solutions 1)))
 var f (best-connection r)
 print "orchestration in" (fixed (- (clock) t0) 2) "s:" (length f) "notes; durations from" (fixed (min-of (map f (function (e) (getidx e 1)))) 2) "to" (fixed (max-of (map f (function (e) (getidx e 1)))) 2) "s"
+granulation-report r                                             # the players' shares, the events the pursuit left unplayed
 var s (score "morphological" 44100)
 connect! s 0 r (list 0)
 event-at s (+ (get target 'seconds) 1) 0 (fragment->score "the target" 44100 (list (list 0 (get target 'seconds) path))) 0 0   # the target itself after it, to compare

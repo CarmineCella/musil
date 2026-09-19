@@ -64,7 +64,11 @@ function section (name secs h-from h-to dyn-from dyn-to dens-from dens-to dur-fr
         'duration  (env (list 0 dur-from secs dur-to))
         'styles    (env (list 0 (if (< h-from h-to) noisy (list 'ord)) secs (if (< h-from h-to) (list 'ord) noisy)))
         'dynamics  (env (list 0 dyn-from secs dyn-to))
-        'coupling  (env (list 0 sync-from th sync-from secs sync-to))))
+        'coupling  (env (list 0 sync-from th sync-from secs sync-to))
+        'spread    0.02                                                # a chord struck together, scattered by up to 20 ms
+        'inertia   0.7                                                 # a player keeps its technique most of the time
+        'continue  1                                                   # one orchestra for the piece: the sections share the people
+        'start     t))
     var r (orchestrate-granular db orch secs params)
     connect! s t r (list 0)
     print name ":" (fixed secs 1) "s," (length (best-connection r)) "events; harmonicity" h-from "->" h-to ", coupling" sync-from "->" sync-to
@@ -87,6 +91,7 @@ section "D3" (* 65 k) 0.6 0 0.3 0.15 (list 4 4) (list 4 10) (list 0.5 1) (list 0
 section "E" (* 210.6 k) 0.5 0 0 1 (list 2 4) (list 6 6) (list 1 3) (list 0.3 0.8) 0 1 (list 3 5) (list 1 7) 0
 
 score-print s
+validation-print (score-validate s orch)                          # every note has a player of its own, at a recorded pitch
 render s "/tmp/musil_modulations.wav" "stereo"
 print "wrote /tmp/musil_modulations.wav (in the hall);" (fixed (score-duration s) 0) "s"
 display s

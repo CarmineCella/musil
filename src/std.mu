@@ -263,7 +263,12 @@ function record (kv) {
 # --- lists by a key: sorting, grouping, searching ---
 # (sort-by L f)            the elements ordered by f (a number or string per element), stable
 function sort-by (L f) {
+    if (== (length L) 0) { return (list) }
     var keyed (map L (function (x) (list (f x) x)))
+    if (all? keyed (function (p) (equal? (type (head p)) "scalar"))) {          # numbers: the builtin argsort (stable)
+        var order (argsort (vec (map keyed head)))
+        return (map (vec->list order) (function (k) (last (getidx keyed k))))
+    }
     var out (list)
     each keyed (function (p) {                     # insertion: after every element whose key is not larger
         var k (length out)

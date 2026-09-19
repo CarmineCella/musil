@@ -37,6 +37,11 @@ inline vptr fn_rand(vlist& a, Interp& i) {
 }
 // (sort v) the elements of a vector in ascending order
 inline vptr fn_sort(vlist& a, Interp& i) { varr r=i.num(a[0]); std::sort(std::begin(r), std::end(r)); return v_arr(std::move(r)); }
+// (argsort v) the indices that would sort a vector ascending (stable: equal values keep their order)
+inline vptr fn_argsort(vlist& a, Interp& i) {
+    varr v=i.num(a[0]); std::vector<size_t> idx(v.size()); for (size_t k=0; k<idx.size(); k++) idx[k]=k;
+    std::stable_sort(idx.begin(), idx.end(), [&](size_t p, size_t q){ return v[p] < v[q]; });
+    varr r(idx.size()); for (size_t k=0; k<idx.size(); k++) r[k]=(double)idx[k]; return v_arr(std::move(r)); }
 
 // list, vector, string
 // (reverse x) a list, vector or string reversed
@@ -209,7 +214,7 @@ inline vptr fn_regex_match(vlist& a, Interp& i) {
 inline void add_std(Interp& i) {
     const int N = -1;   // unbounded
     // vectors
-    i.def("range", fn_range, 1, 3); i.def("seed", fn_seed, 1, 1); i.def("rand", fn_rand, 0, 1); i.def("sort", fn_sort, 1, 1);
+    i.def("range", fn_range, 1, 3); i.def("seed", fn_seed, 1, 1); i.def("rand", fn_rand, 0, 1); i.def("sort", fn_sort, 1, 1); i.def("argsort", fn_argsort, 1, 1);
     // sequences: list, vector, string
     i.def("reverse", fn_reverse, 1, 1); i.def("slice", fn_slice, 2, 3); i.def("find", fn_find, 2, 2);
     // strings

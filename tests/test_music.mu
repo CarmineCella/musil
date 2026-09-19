@@ -374,11 +374,14 @@ var mixed (best-connection (orchestrate-granular db (orchestra (list 'Ob 'Vn 'Hn
 check (all? (map mixed (function (x) (contains? (db-pitches-of db (get (last x) 'instr) 'ord) (get (last x) 'midi)))) identity) "granular: an event goes only to a player whose instrument has samples for it"
 var mixstyle (best-connection (orchestrate-granular db (orchestra (list 'Ob 'Vn 'Hn)) 3 (record (list 'register (list 4 4) 'styles (list 'ord 'pizz) 'density (list 8 8) 'duration (list 0.2 0.2)))))
 check (and (> (length mixstyle) 10) (all? (map mixstyle (function (x) (equal? (get (last x) 'tech) "ord"))) identity)) "granular: a style set: each player takes a style of the set it has samples of (pizz unavailable, ord played, nothing skipped)"
-check (equal? (player-styles db (head (orchestra (list 'Vn))) (list 'ord 'pizz 'trem) 60 67) (list 'ord)) "player-styles: the styles of a set a player has in a register"
+check (equal? (player-styles db (head (orchestra (list 'Vn))) (list 'ord 'pizz 'trem) nil 60 67) (list 'ord)) "player-styles: the styles of a set a player has in a register"
+check (equal? (player-styles db (head (orchestra (list 'Vc))) (list 'ord) 'ff 60 67) (list 'ord)) "player-styles: ... at a dynamics (the Vc has a C4 ff)"
+check (equal? (player-styles db (head (orchestra (list 'Vn))) (list 'ord) 'ff 60 67) (list)) "player-styles: ... none at a dynamics it was not recorded at"
+check (equal? (db-pitches-at db 'Vc 'ord 'ff) (list 60)) "db-pitches-at: the recorded pitches at one dynamics"
 var nn (note db 'Vc "C4" 'mf 'ord)
 check (and (== (get nn 'shift) 0) (== (get nn 'midi) 60)) "note: the pitch before the dynamics: a C4 recorded only ff is the C4 ff, not a shifted C#4 mf"
 check (equal? (db-pitches-of db 'Vn 'ord) (sort-list (unique (map (db-query db 'Vn nil nil 'ord) (function (e) (get e 'midi)))))) "db-pitches-of: the recorded pitches of an instrument with a technique"
-check (== (length (player-pitches db (head (orchestra (list "Vn|Vc"))) 'ord 60 62)) 3) "player-pitches: an ossia player's pitches in a register"
+check (== (length (player-pitches db (head (orchestra (list "Vn|Vc"))) 'ord nil 60 62)) 3) "player-pitches: an ossia player's pitches in a register"
 check (equal? (list (level->dynamics 0) (level->dynamics 0.5) (level->dynamics 1)) (list 'ppp 'mf 'fff)) "level->dynamics"
 check (near? (dynamics->level "mf") (/ 4 7) 1e-9) "dynamics->level"
 check (and (== (level->gain 0) 0.25) (== (level->gain 1) 1)) "level->gain"
@@ -393,6 +396,85 @@ var uncoupled (best-connection (orchestrate-granular db (orchestra (list (list '
 check (== (length (unique (map uncoupled head))) (length uncoupled)) "granular: coupling 0, a paired group's players sound one at a time"
 var coupled (best-connection (orchestrate-granular db (orchestra (list (list 'Vn 'Vc))) 3 (put cp 'coupling 1)))
 check (< (length (unique (map coupled head))) (length coupled)) "granular: coupling 1, they sound together"
+# --- the players as people: state, constraints, the report, the validation ---
+seed 9
+var rep (get (orchestrate-granular db orch 10 (record (list 'density (list 6 6) 'register (list 4 4) 'duration (list 0.5 1)))) 'report)
+check (and (>= (get rep 'due) 60) (<= (get rep 'due) 61) (== (+ (get rep 'events) (get rep 'skipped-busy) (get rep 'skipped-unplayable)) (get rep 'due)) (>= (get rep 'notes) (get rep 'events))) "report: every event due is played, skipped busy or unplayable (a paired group's event writes more notes than one)"
+check (and (== (length (get rep 'players)) 5) (== (sum (vec (map (get rep 'players) (function (p) (get p 'notes))))) (get rep 'notes))) "report: a line per player, their notes adding up"
+check (== (get (get (orchestrate-granular db (orchestra (list 'Ob 'Vn)) 3 (record (list 'register (list 1 2) 'density (list 4 4)))) 'report) 'skipped-unplayable) 12) "report: the unplayable events counted (and listed once each)"
+var strict (orchestrate-granular db orch 4 (record (list 'dynamics (list 'ff) 'dynamics-strict 1 'register (list 4 4) 'density (list 5 5) 'duration (list 0.1 0.1))))
+check (and (> (length (best-connection strict)) 0) (all? (map (best-connection strict) (function (x) (and (equal? (get (last x) 'instr) "Vc") (== (get (last x) 'midi) 60) (equal? (get (get (last x) 'entry) 'dyn) "ff")))) identity)) "dynamics-strict: only the sample at the dynamics asked for (the Vc's C4 ff), on the players that have it"
+check (== (get (get strict 'report) 'substituted) 0) "dynamics-strict: nothing substituted"
+check (> (get (get (orchestrate-granular db orch 4 (record (list 'dynamics (list 'ff) 'register (list 4 4) 'density (list 5 5)))) 'report) 'substituted) 0) "dynamics not strict: the nearest recorded dynamics, counted as substituted"
+var seated (best-connection (orchestrate-granular db (orchestra (list "Vn|Vc")) 6 (record (list 'seat 100 'density (list 4 4) 'register (list 4 4) 'duration (list 0.1 0.1)))))
+check (== (length (unique (map seated (function (x) (get (last x) 'instr))))) 1) "seat: an ossia player keeps its instrument for the seat's time"
+var unseated (best-connection (orchestrate-granular db (orchestra (list "Vn|Vc")) 6 (record (list 'density (list 4 4) 'register (list 4 4) 'duration (list 0.1 0.1)))))
+check (== (length (unique (map unseated (function (x) (get (last x) 'instr))))) 2) "seat 0: the band decides the instrument note by note"
+var stepwise (best-connection (orchestrate-granular db (orchestra (list 'Vn)) 8 (record (list 'leap 1 'density (list 4 4) 'register (list 4 4) 'duration (list 0.1 0.1)))))
+check (all? (map (zip (tail stepwise) stepwise) (function (p) (<= (abs (- (get (last (head p)) 'midi) (get (last (last p)) 'midi))) 1))) identity) "leap: a player's next pitch within the interval of its last"
+var clustered (best-connection (orchestrate-granular db (orchestra (list 'Vn 'Vn)) 4 (record (list 'method 'cluster 'density (list 2 2) 'register (list 4 4) 'duration (list 0.1 0.1)))))
+check (== (length (unique (map (take clustered 8) (function (x) (get (last x) 'midi))))) 8) "cluster: every pitch of the band once before any is repeated"
+check (> (length (unique (map (take clustered 8) (function (x) (get (last x) 'midi))))) (length (unique (map (take unseated 8) (function (x) (get (last x) 'midi)))))) "cluster: ... where random draws repeat"
+var middle (best-connection (orchestrate-granular db (orchestra (list 'Hn)) 60 (record (list 'weight 1 'density (list 4 4) 'register (list 4 5) 'duration (list 0.1 0.1)))))
+var edges (best-connection (orchestrate-granular db (orchestra (list 'Hn)) 60 (record (list 'weight -1 'density (list 4 4) 'register (list 4 5) 'duration (list 0.1 0.1)))))
+function band-spread (f) (mean (vec (map f (function (x) (abs (- (get (last x) 'midi) 71.5))))))
+check (< (band-spread middle) (band-spread edges)) "weight: 1 draws the middle of the band, -1 its edges"
+var high (best-connection (orchestrate-granular db (orchestra (list 'Hn)) 60 (record (list 'tilt 1 'density (list 4 4) 'register (list 4 5) 'duration (list 0.1 0.1)))))
+check (> (mean (vec (map high (function (x) (get (last x) 'midi))))) (mean (vec (map edges (function (x) (get (last x) 'midi)))))) "tilt: 1 draws the top of the band more often"
+var inert (orchestrate-granular db (orchestra (list 'Vn)) 6 (record (list 'inertia 1 'styles (list 'ord) 'density (list 4 4) 'register (list 4 4))))
+check (all? (map (best-connection inert) (function (x) (equal? (get (last x) 'tech) "ord"))) identity) "inertia: a player keeps its technique (the set holding it)"
+var scattered (best-connection (orchestrate-granular db (orchestra (list (list 'Vn 'Vc 'Ob))) 3 (record (list 'spread 0.05 'density (list 2 2) 'duration (list 0.2 0.2) 'coupling 1))))
+check (and (> (length scattered) 3) (> (length (unique (map scattered head))) (/ (length scattered) 3))) "spread: a group struck together is scattered within the spread"
+check (all? (map scattered (function (x) (< (mod (head x) 0.5) 0.051))) identity) "spread: ... and by no more than it"
+var logdur (map (best-connection (orchestrate-granular db (orchestra (list 'Vn 'Vn 'Vn 'Vn)) 40 (record (list 'duration (list 0.05 5) 'duration-law 'log 'density (list 2 2))))) (function (x) (getidx x 1)))
+var unidur (map (best-connection (orchestrate-granular db (orchestra (list 'Vn 'Vn 'Vn 'Vn)) 40 (record (list 'duration (list 0.05 5) 'density (list 2 2))))) (function (x) (getidx x 1)))
+check (< (median (vec logdur)) (median (vec unidur))) "duration-law: 'log draws as many short as long by ratio, the median well under the uniform one"
+check (< (median (vec (map (best-connection (orchestrate-granular db (orchestra (list 'Vn 'Vn 'Vn 'Vn)) 40 (record (list 'duration (list 0.05 5) 'duration-law 3 'density (list 2 2))))) (function (x) (getidx x 1))))) (median (vec unidur))) "duration-law: an exponent above 1 draws mostly short"
+var gdr (get (orchestrate-granular db (orchestra (list (list 'Ob 'Hn) (list 'Vn 'Vc))) 20 (record (list 'group-density (list (list 1 1) (list 8 8)) 'register (list 4 4) 'duration (list 0.05 0.05) 'coupling 0))) 'report)
+var gd-notes (map (get gdr 'players) (function (p) (get p 'notes)))
+check (> (+ (getidx gd-notes 2) (getidx gd-notes 3)) (* 3 (+ (getidx gd-notes 0) (getidx gd-notes 1)))) "group-density: each paired group at its own rate (the strings eight times the winds)"
+check (near? (balance-gain (record (list 'brass -6 'Hn -12)) 'Hn) (pow 10 -0.6) 1e-9) "balance-gain: the instrument's own decibels"
+check (near? (balance-gain (record (list 'brass -6)) 'Tbn) (pow 10 -0.3) 1e-9) "balance-gain: ... else its family's"
+check (== (balance-gain (record (list 'brass -6)) 'Vn) 1) "balance-gain: ... else 0 dB"
+check (equal? (list (instrument-family 'Fl) (instrument-family 'Tbn) (instrument-family 'Vc) (instrument-family 'Timp) (instrument-family 'Hp) (instrument-family 'Xyz)) (list 'winds 'brass 'strings 'percussion 'plucked 'other)) "instrument-family"
+var balanced (best-connection (orchestrate-granular db (orchestra (list 'Hn 'Vn)) 4 (record (list 'balance (record (list 'brass -6)) 'density (list 6 6) 'register (list 4 4) 'dynamics 0.5))))
+check (all? (map balanced (function (x) (if (equal? (get (last x) 'instr) "Hn") (near? (get (last x) 'gain) (* (level->gain 0.5) (pow 10 -0.3)) 1e-6) (near? (get (last x) 'gain) (level->gain 0.5) 1e-6)))) identity) "balance: the brass 6 dB under the strings at the same level"
+# one orchestra shared by two calls ('continue): the second books only players the first left free
+seed 4
+var shared (orchestra (list 'Ob 'Hn 'Vn 'Vc))
+var cp1 (record (list 'continue 1 'start 0 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))
+var vs (score "shared" 44100)
+connect! vs 0 (orchestrate-granular db shared 4 cp1) (list 0)
+var second (orchestrate-granular db shared 4 (put cp1 'start 1))
+connect! vs 1 second (list 0)
+check (all? (map shared (function (p) (has? p 'busy-until))) identity) "continue: the orchestra's own records carry the state"
+var v1 (score-validate vs shared)
+check (get v1 'ok) "score-validate: two overlapping granulators on one orchestra with 'continue never book a player twice"
+var vs2 (score "unshared" 44100)
+connect! vs2 0 (orchestrate-granular db shared 4 (record (list 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))) (list 0)
+connect! vs2 1 (orchestrate-granular db shared 4 (record (list 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))) (list 0)
+var v2 (score-validate vs2 shared)
+check (and (not (get v2 'ok)) (> (length (get v2 'overbooked)) 0)) "score-validate: ... without it they overbook (the same people twice)"
+check (get (score-validate vs2 (orchestra (list 'Ob 'Ob 'Hn 'Hn 'Vn 'Vn 'Vc 'Vc))) 'ok) "score-validate: an orchestra twice the size plays it"
+seed 5
+var ooo (orchestra (list 'Vn 'Vc))
+var cpo (record (list 'continue 1 'density (list 2 2) 'duration (list 3 3) 'register (list 4 4)))
+var vs4 (score "any order" 44100)
+connect! vs4 4 (orchestrate-granular db ooo 4 (put cpo 'start 4)) (list 0)
+connect! vs4 0 (orchestrate-granular db ooo 6 (put cpo 'start 0)) (list 0)
+check (get (score-validate vs4 ooo) 'ok) "continue: calls in any order of time never overlap a player's bookings"
+check (any? (score-events vs4) (function (e) (< (get e 'dur) 3))) "continue: ... a note is cut short where the player's next booking begins"
+orchestra-rest! shared
+check (all? (map shared (function (p) (and (== (get p 'busy-until) 0) (equal? (type (get p 'last-pitch)) "nil")))) identity) "orchestra-rest!: the state cleared"
+var vs3 (score "ossia" 44100)
+event vs3 0 1 (note db 'Vc "C4" 'mf 'ord)
+event vs3 0 1 (note db 'Vc "D4" 'mf 'ord)
+check (get (score-validate vs3 (orchestra (list "Vn|Vc" 'Vc))) 'ok) "score-validate: an ossia player counts for either instrument (a matching, not a count)"
+check (not (get (score-validate vs3 (orchestra (list "Vn|Vc" 'Vn))) 'ok)) "score-validate: ... but one person: two cello notes need two who can play it"
+event vs3 2 1 (note db 'Vn "A5" 'mf 'ord)
+var v3 (score-validate vs3 (orchestra (list 'Vn 'Vc)))
+check (and (not (get v3 'ok)) (== (length (get v3 'transposed)) 1) (== (get (get v3 'peak) "Vc") 2)) "score-validate: a note at a pitch the instrument was not recorded at is reported (shifted), the peak per instrument counted"
+check (not (validation-print v3)) "validation-print: returns whether it is playable"
 var cie (chordinterp-env (list "C4") (list "C5") 10 3)
 check (equal? (map cie head) (list 0 5 10)) "chordinterp-env: breakpoints over the time"
 check (equal? (env-at cie 5) (list (list 66))) "chordinterp-env: the chord halfway"

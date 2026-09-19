@@ -1448,7 +1448,48 @@ picks the nearest recorded dynamics and sets a gain between them for a truly con
 crescendo; \musil{'chord-weight} says how often a pitch comes from the chord rather than the
 register, so a chord dissolves into a cloud gradually; \musil{'coupling} says how often a paired group actually
 sounds together (an envelope from 1 to 0 makes an orchestra synchronised at first and free
-later); \musil{'solutions} asks for several realisations. The database is indexed once
+later); \musil{'solutions} asks for several realisations.
+
+\textbf{The players as people.} The rest of the parameters make the output a part a real
+player can sit down and play, and check it. A player has a memory: with \musil{'seat} (seconds)
+an ossia player keeps the instrument it took for at least that long, and meanwhile is only
+eligible for what that instrument can play (a person plays one instrument, not one per note; a
+large value is a fixed seating); \musil{'inertia} (0..1) is how often it keeps the technique
+of its last note when the set still holds it; \musil{'leap} (semitones) keeps its next pitch
+within that interval of its last one when it has samples there (2: chromatic lines, a
+micropolyphony). The dynamics can be a constraint like the technique: with
+\musil{'dynamics-strict} a player must have a sample at the dynamics asked for
+(\musil{player-styles}, \musil{player-pitches} and \musil{db-pitches-at} take the dynamics
+too); without it the nearest recorded dynamics is taken and the substitution counted.
+\musil{'balance} is a record from instrument codes or families (\musil{'strings},
+\musil{'winds}, \musil{'brass}, \musil{'percussion}, \musil{'keyboard}, \musil{'plucked};
+\musil{instrument-family}) to decibels added to their notes, to keep the brass under the
+strings at the same marking (\musil{balance-gain}). Where the pitches fall in the band:
+\musil{'method 'cluster} gives every pitch of the band once before any is repeated, the
+counts shared by the players (a chromatic saturation, a Ligeti cluster, where random draws
+repeat and leave holes); \musil{'weight} ($-1$..1) draws the middle of the band more often
+(towards 1) or its edges (towards $-1$) and \musil{'tilt} its bottom or its top. Time:
+\musil{'spread} (seconds) scatters the players of a group struck together within that time
+(an orchestra's attack rather than a sampler's); \musil{'duration-law} draws the duration
+in its range uniformly, log-uniformly (\musil{'log}: as many short as long by ratio, a
+granular texture) or by an exponent (2: mostly short); \musil{'group-density} gives each
+paired group its own rate (the event's rate is their sum, the event goes to a group with a
+probability proportional to its rate). One orchestra for a whole piece: with
+\musil{'continue} the orchestra's own player records carry the state (every note booked so
+far, last pitches, seats) into the call and out of it, \musil{'start} being the time in the
+piece the call begins at, so a run of granulators placed one after another, or overlapping,
+in any order, share the same people and never book one twice (a note is cut where the
+player's next booking begins; \musil{orchestra-rest!} clears the state). Every run returns a
+report (\musil{(get result 'report)}, printed by \musil{granulation-report}): the events due,
+played and skipped because every able player was busy (the saturation: the number to tune
+the density against the orchestra's size), the unplayable ones, the dynamics substituted, and
+each player's notes and busy fraction. And \musil{score-validate s orch} checks any score
+against an orchestra as a copyist would: at every moment each sounding note must have a
+player of its own able to play its instrument (an ossia player counts for either, so it is
+a matching, not a count), and every note must be at a pitch the instrument was recorded at;
+the record it returns (\musil{'ok}, \musil{'overbooked}, \musil{'transposed}, the
+\musil{'peak} per instrument) is printed by \musil{validation-print}.
+\texttt{gran\_orchestration3.mu} teaches these one section at a time. The database is indexed once
 (\musil{db-index!}: the available pitched sounds of every instrument by dynamics and
 technique), so a note costs nothing on a large set; \musil{db-techniques-of} and
 \musil{db-dynamics-of} say what an instrument was recorded with, which is how an example
@@ -1615,7 +1656,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}
