@@ -249,14 +249,30 @@ function score-render-at-depth (s layout sr depth) {
     })
     return out
 }
-# (render s path layout)   the score written as a WAV; => the channels
-function render (s path layout) {
-    var out (score-render s layout)
+# (render-buffer s layout)   the score as channels, in the concert hall as the roll plays it (score-reverb!: the dry
+#                          and wet amounts; (score-reverb! s 1 0) renders dry), scaled down when it would clip; the
+#                          buffer to keep working on; (score-render s layout) is the dry mix itself
+function render-buffer (s layout) {
+    var sr (get s 'sr)
+    var rv (opt s 'reverb (list 0.7 0.3))
+    var dry (score-render s layout)
+    var out (if (== (last rv) 0) (map dry (function (c) (* (head rv) c))) (concerthall dry sr (head rv) (last rv)))
     var peak (max-of (map out (function (c) (max (abs c)))))
-    var safe (if (> peak 1) (map out (function (c) (/ c peak))) out)
-    write-wav path (get s 'sr) safe
-    if (> peak 1) { print "render: the mix peaked at" (fixed peak 2) "and was scaled to 1" }
-    return safe
+    if (> peak 0.98) { print "render: the mix peaked at" (fixed peak 2) "and was scaled to 0.98"
+                       return (map out (function (c) (* (/ 0.98 peak) c))) }
+    return out
+}
+# (render s path layout)   render-buffer written as a WAV at the score's rate; => the channels
+function render (s path layout) {
+    var out (render-buffer s layout)
+    write-wav path (get s 'sr) out
+    return out
+}
+# (render-hall s path)     the score in the hall, in stereo, as a WAV (the roll's Render... button): (render s path "stereo")
+function render-hall (s path) {
+    var out (render s path "stereo")
+    print "rendered" path "(in the hall)"
+    return out
 }
 
 # --- playing: the score handed to the engine, its sounds read by a thread ahead of the clock ---------------------
@@ -495,17 +511,6 @@ function roll-render (score-id path) (render-hall (displayed-score score-id) pat
 function roll-save (score-id path) { var n (score-save (displayed-score score-id) path)
                                      print "saved" n "notes to" path
                                      return n }
-# (render-hall s path)     the score rendered in stereo through the concert hall (score-reverb!), written as a WAV,
-#                          scaled so that it never clips; => the channels
-function render-hall (s path) {
-    var sr (get s 'sr)
-    var hall (score-hall-mix s sr)
-    var peak (max-of (map hall (function (c) (max (abs c)))))
-    var out (if (> peak 0.98) (map hall (function (c) (* (/ 0.98 peak) c))) hall)
-    write-wav path sr out
-    print "rendered" path "(in the hall)"
-    return out
-}
 # (play-event score-id event-id)   play one event of a displayed score, alone (a double-click in the roll does this)
 function play-event (score-id event-id) {
     var s (displayed-score score-id)
@@ -713,8 +718,13 @@ function note (db instr pitch dyn tech) {
     var pname (midi->pitch want)
     var same (db-candidates db instr dyn tech)
     if (== (length same) 0) { error "note: no sound of " instr " on disk in this database" }
+    # the pitch first: a sample at that very pitch with the technique, at the dynamics asked for or the nearest
+    # recorded (a player can play any dynamics; a transposed sample is a last resort, for a pitch not recorded at all)
+    var at-pitch (filter (db-candidates db instr nil tech) (function (e) (== (get e 'midi) want)))
     var exact (filter same (function (e) (== (get e 'midi) want)))
-    var entry (if (> (length exact) 0) (head exact) (min-by same (function (e) (abs (- (get e 'midi) want)))))
+    var entry (if (> (length exact) 0) (head exact)
+                  (if (> (length at-pitch) 0) (min-by at-pitch (function (e) (abs (- (dynamics->level (get e 'dyn)) (dynamics->level dyn)))))
+                      (min-by same (function (e) (abs (- (get e 'midi) want))))))
     var shift (- want (get entry 'midi))
     return (record (list 'kind 'note 'source (get entry 'file) 'db db 'entry entry 'instr (str instr) 'pitch pname 'midi want
                          'dyn (str dyn) 'tech (str tech) 'shift shift 'cents 0 'label (concat (str instr) " " pname " " (str dyn))))
@@ -1170,6 +1180,16 @@ function ossia (item) (map (split (str item) "|") identity)
 # (orchestra-size orch)    how many players; (orchestra-instruments orch) every instrument they can play
 function orchestra-size (orch) (length orch)
 function orchestra-instruments (orch) (unique (reduce (map orch (function (p) (get p 'instrs))) concat-list (list)))
+# (orchestra-range db orch)   the lowest and highest MIDI pitch any instrument of the orchestra was recorded at (on disk);
+#                          (orchestra-octaves db orch) the same as octaves, the granulator's register unit: what to clip a
+#                          band taken from a recording to, so that it asks nothing the orchestra cannot play
+function orchestra-range (db orch) {
+    var rs (map (filter (orchestra-instruments orch) (function (i) (not (equal? (type (opt (db-index! db) (str i) nil)) "nil")))) (function (i) (db-range-available db i)))
+    if (== (length rs) 0) { error "orchestra-range: no instrument of the orchestra has a sound on disk" }
+    return (list (min-of (map rs head)) (max-of (map rs last)))
+}
+function orchestra-octaves (db orch) { var r (orchestra-range db orch)
+                                       return (list (/ (- (head r) 12) 12) (/ (- (last r) 12) 12)) }
 
 # --- the orchestral granulator ------------------------------------------------------------------------------------
 # (orchestrate-granular db orch secs params)   orchestration as granular synthesis: a stochastic process realised by
@@ -1214,14 +1234,26 @@ function granulate (db orch secs params) {
     var out (list)
     var t 0
     var voice-k 0
+    var phase 0                                                              # a slow rate's share of an event, accumulated a quarter second at a time
+    var unplayable (list)                                                    # what was asked of the orchestra that it cannot play, reported once each
     while (< t secs) {
         var density (param-at params 'density t (list 1 1))
-        var rate (max 0.01 (draw-in density))
+        var rate (max 0.001 (draw-in density))
+        # time advances by the event's interval when the rate is at least one a second (exact, for a regular pulse);
+        # a slower rate advances a quarter second at a time and the event comes when its share is due, so a change
+        # of density during a long wait (a silence ending) is seen without a jump over it
+        var step (if (<= (/ 1 rate) 1) (/ 1 rate) 0.25)
+        var due 1
+        if (> (/ 1 rate) 1) { set phase (+ phase (* 0.25 rate))
+                              set due (>= phase 1)
+                              if due { set phase (- phase 1) } }
         var reg (param-at params 'register t (list 3 5))
         var lo (* 12 (+ 1 (head reg)))
         var hi (- (* 12 (+ 2 (last reg))) 1)
         var dur (draw-in (param-at params 'duration t (list 0.2 1)))
-        var tech (pick-from (param-at params 'styles t (list 'ord)))
+        var style-set (param-at params 'styles t (list 'ord))                 # the styles the event may use: each player takes one it has
+        set style-set (if (equal? (type style-set) "list") style-set (list style-set))
+        var tech (pick-from style-set)                                         # for the target method (the others choose per player below)
         var dv (param-at params 'dynamics t (list 'mf))
         var dyn (if (dynamics-level? dv) (level->dynamics (draw-in dv)) (pick-from dv))   # a level 0..1 (interpolated) or a set of labels
         var gain (if (dynamics-level? dv) (level->gain (draw-in dv)) 1)
@@ -1233,7 +1265,7 @@ function granulate (db orch secs params) {
         var coupling (draw-in (param-at params 'coupling t 1))
         var free (filter players (function (p) (<= (get p 'busy-until) t)))
         var poly (round (draw-in (param-at params 'polyphony t 1000)))
-        if (and (== (length free) 0) (equal? method 'target) (opt params 'steal 1)) {   # the density is due and nobody is free: the oldest note gives up its player
+        if (and due (== (length free) 0) (equal? method 'target) (opt params 'steal 1)) {   # the density is due and nobody is free: the oldest note gives up its player
             each (range 1) (function (k) {
                 var held (filter players (function (p) (> (get p 'busy-until) t)))
                 if (> (length held) 0) {
@@ -1246,9 +1278,29 @@ function granulate (db orch secs params) {
             })
         }
         var busy (- (length players) (length free))
-        if (and (> (length free) 0) (< busy poly)) {
-            var p (getidx free (floor (* (rand) (length free))))
-            var group (take (if (or (< (get p 'group) 0) (>= (rand) coupling)) (list p) (filter free (function (q) (== (get q 'group) (get p 'group))))) (max 1 (- poly busy)))   # within the polyphony
+        # the event goes to players able to play it: those with samples of the technique in the register (the target
+        # method chooses its own from the target's peaks). None free but some in the orchestra: the event is skipped;
+        # none in the orchestra at all: the parameters ask for what this orchestra cannot play, and that is reported
+        var memo (list)                                                        # the styles a player's instruments have here, once per ossia spec this event
+        var styles-of (function (q) { var key (join (get q 'instrs) "|")
+                                      if (has? memo key) { return (get memo key) }
+                                      var got (player-styles db q style-set lo hi)
+                                      put! memo key got
+                                      return got })
+        var able (if (equal? method 'target) free (filter free (function (q) (> (length (styles-of q)) 0))))
+        if (and due (not (equal? method 'target)) (== (length able) 0) (> (length free) 0)) {
+            if (not (any? players (function (q) (> (length (styles-of q)) 0)))) {
+                var key (concat (str style-set) "|" (str (round (head reg))) "|" (str (round (last reg))))
+                if (not (has? unplayable key)) {
+                    put! unplayable key 1
+                    if (<= (length unplayable) 4) { print "orchestrate-granular: no instrument of the orchestra has samples of" (str style-set) "in octaves" (fixed (head reg) 1) "-" (fixed (last reg) 1) "(at" (fixed t 1) "s): unplayable, nothing written" }
+                    if (== (length unplayable) 5) { print "orchestrate-granular: ... and more of the same (each style set and register once)" }
+                }
+            }
+        }
+        if (and due (> (length able) 0) (< busy poly)) {
+            var p (getidx able (floor (* (rand) (length able))))
+            var group (take (if (or (< (get p 'group) 0) (>= (rand) coupling)) (list p) (filter able (function (q) (== (get q 'group) (get p 'group))))) (max 1 (- poly busy)))   # within the polyphony
             if (equal? method 'target) {
                 # a morphological orchestration: the notes for the free players from the target's spectrum now, less what
                 # still sounds (target-notes: a pursuit at the target's peaks), each lasting as long as the target keeps
@@ -1269,43 +1321,83 @@ function granulate (db orch secs params) {
                 })
             } {
                 each group (function (q) {
-                    var pitch (choose-pitch db q method lo hi chord params t table voice-k)
-                    var instr (instrument-for db (get q 'instrs) pitch)
-                    push out (list t dur (put (note db instr pitch dyn tech) 'gain gain))
+                    var qtech (pick-from (styles-of q))                              # a style of the set this player has samples of, in the register
+                    var playable (player-pitches db q qtech lo hi)                  # those samples' pitches
+                    var pitch (choose-pitch db q method lo hi chord params t table voice-k playable)
+                    var instr (instrument-for db (get q 'instrs) pitch qtech)
+                    push out (list t dur (put (note db instr pitch dyn qtech) 'gain gain))   # that technique at that pitch; the nearest recorded dynamics
                     put! q 'busy-until (+ t dur)
                     put! q 'last-pitch pitch
                     set voice-k (+ voice-k 1)
                 })
             }
         }
-        set t (+ t (/ 1 rate))
+        set t (+ t step)
     }
     return out
 }
 # the instrument of a player for a pitch: among its alternatives (an ossia), the one whose range holds the pitch,
 # else the nearest range
-function instrument-for (db instrs pitch) {
+function instrument-for (db instrs pitch tech) {
     if (== (length instrs) 1) { return (head instrs) }
-    var idx (db-index! db)
-    var ranges (map instrs (function (i) { var slot (opt idx (str i) nil)
-                                          if (equal? (type slot) "nil") { return (list 0 0) }
-                                          if (not (has? slot 'range)) { db-range-available db i }
-                                          return (get slot 'range) }))
-    var k 0
-    var best -1
-    var best-d 1e9
-    while (< k (length instrs)) {
-        var r (getidx ranges k)
-        if (and (>= pitch (head r)) (<= pitch (last r))) { return (getidx instrs k) }
-        var d (min (abs (- pitch (head r))) (abs (- pitch (last r))))
-        if (< d best-d) { set best-d d
-                          set best k }
-        set k (+ k 1)
-    }
-    return (getidx instrs best)
+    var with-tech (filter instrs (function (i) (contains? (db-pitches-of db i tech) pitch)))       # an instrument recorded at that pitch with that technique
+    if (> (length with-tech) 0) { return (pick-from with-tech) }
+    error "instrument-for: none of " instrs " was recorded at " (midi->pitch pitch) " with " tech
+}
+# (db-pitches-of db instr tech)   the MIDI pitches an instrument was recorded at with a technique (any dynamics), sorted;
+#                          tech nil: with any technique. From the index, kept once computed. What a granulated
+#                          player may be asked to play: a real player's pitch is one the database proves
+function db-pitches-of (db instr tech) {
+    var slot (opt (db-index! db) (str instr) nil)
+    if (equal? (type slot) "nil") { return (list) }
+    var key (concat "pitches|" (if (equal? (type tech) "nil") "*" (str tech)))
+    if (has? slot key) { return (get slot key) }
+    var es (if (equal? (type tech) "nil") (get slot 'all) (filter (get slot 'all) (function (e) (equal? (get e 'tech) (str tech)))))
+    var ps (sort-list (unique (map es (function (e) (get e 'midi)))))
+    put! slot key ps
+    put! slot (concat key "|vec") (if (== (length ps) 0) (vec) (vec ps))                 # as a vector too: the range test is then three vector ops
+    return ps
+}
+# (instrument-has? db instr tech lo hi)   has an instrument samples with a technique inside lo..hi (MIDI)? (a vector test:
+#                          what the granulator asks hundreds of times an event)
+function instrument-has? (db instr tech lo hi) {
+    var slot (opt (db-index! db) (str instr) nil)
+    if (equal? (type slot) "nil") { return 0 }
+    var key (concat "pitches|" (if (equal? (type tech) "nil") "*" (str tech)) "|vec")
+    if (not (has? slot key)) { db-pitches-of db instr tech }
+    var v (get slot key)
+    if (== (length v) 0) { return 0 }
+    return (> (sum (* (>= v lo) (<= v hi))) 0)
+}
+# (player-styles db player styles lo hi)   the styles of a set a player has samples of inside lo..hi (MIDI): what the
+#                          event's style set leaves this player; empty when it can play none of them there
+function player-styles (db player styles lo hi) (filter styles (function (tech) (any? (get player 'instrs) (function (i) (instrument-has? db i tech lo hi)))))
+# (player-pitches db player tech lo hi)   the pitches a player may be given for an event: the samples of its instruments
+#                          with the technique asked for, inside the register lo..hi (MIDI); the constraints select, they
+#                          are never relaxed: an empty list means this player cannot play what the event asks for (no
+#                          instrument of it was recorded with that technique in that range) and the event goes to
+#                          another player; => a sorted list
+function player-pitches (db player tech lo hi) {
+    var all (vec)
+    each (get player 'instrs) (function (i) {                           # each instrument's sorted pitch vector, sliced to the register
+        var slot (opt (db-index! db) (str i) nil)
+        if (not (equal? (type slot) "nil")) {
+            var key (concat "pitches|" (if (equal? (type tech) "nil") "*" (str tech)) "|vec")
+            if (not (has? slot key)) { db-pitches-of db i tech }
+            var v (get slot key)
+            if (> (length v) 0) {
+                var start (sum (< v lo))
+                var end (sum (<= v hi))
+                if (> end start) { set all (vec all (slice v start (- end start))) }
+            }
+        }
+    })
+    if (== (length all) 0) { return (list) }
+    return (sort-list (unique (vec->list all)))
 }
 # a pitch for a player by the method, within lo..hi (MIDI)
-function choose-pitch (db player method lo hi chord params t table voice-k) {
+function choose-pitch (db player method lo hi chord params t table voice-k playable) {
+    var nearest (function (m) (min-by playable (function (p) (abs (- p m)))))       # the playable pitch nearest to a wanted one
     var in-register (function (m) {                          # moved by octaves into lo..hi, then clamped
         var q m
         while (< q lo) { set q (+ q 12) }
@@ -1315,29 +1407,34 @@ function choose-pitch (db player method lo hi chord params t table voice-k) {
     if (equal? method 'pivots) {
         var centres (if (equal? (type chord-pitches) "nil") (list (/ (+ lo hi) 2)) chord-pitches)
         var centre (in-register (getidx centres (mod voice-k (length centres))))
-        return (max lo (min hi (+ centre (round (* (draw-in (param-at params 'interval t 3)) (- (* 2 (rand)) 1))))))   # clamped, not folded
+        var reach (draw-in (param-at params 'interval t 3))
+        var around (filter playable (function (m) (<= (abs (- m centre)) reach)))         # the playable pitches within the interval of the pivot
+        if (> (length around) 0) { return (pick-from around) }
+        return (nearest centre)
     }
     if (equal? method 'markov) {
         var prev (get player 'last-pitch)
         var row (if (equal? (type prev) "nil") nil (opt table prev nil))
-        if (not (equal? (type row) "nil")) { return (in-register (pick-from row)) }
-        if (> (length table) 0) { return (in-register (pick-from (keys table))) }    # start from a pitch the model knows
-        return (random-pitch lo hi chord-pitches)
+        if (not (equal? (type row) "nil")) { var can (filter (map row in-register) (function (m) (contains? playable m)))
+                                             return (if (> (length can) 0) (pick-from can) (nearest (in-register (pick-from row)))) }
+        if (> (length table) 0) { return (nearest (in-register (pick-from (keys table)))) }    # start from a pitch the model knows
+        return (random-pitch playable chord-pitches)
     }
     if (equal? method 'harmonic) {
         if (< (rand) (draw-in (param-at params 'harmonicity t 0.7))) {
-            var partials (filter (harmonic-series (opt params 'fundamental "C2") 16) (function (m) (and (>= m lo) (<= m hi))))
+            var partials (filter (harmonic-series (opt params 'fundamental "C2") 16) (function (m) (contains? playable m)))   # the partials this player can play
             if (> (length partials) 0) { return (pick-from partials) }
         }
-        return (random-pitch lo hi chord-pitches)
+        return (random-pitch playable chord-pitches)
     }
-    return (random-pitch lo hi chord-pitches)                    # 'random and 'chordinterp (the env already interpolates chords)
+    return (random-pitch playable chord-pitches)                # 'random and 'chordinterp (the env already interpolates chords)
 }
-# a random pitch in lo..hi, from a chord's pitch classes when there is one (any octave in the register)
-function random-pitch (lo hi chord-pitches) {
-    if (equal? (type chord-pitches) "nil") { return (+ lo (floor (* (rand) (+ 1 (- hi lo))))) }
-    var candidates (filter (vec->list (range lo (+ hi 1))) (function (m) (any? chord-pitches (function (c) (== (mod m 12) (mod c 12))))))
-    if (== (length candidates) 0) { return (+ lo (floor (* (rand) (+ 1 (- hi lo))))) }
+# a random pitch among the playable ones, from a chord's pitch classes when there is one (any octave among them); the
+# playable ones when the chord has none of them
+function random-pitch (playable chord-pitches) {
+    if (equal? (type chord-pitches) "nil") { return (pick-from playable) }
+    var candidates (filter playable (function (m) (any? chord-pitches (function (c) (== (mod m 12) (mod c 12))))))
+    if (== (length candidates) 0) { return (pick-from playable) }
     return (pick-from candidates)
 }
 # (markov-table s)         transitions learnt from a score's notes: a record from a pitch to the list of pitches that

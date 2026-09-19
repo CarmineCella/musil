@@ -239,6 +239,8 @@ if(MUSIL_TESTS)
   set(NEEDS_gran_orchestration "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_modulations "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_atmospheres "${D}/skip-in-tests")      # nine minutes of orchestra: run it (musil atmospheres.mu -- 0.25 for a preview), don't test it
+  set(NEEDS_atmospheres2 "${D}/skip-in-tests")     # the same from the recording's curves
+  set(NEEDS_gran_orchestration2 "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_morph_orchestration "${D}/A_minor.wav")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp

@@ -245,26 +245,9 @@ function fmt-pct (x d) (concat (fmt-fixed (* x 100) d) "%")
 
 # --- functions -------------------------------------------------------------
 # --- records: association lists, (list (list key value) ...), the shape of options, events and rows ---
-# (opt rec key default)    the value of key in a record, or default; keys compare with equal? (symbols and strings alike)
-function opt (rec key default) {
-    var found (filter rec (function (o) (equal? (head o) key)))
-    if (== (length found) 0) { return default }
-    return (last (head found))
-}
-# (get rec key)            the value of key; an error when absent
-function get (rec key) {
-    var found (filter rec (function (o) (equal? (head o) key)))
-    if (== (length found) 0) { error "get: no key " key }
-    return (last (head found))
-}
-# (has? rec key)           is the key present?
-function has? (rec key) (any? rec (function (o) (equal? (head o) key)))
-# (put! rec key value)     set a key in place (replacing an existing pair, or adding one); returns the record
-function put! (rec key value) {
-    var found (filter rec (function (o) (equal? (head o) key)))
-    if (> (length found) 0) { setidx (head found) 1 value } { push rec (list key value) }
-    return rec
-}
+# get, opt, has? and put! are builtins (std.h): a record is looked up at every event and note, and the scan stops at
+# the key. (get rec key) the value of key, an error when absent; (opt rec key default) or default; (has? rec key);
+# (put! rec key value) sets a key in place, replacing an existing pair or adding one, and returns the record
 # (put rec key value)      a new record with the key set, the original untouched
 function put (rec key value) (put! (map rec (function (o) (list (head o) (last o)))) key value)
 # (keys rec) (values rec)  the keys, the values, in order

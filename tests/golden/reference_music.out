@@ -21,7 +21,7 @@ fit-duration    : 100 (shorter sounds are left alone)
 layout-channels : mono 1 stereo 2 binaural 2 ambi 2 9 ring of 6 6 8 channels 8
 place           : a mono sound at the left, stereo levels (0.707 0)
 score-render    : 2 channels, 23200 samples
-render: the mix peaked at 1.55 and was scaled to 1
+render: the mix peaked at 1.23 and was scaled to 0.98
 render          : written to /tmp/musil_reference_score.wav
 
 --- the roll ---
@@ -78,8 +78,8 @@ db-index!       : 4 instruments indexed once (what note draws from); db-candidat
 --- morphological ---
 target-analyse  : 2.6 s, 111 frames; curves: density (flux peaks a second), centroid, spread, low, loudness; 1 flux peaks
 target-envelopes: the granulator's parameters from the curves: (density dynamics register)
-target-peaks    : the pitches the notes may take, at 1 s: (C5 A#6 C4 G5 D7 E7)
-orchestrate-morphological: 2 notes with cents, e.g. Vc C4 mf -13 cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation
+target-peaks    : the pitches the notes may take, at 1 s: (C4 C6 C5 C7 A#6 E7)
+orchestrate-morphological: 1 notes with cents, e.g. Vc C4 f 15 cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation
 
 --- queries, db-gen, playing ---
 db-query (lists): 16 string sounds, mf or ff

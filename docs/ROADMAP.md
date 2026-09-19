@@ -133,6 +133,18 @@ cmake --build build --target uninstall
    `same?` asks for identity. The roll's picture is cached; only the playhead is drawn per frame. `score-save` / `score-load` in Orchidea's connection format (notes only; Save... in the
    roll). Speed: `connection` no longer compares segments by value, `merge-continuations` is indexed,
    instrument ranges are cached, the sinc resampler is tabulated (10x).
+   `render-buffer` (the score in the hall as channels, as the roll plays it; `render` writes it). The
+   granulator advances a quarter second at a time under one event a second, so a silence's low density no
+   longer jumps over what follows. Examples: `gran_orchestration2.mu` (one parameter at a time),
+   `atmospheres2.mu` (the granulator driven by the measured curves of a recording, kept as
+   `data/atmospheres_curves.csv`), Modulations' opening reworked (compact chords together, then apart).
+   Playability (done): the granulator draws a player's pitch only among those its instrument was recorded at
+   with the technique of the moment (`db-pitches-of`, `player-pitches`); every method snaps to or chooses
+   among them; a register beyond the recordings gives the nearest recorded pitches; no note is transposed. The
+   orchestra is the polyphony: one note per player at a time.
+   Speed: `get`, `opt`, `has?` and `put!` are builtins (they were interpreted scans over every pair, at every
+   event and note); the granulator's playability test is a vector range test with a per-event memo per ossia
+   spec. A 60-s tutti of 45 ossia players with three styles: 1.5 s (52 s with the first strict version).
    Open: dynamic features per sound (following the whole file rather than its average spectrum) would let
    the morphological pursuit choose playing styles by their evolution in time, and are what Maple needs;
    they would be a second feature file next to the published ones, not a change to those.

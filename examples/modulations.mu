@@ -3,7 +3,7 @@
 # piece is a slow drift whose only landmarks are the harmonic spectrum of E (41.2 Hz, the low E
 # of the trombone) and periodic durations. Its sections have durations proportional to the
 # intervals of that spectrum (A 225", B 131.5", C 167", D 110" 82" 65", E 210.6"); each is one
-# process: A moves from inharmonicity to harmonicity while the range contracts, the rhythm goes
+# process: A opens with compact chords struck together, moves from inharmonicity to harmonicity, then the players come apart over a widening range, the rhythm goes
 # from aperiodic to periodic, chords lengthen against rests and the dynamics fall from ffff to
 # ppp; two chord-objects alternate, "A" (an F series in the bass under an inverted F series
 # above) and "B" (its ring modulation); the orchestration goes from noisy, percussive and
@@ -49,39 +49,45 @@ var s (score "modulations" sr)
 var t 0
 # a section: an inharmonic-to-harmonic (or the reverse) process on the E spectrum, with its own dynamics (levels
 # 0..1, ppp to fff, interpolated) and density curves; `from` and `to` are harmonicity values, the chords alternate A and B while the harmonicity is low
-function section (name secs h-from h-to dyn-from dyn-to dens-from dens-to dur-from dur-to sync-from sync-to reg-from reg-to) {
+# `hold` is the fraction of the section during which the coupling and the register stay as they start: the
+# opening of A is compact chords struck together, and the players only come apart, over a widening range, as the
+# harmony nears the E spectrum
+function section (name secs h-from h-to dyn-from dyn-to dens-from dens-to dur-from dur-to sync-from sync-to reg-from reg-to hold) {
+    var th (* hold secs)
     var params (record (list
         'method    'harmonic
         'fundamental "E1"
         'harmonicity (env (list 0 h-from secs h-to))
         'chords    (env (list 0 (list chord-a chord-b) (* 0.5 secs) (list chord-a chord-b e-high) secs (list e-high)))
-        'register  (env (list 0 reg-from secs reg-to))
+        'register  (env (list 0 reg-from th reg-from secs reg-to))
         'density   (env (list 0 dens-from secs dens-to))
         'duration  (env (list 0 dur-from secs dur-to))
         'styles    (env (list 0 (if (< h-from h-to) noisy (list 'ord)) secs (if (< h-from h-to) (list 'ord) noisy)))
         'dynamics  (env (list 0 dyn-from secs dyn-to))
-        'coupling  (env (list 0 sync-from secs sync-to))))
+        'coupling  (env (list 0 sync-from th sync-from secs sync-to))))
     var r (orchestrate-granular db orch secs params)
     connect! s t r (list 0)
     print name ":" (fixed secs 1) "s," (length (best-connection r)) "events; harmonicity" h-from "->" h-to ", coupling" sync-from "->" sync-to
     set t (+ t secs)
 }
-# A: inharmonic -> harmonic; ffff -> ppp; aperiodic (a wide density range) -> periodic (a fixed rate); chords lengthen
-#    against the rests; struck together at first, free at the end; the range contracts from five octaves to two
-section "A" (* 225 k) 0 1 1 0 (list 1 6) (list 2 2) (list 0.1 0.4) (list 2 4) 1 0 (list 1 6) (list 3 5)
+# A: the opening: compact chords (octaves 3-5, the chord-objects A and B) struck by everyone together, ffff, aperiodic;
+#    for the first six tenths of the section nothing but the harmonicity and the dynamics move (inharmonic ->
+#    harmonic, ffff -> ppp); then, as the harmony nears the E spectrum, the players come apart (coupling 1 -> 0),
+#    the range opens to the spectrum's five octaves, the rhythm becomes periodic and the chords lengthen
+section "A" (* 225 k) 0 1 1 0 (list 1 6) (list 2 2) (list 0.1 0.4) (list 2 4) 1 0 (list 3 5) (list 1 6) 0.6
 # B: inharmonic -> harmonic again, quietly rising
-section "B" (* 131.5 k) 0.1 0.9 0.15 0.6 (list 2 5) (list 3 3) (list 0.2 0.6) (list 1 2) 0.6 0.2 (list 2 6) (list 3 5)
+section "B" (* 131.5 k) 0.1 0.9 0.15 0.6 (list 2 5) (list 3 3) (list 0.2 0.6) (list 1 2) 0.6 0.2 (list 2 6) (list 3 5) 0
 # C: the long one, inharmonic -> harmonic, growing to fff
-section "C" (* 167 k) 0 1 0.3 1 (list 1 3) (list 4 4) (list 0.3 1) (list 1.5 3) 0.3 0.8 (list 1 7) (list 2 6)
+section "C" (* 167 k) 0 1 0.3 1 (list 1 3) (list 4 4) (list 0.3 1) (list 1.5 3) 0.3 0.8 (list 1 7) (list 2 6) 0
 # D1, D2, D3: harmonic -> inharmonic, each shorter than the last, the dynamics easing
-section "D1" (* 110 k) 1 0.3 0.85 0.6 (list 3 3) (list 2 6) (list 1 2) (list 0.2 0.5) 0.8 0.3 (list 2 6) (list 1 7)
-section "D2" (* 82 k) 0.8 0.2 0.6 0.3 (list 3 3) (list 3 8) (list 0.8 1.5) (list 0.1 0.4) 0.5 0.2 (list 2 6) (list 1 7)
-section "D3" (* 65 k) 0.6 0 0.3 0.15 (list 4 4) (list 4 10) (list 0.5 1) (list 0.05 0.2) 0.3 0 (list 2 6) (list 1 7)
+section "D1" (* 110 k) 1 0.3 0.85 0.6 (list 3 3) (list 2 6) (list 1 2) (list 0.2 0.5) 0.8 0.3 (list 2 6) (list 1 7) 0
+section "D2" (* 82 k) 0.8 0.2 0.6 0.3 (list 3 3) (list 3 8) (list 0.8 1.5) (list 0.1 0.4) 0.5 0.2 (list 2 6) (list 1 7) 0
+section "D3" (* 65 k) 0.6 0 0.3 0.15 (list 4 4) (list 4 10) (list 0.5 1) (list 0.05 0.2) 0.3 0 (list 2 6) (list 1 7) 0
 # E: from an undefined harmony to the inharmonic end, ppp rising to fff, struck together again at the close
-section "E" (* 210.6 k) 0.5 0 0 1 (list 2 4) (list 6 6) (list 1 3) (list 0.3 0.8) 0 1 (list 3 5) (list 1 7)
+section "E" (* 210.6 k) 0.5 0 0 1 (list 2 4) (list 6 6) (list 1 3) (list 0.3 0.8) 0 1 (list 3 5) (list 1 7) 0
 
 score-print s
 render s "/tmp/musil_modulations.wav" "stereo"
-print "wrote /tmp/musil_modulations.wav (dry); Render... in the roll writes it in the hall;" (fixed (score-duration s) 0) "s"
+print "wrote /tmp/musil_modulations.wav (in the hall);" (fixed (score-duration s) 0) "s"
 display s
 # play it: press Play in the roll, or (play-score s 0.8) here

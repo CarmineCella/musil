@@ -3,7 +3,7 @@
 # distributions, or write your own the same way, and the rest follows.
 # Usage: musil random_music.mu [seed]
 load "music.mu"
-seed (if (> (length args) 0) (num (getidx args 0)) 7)
+seed (if (> (length args) 0) (num (getidx args 0)) 42)
 
 #var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
 var db (db-load "../datasets/FullSOL2020.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
@@ -36,18 +36,18 @@ function random-notes (db secs density instruments dyns techs durs) {
 
 # --- a score of a minute, 1.5 notes a second, 0.3 to 5 s each: every instrument, dynamic and technique the database has (nil = all of them);
 #     give lists instead to choose: (random-notes db 30 3.5 (list 'Vn 'Vc) (list 'pp 'mf) (list 'ord) (list 0.4 2.5))
-print "instruments:" (db-instruments-available db) " dynamics:" (list 'pp 'mp) " techniques:" (db-techniques db)
+print "instruments:" (db-instruments-available db) " dynamics:" (db-dynamics db) " techniques:" (db-techniques db)
 var s (score "random" 44100)
-each (random-notes db 60 5.5 nil nil nil (list 2.3 5)) (function (n) {
+each (random-notes db 60 1.5 nil nil nil (list 0.3 5)) (function (n) {
     var e (event s (head n) (getidx n 1) (last n))
     event-place! e (- (* 120 (rand)) 60) 0                  # each note somewhere between left and right
     event-gain! e (if (equal? (get e 'dyn) "pp") 0.5 (if (equal? (get e 'dyn) "mf") 0.8 1))
 })
 score-print s
 
-# --- render (dry, and in the concert hall), show, play ---------------------------------------------------------
-var dry (render s "/tmp/musil_random.wav" "stereo")
-write-wav "/tmp/musil_random_hall.wav" 44100 (normalize-peak-stereo (concerthall dry 44100 0.7 0.3))
-print "wrote /tmp/musil_random.wav (stereo, dry) and /tmp/musil_random_hall.wav (in the Concertgebouw: concerthall)"
+# --- render (in the concert hall, as the roll plays it; and dry), show, play ------------------------------------------
+var hall (render s "/tmp/musil_random_hall.wav" "stereo")                    # render-buffer, written: the score's reverb applied
+write-wav "/tmp/musil_random.wav" 44100 (score-render s "stereo")            # the dry mix itself
+print "wrote /tmp/musil_random_hall.wav (in the Concertgebouw) and /tmp/musil_random.wav (dry);" (length (head hall)) "samples"
 display s
 # play it: press Play in the roll, or (play-score s 0.8) here; score-reverb! sets how much of the hall is heard

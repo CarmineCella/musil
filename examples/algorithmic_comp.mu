@@ -7,8 +7,8 @@
 # Usage: musil algorithmic_comp.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 9)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-# var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 var sr 44100
 var s (score "algorithmic" sr)
 score-tempo! s 108                                             # times below are in beats (add-beats!) at 108
@@ -73,6 +73,6 @@ print "6: walks, arpeggios up and down, 3 against 2, an ostinato from a pattern 
 
 score-print s
 render s "/tmp/musil_algorithmic.wav" "stereo"
-print "wrote /tmp/musil_algorithmic.wav (dry); Render... in the roll writes it in the hall"
+print "wrote /tmp/musil_algorithmic.wav (in the hall, as the roll plays it)"
 display s
 # play it: press Play in the roll, or (play-score s 0.8) here

@@ -1318,10 +1318,14 @@ that the playhead allows for; \musil{score-reverb!} sets the dry and wet amounts
 tutti at $fff$ rather than clipping it; a score's \musil{'level} (0.5 by default) scales it
 before that. So Play starts within a second whatever the score's length, Stop stops at
 once, and neither the windows nor the interpreter can stall the music, nor the music them;
-\musil{cues-status} says how the loader is doing. \musil{render} and \musil{render-hall}
-are the offline way, the whole score as one buffer (\musil{score-hall-mix}, cached on the
-score); \musil{score-schedule} is the older live way, every event on the clock at once;
-\musil{play} and \musil{play-file} of \texttt{live} still play a buffer or a file.
+\musil{cues-status} says how the loader is doing. \musil{render-buffer s layout} is the
+offline way: the whole score as channels, in the hall exactly as the roll plays it (the
+score's dry and wet amounts; dry when the wet is 0), scaled down when it would clip, a
+buffer to keep working on; \musil{render s path layout} writes it as a WAV and
+\musil{render-hall} is the same in stereo (the roll's Render...); \musil{score-render} is
+the dry mix itself. \musil{score-schedule} is the older live way, every event on the clock
+at once; \musil{play} and \musil{play-file} of \texttt{live} still play a buffer or a
+file.
 
 \textbf{The roll} (\musil{display}) draws the score like music: one staff per instrument
 for the notes, in orchestral order, with a drawn treble or bass clef chosen by the
@@ -1409,17 +1413,33 @@ of each, \musil{connect!} places a connection in a score. Three orchestrators sh
 
 \textbf{The orchestral granulator.} Orchestration as granular synthesis: a stochastic
 process, described by envelopes over time, realised by the players of an orchestra with
-never more sounding at once than there are players. \musil{orchestra} takes a list where a
+never more sounding at once than there are players: \musil{(orchestra (list 'Vn 'Vn 'Fl
+'Fl))} is two violins and two flutes, each holding one note at a time, and a player busy
+with a note is not given another until it ends. \musil{orchestra} takes a list where a
 symbol is a player, a string \musil{"Fl|Picc"} a player with an ossia (one instrument or
-the other, by the pitch's range), and a list a paired group scheduled together.
+the other, by the pitch), and a list a paired group scheduled together. Playability is a
+property of the samples: an event's constraints (the register, the set of styles of the
+moment) select the samples of the database, and the event goes to a free player whose
+instrument has samples in that set (\musil{player-styles}, \musil{player-pitches},
+\musil{db-pitches-of}); the player takes a style of the set it has samples of there (a
+\musil{trem} never goes to a flute; the flute takes the set's \musil{ord} or
+\musil{flatt}) and one of those samples at its own pitch, at the dynamics asked for or
+the nearest recorded. Nothing is relaxed and nothing transposed: a player without samples
+for the event is not given it; when no free player has any, the event is a rest; when no
+player of the orchestra could ever have any (a register, or a whole style set, none of
+its instruments was recorded with), the granulator prints that the request is unplayable
+and writes nothing for it. An ossia player takes the
+instrument that has the pitch with the technique. \musil{orchestra-octaves} (and
+\musil{orchestra-range}, in MIDI) is what an orchestra can play at all, to clip a band taken
+from a recording or a diagram to it, as the Atmosphères examples do.
 \musil{env} is a value changing with time: at each breakpoint a number, a range
 \musil{(list lo hi)} or a set (techniques, dynamics, chords); between breakpoints numbers
 and ranges are interpolated and sets crossfaded by chance, so a process moves from one
 state to another rather than switching. \musil{orchestrate-granular db orch secs params}
 takes a record of parameters, each an envelope or a fixed value: \musil{'density} (events
 per second), \musil{'register} (octaves), \musil{'duration}, \musil{'styles},
-\musil{'dynamics}, \musil{'chords}, and \musil{'method}: \musil{'random} in the register
-(or from the chord), \musil{'pivots} (each player around a pitch of the chord within
+\musil{'dynamics}, \musil{'chords}, and \musil{'method}: \musil{'random} among the player's
+pitches in the register (or those of the chord's pitch classes), \musil{'pivots} (each player around a pitch of the chord within
 \musil{'interval}), \musil{'chordinterp} (the chord itself moving between two chords over
 time, \musil{chordinterp-env}), \musil{'markov} (transitions learnt from a score,
 \musil{'markov-score}), \musil{'harmonic} (partials of a \musil{'fundamental} with
@@ -1595,7 +1615,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off a waveform; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

@@ -71,6 +71,22 @@ inline vptr fn_find(vlist& a, Interp& i) {    // index of first element equal to
 // strings
 // (concat x ...) the arguments printed and joined into one string
 inline vptr fn_concat(vlist& a, Interp&) { std::string s; for (auto& x : a) s+=str_of(x); return v_str(std::move(s)); }
+// --- records: lists of (key value) pairs; keys compare with equal? --------------------------------------------------
+// The accessors are builtins: a record is looked up at every event, note and database entry, and a scan that stops at
+// the key (rather than a filter over every pair) is what keeps a score of thousands of notes fast.
+inline long rec_find(Interp& i, const vptr& rec, const vptr& key) {
+    if (!rec || rec->t != Value::LIST) i.bad("a record is a list of (key value) pairs");
+    for (size_t k = 0; k < rec->l.size(); k++) { const vptr& p = rec->l[k]; if (p && p->t == Value::LIST && p->l.size() == 2 && equal(p->l[0], key)) return (long)k; }
+    return -1;
+}
+// (get rec key) the value of key; an error when absent
+inline vptr fn_get(vlist& a, Interp& i) { long k = rec_find(i, a[0], a[1]); if (k < 0) i.bad("get: no key " + str_of(a[1])); return a[0]->l[(size_t)k]->l[1]; }
+// (opt rec key default) the value of key in a record, or default
+inline vptr fn_opt(vlist& a, Interp& i) { long k = rec_find(i, a[0], a[1]); return k < 0 ? a[2] : a[0]->l[(size_t)k]->l[1]; }
+// (has? rec key) is the key present?
+inline vptr fn_has(vlist& a, Interp& i) { return v_bool(rec_find(i, a[0], a[1]) >= 0); }
+// (put! rec key value) set a key in place (replacing an existing pair, or adding one); returns the record
+inline vptr fn_put_bang(vlist& a, Interp& i) { long k = rec_find(i, a[0], a[1]); if (k >= 0) a[0]->l[(size_t)k]->l[1] = a[2]; else a[0]->l.push_back(v_list({ a[1], a[2] })); return a[0]; }
 // (split s sep) the pieces of s between occurrences of sep; (split s "") the characters
 inline vptr fn_split(vlist& a, Interp& i) {
     
@@ -197,7 +213,7 @@ inline void add_std(Interp& i) {
     // sequences: list, vector, string
     i.def("reverse", fn_reverse, 1, 1); i.def("slice", fn_slice, 2, 3); i.def("find", fn_find, 2, 2);
     // strings
-    i.def("regex-match?", fn_regex_match, 2, 2); i.def("concat", fn_concat, 0, N); i.def("split", fn_split, 2, 2); i.def("join", fn_join, 2, 2);
+    i.def("regex-match?", fn_regex_match, 2, 2); i.def("concat", fn_concat, 0, N); i.def("split", fn_split, 2, 2); i.def("get", fn_get, 2, 2); i.def("opt", fn_opt, 3, 3); i.def("has?", fn_has, 2, 2); i.def("put!", fn_put_bang, 3, 3); i.def("join", fn_join, 2, 2);
     i.def("format", fn_format, 1, N); i.def("upper", fn_upper, 1, 1); i.def("lower", fn_lower, 1, 1);
     i.def("trim", fn_trim, 1, 1); i.def("chr", fn_chr, 1, 1); i.def("ord", fn_ord, 1, 1);
     // files and console

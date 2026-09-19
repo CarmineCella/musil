@@ -59,6 +59,6 @@ connect! s 0 r1 (list 0)
 connect! s 50 r2 (list 0)                                        # (list 1) for the other realisation
 score-print s
 render s "/tmp/musil_gran_orchestration.wav" "stereo"
-print "wrote /tmp/musil_gran_orchestration.wav (dry); Render... in the roll writes it in the hall"
+print "wrote /tmp/musil_gran_orchestration.wav (in the hall, as the roll plays it)"
 display s
 # play it: press Play in the roll, or (play-score s 0.8) here
