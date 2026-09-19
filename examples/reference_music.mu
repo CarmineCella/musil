@@ -129,6 +129,7 @@ print "methods         : random, cluster (every pitch of the band once before an
 print "playability     : a note is a sample the player's instrument has (player-styles, player-pitches, db-pitches-at); 'dynamics-strict makes the dynamics a constraint too; what no player can play is reported and left out"
 var rep (get gr 'report)
 print "report          :" (get rep 'due) "events due," (get rep 'notes) "notes," (get rep 'skipped-busy) "skipped with every able player busy," (get rep 'skipped-unplayable) "unplayable," (get rep 'substituted) "at another dynamics; a line per player (notes, busy fraction, seat); granulation-report prints it"
+print "just-cents      :" (just-cents "C2" "A#4" 16) "cents, the 7th partial of C2 (a 'harmonic granulator with 'just 1 tunes its partials so); a signed 'leap (list -2 -1) is a descending line"
 print "the players     : 'seat (an ossia player keeps its instrument), 'leap (steps from its last pitch), 'inertia (keeps its technique), 'weight and 'tilt (where in the band), 'spread (a group's attack scattered), 'duration-law ('log or an exponent), 'group-density (a rate per group), 'balance (dB per instrument or family:" (fixed (balance-gain (record (list 'brass -6)) 'Hn) 3) "for the Hn)"
 var shared (orchestra (list 'Ob 'Hn 'Vn 'Vc))
 var vs (score "shared" 44100)

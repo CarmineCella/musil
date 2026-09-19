@@ -412,6 +412,13 @@ var unseated (best-connection (orchestrate-granular db (orchestra (list "Vn|Vc")
 check (== (length (unique (map unseated (function (x) (get (last x) 'instr))))) 2) "seat 0: the band decides the instrument note by note"
 var stepwise (best-connection (orchestrate-granular db (orchestra (list 'Vn)) 8 (record (list 'leap 1 'density (list 4 4) 'register (list 4 4) 'duration (list 0.1 0.1)))))
 check (all? (map (zip (tail stepwise) stepwise) (function (p) (<= (abs (- (get (last (head p)) 'midi) (get (last (last p)) 'midi))) 1))) identity) "leap: a player's next pitch within the interval of its last"
+var falling (best-connection (orchestrate-granular db (orchestra (list 'Hn)) 8 (record (list 'leap (list -2 -1) 'density (list 4 4) 'register (list 4 5) 'duration (list 0.1 0.1)))))
+var steps (map (zip (tail falling) falling) (function (p) (- (get (last (head p)) 'midi) (get (last (last p)) 'midi))))
+check (> (length (filter steps (function (d) (and (>= d -2) (<= d -1))))) (* 0.6 (length steps))) "leap: a signed range is a direction (descending by one or two semitones, restarting when the band runs out)"
+check (equal? (list (just-cents "C2" "A#4" 16) (just-cents "C2" "F#5" 16) (just-cents "C2" "G#5" 16) (just-cents "C2" "C4" 16) (just-cents "C2" "C#4" 16)) (list -31 -49 41 0 nil)) "just-cents: the 7th, 11th and 13th partials' deviations; an octave 0; not a partial: nil"
+var justly (best-connection (orchestrate-granular db (orchestra (list 'Hn 'Vn 'Vc 'Ob)) 6 (record (list 'method 'harmonic 'fundamental "C2" 'harmonicity 1 'just 1 'register (list 4 5) 'density (list 4 4)))))
+check (all? (map justly (function (x) (equal? (get (last x) 'cents) (just-cents "C2" (get (last x) 'midi) 16)))) identity) "just: the harmonic method's partials carry their just-intonation cents"
+check (any? justly (function (x) (!= (get (last x) 'cents) 0))) "just: ... some of them non-zero (the seventh partial, Bb)"
 var clustered (best-connection (orchestrate-granular db (orchestra (list 'Vn 'Vn)) 4 (record (list 'method 'cluster 'density (list 2 2) 'register (list 4 4) 'duration (list 0.1 0.1)))))
 check (== (length (unique (map (take clustered 8) (function (x) (get (last x) 'midi))))) 8) "cluster: every pitch of the band once before any is repeated"
 check (> (length (unique (map (take clustered 8) (function (x) (get (last x) 'midi))))) (length (unique (map (take unseated 8) (function (x) (get (last x) 'midi)))))) "cluster: ... where random draws repeat"

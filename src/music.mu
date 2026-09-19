@@ -943,6 +943,17 @@ function pitches-from-spectrum (x sr n) {
 }
 # (harmonic-series fundamental n)   the first n partials of a fundamental (a pitch) as MIDI pitches, rounded
 function harmonic-series (fundamental n) (map (vec->list (range 1 (+ n 1))) (function (k) (round (hz->midi (* k (midi->hz (pitch->number fundamental)))))))
+# (just-cents fundamental pitch n)   the cents a tempered pitch is away from the nearest of the first n partials of a
+#                          fundamental (a just overtone chord: the 7th partial -31, the 11th -49, the 13th +41, the
+#                          14th -31 cents); nil when the pitch is not one of them (within a quarter tone)
+function just-cents (fundamental pitch n) {
+    var f0 (midi->hz (pitch->number fundamental))
+    var f (midi->hz (pitch->number pitch))
+    var k (max 1 (round (/ f f0)))
+    if (> k n) { return nil }
+    var c (* 1200 (log2 (/ (* k f0) f)))
+    return (if (< (abs c) 50) (round c) nil)
+}
 # --- rhythms: patterns, tuplets, polyrhythms ---
 # (rhythm-from-pattern "x..x.x" step)   a rhythm from a string: x an attack, . a continuation of the step, each step lasting step seconds
 function rhythm-from-pattern (pattern step) {
@@ -1099,14 +1110,15 @@ function best-connection (result) (connection result (map (get result 'segments)
 # (connect! s at result choices)   a connection placed in a score
 function connect! (s at result choices) (add! s at (connection result choices))
 # (merge-continuations f)   in a fragment, a note starting where a note of the same instrument and pitch ends becomes
-#                          the continuation of that note (one longer event), as an orchestration's connection does
+#                          the continuation of that note (one longer event), as an orchestration's connection does;
+#                          notes that carry their 'player (the granulator's do) merge only with the same player's
 function merge-continuations (f) {
     var out (list)
     var by-key (list)                                                       # instrument|pitch -> the notes so far of that sound (a few), not the whole list
     each f (function (x) {
         var pl (last x)
         var prev nil
-        var key (if (equal? (get pl 'kind) 'note) (concat (get pl 'instr) "|" (str (get pl 'midi))) nil)
+        var key (if (equal? (get pl 'kind) 'note) (concat (get pl 'instr) "|" (str (get pl 'midi)) "|" (str (opt pl 'player ""))) nil)   # the same player, when the notes say who played them
         if (not (equal? (type key) "nil")) {
             var same (opt by-key key nil)
             if (not (equal? (type same) "nil")) { set prev (find-first same (function (y) (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.03))) }
@@ -1260,11 +1272,14 @@ function balance-gain (balance instr) {
 #                   in a Ligeti cluster), 'pivots (each player around its chord pitch, within 'interval semitones),
 #                   'chordinterp (between the chords of the envelope, voice by voice, as time passes), 'markov (from
 #                   'markov-score: a score whose lines train a transition table per instrument), 'harmonic (a partial
-#                   of 'fundamental with probability 'harmonicity, else random)
+#                   of 'fundamental with probability 'harmonicity, else random; with 'just 1 the partials are tuned
+#                   in just intonation, the note carrying its cents (just-cents): an overtone chord)
 #       'weight     -1..1: where in the band the pitches fall: 0 evenly (default), towards 1 the middle of the band
 #                   more often, towards -1 its edges; 'tilt -1..1 the same between the bottom (-1) and the top (1)
 #       'leap       semitones: a player's next pitch is within this interval of its last one when it has samples
-#                   there (2: chromatic lines, a micropolyphony; nil, the default: anywhere in the band)
+#                   there (2: chromatic lines, a micropolyphony; nil, the default: anywhere in the band); a signed
+#                   range (list -3 -1) is a direction: each next pitch one to three semitones below the last, a
+#                   descending line that starts again anywhere (at the top, with 'tilt) when it runs out of band
 #       'inertia    0..1: how often a player keeps the technique of its last note when the set still holds it (0 by
 #                   default: drawn anew at every note; 0.9: a player changes bowing rarely)
 #       'seat       seconds: an ossia player that has taken an instrument keeps it at least this long (a person
@@ -1362,6 +1377,7 @@ function granulate (db orch secs params) {
     var gd (opt params 'group-density nil)
     var strict (opt params 'dynamics-strict 0)
     var balance (opt params 'balance nil)
+    var just (opt params 'just 0)
     while (< t secs) {
         var T (+ start t)                                                    # the time in the piece: what the players' busy times are in
         # the rate: 'density, or with 'group-density one rate per paired group (their sum, the event then going to a
@@ -1482,6 +1498,7 @@ function granulate (db orch secs params) {
                 each (target-notes db (get params 'target) t free sounding params) (function (f) {
                     var q (head f)
                     var n (getidx f 1)
+                    put! n 'player (get q 'k)
                     var cdur (if (has? params 'duration) (draw-in (param-at params 'duration t (list 0.1 0.3))) (last f))
                     var triple (list t cdur n)
                     push out triple
@@ -1506,13 +1523,19 @@ function granulate (db orch secs params) {
                     var playable (player-pitches db (list (list 'instrs ins)) qtech dkey lo hi)     # those samples' pitches
                     var lp (get q 'last-pitch)
                     if (and (not (equal? (type leap) "nil")) (not (equal? (type lp) "nil"))) {   # within the leap of the last pitch, when the player has samples there
-                        var reach (draw-in leap)
-                        var near (filter playable (function (m) (<= (abs (- m lp)) reach)))
+                        var near (if (equal? (type leap) "list")
+                                     (filter playable (function (m) (and (>= (- m lp) (head leap)) (<= (- m lp) (last leap)))))   # a signed range: (list -3 -1) descends
+                                     (filter playable (function (m) (<= (abs (- m lp)) leap))))
                         if (> (length near) 0) { set playable near }
                     }
                     var pitch (choose-pitch db q method lo hi chord params t table voice-k playable state weigh)
                     var instr (instrument-for db ins pitch qtech dkey)
                     var n (note db instr pitch dyn qtech)
+                    put! n 'player (get q 'k)                                       # who played it (the player's index in the orchestra)
+                    if (and just (equal? method 'harmonic)) {                       # just intonation: a partial of the fundamental carries its cents
+                        var c (just-cents (opt params 'fundamental "C2") pitch 16)
+                        if (not (equal? (type c) "nil")) { note-cents! n c }
+                    }
                     if (not (equal? (get (get n 'entry) 'dyn) (str dyn))) { set substituted (+ substituted 1) }
                     var off (* (rand) (draw-in spread))
                     var ndur (if carry (max 0.05 (min dur (- (get q 'till) T off))) dur)        # until the player's next booking

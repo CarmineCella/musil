@@ -19,8 +19,8 @@
 load "music.mu"
 var k (if (> (length args) 0) (num (getidx args 0)) 1)
 seed (if (> (length args) 1) (num (getidx args 1)) 11)
-#var db (db-load "data/microsol/microsol.spectrum.db")         # the bundled MicroSOL (a sketch: four instruments, C4-G4)
-var db (db-load "../datasets/FullSOL2020.spectrum.db")         # FullSOL: every instrument and technique
+var db (db-load "data/microsol/microsol.spectrum.db")         # the bundled MicroSOL (a sketch: four instruments, C4-G4)
+# var db (db-load "../datasets/FullSOL2020.spectrum.db")         # FullSOL: every instrument and technique
 var sr 44100
 var curves-path "data/atmospheres_curves.csv"
 

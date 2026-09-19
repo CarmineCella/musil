@@ -3,10 +3,10 @@
 # distributions, or write your own the same way, and the rest follows.
 # Usage: musil random_music.mu [seed]
 load "music.mu"
-seed (if (> (length args) 0) (num (getidx args 0)) 17)
+seed (if (> (length args) 0) (num (getidx args 0)) 7)
 
 var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+# var db (db-load "../datasets/TinySOL.spectrum.db")           # the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
 print "database:" (db-size db) "entries;" (length (db-available db)) "sounds on disk (missing pitches are shifted from the nearest)"
 
 # --- the generator: density in notes per second, a range of durations, instruments with their pitch ranges ----

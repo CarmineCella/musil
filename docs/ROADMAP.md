@@ -156,6 +156,10 @@ cmake --build build --target uninstall
    notes reported). `merge-continuations` no longer lengthens a note by the few ms two players' notes
    overlapped. `sort-by` on numeric keys uses the `argsort` builtin. Example: `gran_orchestration3.mu`;
    `atmospheres.mu` is now a seated orchestra (Ligeti's halved) sharing its players across the sections.
+   A signed `'leap` (a direction: descending lines that restart at the top), `'just` (the harmonic method's
+   partials in just intonation, `just-cents` on the notes), `'player` on every note (continuations merge only
+   within a player, which the validation needs). Example: `haas.mu` (after *in vain*: cascades, the overtone
+   chord swelling in waves, the beating near-unison, the return).
    Open: the physical limits beyond the samples (a recovery time per instrument and technique, a maximum
    sustained duration for winds and brass followed by a breath, what happens when the duration asked for is
    longer than the sample: cut or loop, to be chosen), a per-instrument loudness for the levels.

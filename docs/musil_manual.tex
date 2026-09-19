@@ -1468,7 +1468,14 @@ strings at the same marking (\musil{balance-gain}). Where the pitches fall in th
 \musil{'method 'cluster} gives every pitch of the band once before any is repeated, the
 counts shared by the players (a chromatic saturation, a Ligeti cluster, where random draws
 repeat and leave holes); \musil{'weight} ($-1$..1) draws the middle of the band more often
-(towards 1) or its edges (towards $-1$) and \musil{'tilt} its bottom or its top. Time:
+(towards 1) or its edges (towards $-1$) and \musil{'tilt} its bottom or its top. A signed
+\musil{'leap}, \musil{(list -2 -1)}, is a direction: each next pitch one or two semitones
+below the last, a descending line that starts again (at the top, with \musil{'tilt}) when it
+runs out of band; and \musil{'just 1} tunes the \musil{'harmonic} method's partials in just
+intonation, each note carrying its cents (\musil{just-cents}: the 7th partial 31 low, the
+11th 49 low, the 13th 41 high), an overtone chord. Every note the granulator writes says which
+player played it (\musil{'player}), and a connection merges continuations only within a
+player. Time:
 \musil{'spread} (seconds) scatters the players of a group struck together within that time
 (an orchestra's attack rather than a sampler's); \musil{'duration-law} draws the duration
 in its range uniformly, log-uniformly (\musil{'log}: as many short as long by ratio, a
@@ -1656,7 +1663,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

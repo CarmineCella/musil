@@ -75,6 +75,7 @@ orchestra       : 5 players, (Ob Hn Vn Vc) ; an ossia Vn|Vc, a paired (Vn Vc)
 orchestrate-granular: 1 segment, 2 solutions; the best connection has 26 events; connect! places one
 playability     : a note is a sample the player's instrument has (player-styles, player-pitches, db-pitches-at); 'dynamics-strict makes the dynamics a constraint too; what no player can play is reported and left out
 report          : 21 events due, 26 notes, 1 skipped with every able player busy, 0 unplayable, 25 at another dynamics; a line per player (notes, busy fraction, seat); granulation-report prints it
+just-cents      : -31 cents, the 7th partial of C2 (a 'harmonic granulator with 'just 1 tunes its partials so); a signed 'leap (list -2 -1) is a descending line
 the players     : 'seat (an ossia player keeps its instrument), 'leap (steps from its last pitch), 'inertia (keeps its technique), 'weight and 'tilt (where in the band), 'spread (a group's attack scattered), 'duration-law ('log or an exponent), 'group-density (a rate per group), 'balance (dB per instrument or family: 0.501 for the Hn)
 continue, start : two granulators on one orchestra, overlapping, book the same people once; score-validate: playable (a player of its own for every note, at a recorded pitch); peak ((Hn 1) (Vc 1) (Ob 1) (Vn 1)) ; validation-print prints it; orchestra-rest! clears the state
 db-index!       : 4 instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of (ord)
