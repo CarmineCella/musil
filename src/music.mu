@@ -488,7 +488,15 @@ function score-roll (s) {
         })
         set r (+ r 1)
     })
-    return (list (get s 'name) (list (list "roll" row-specs bars (register-score s))) (list (list "xlabel" "time (s)")))
+    var segs (list)                                           # the orchestrations' segments: (list start end chosen costs orch seg), for the roll's solution menu
+    each (zip (score-solutions s) (vec->list (range (length (opt s 'orchestrations (list)))))) (function (p) {
+        var at (head (head p))
+        each (zip (last (head p)) (vec->list (range (length (last (head p)))))) (function (q) {
+            var g (head q)
+            push segs (list (+ at (head g)) (+ at (head g) (getidx g 1)) (getidx g 2) (getidx g 3) (last p) (last q))
+        })
+    })
+    return (list (get s 'name) (list (list "roll" row-specs bars (register-score s) segs)) (list (list "xlabel" "time (s)")))
 }
 # --- scores on display: a registry, so that a window can name a score and an event to play -------------------
 var displayed-scores (list)
@@ -511,6 +519,15 @@ function roll-render (score-id path) (render-hall (displayed-score score-id) pat
 function roll-save (score-id path) { var n (score-save (displayed-score score-id) path)
                                      print "saved" n "notes to" path
                                      return n }
+# (roll-choose score-id orch seg n)   solution n of segment seg of the orch-th orchestration in a displayed score (the
+#                          roll's solution menu): the score's notes replaced (score-choose!) and the roll redrawn
+function roll-choose (score-id orch seg n) {
+    var s (displayed-score score-id)
+    score-choose! s orch seg n
+    roll-refresh (score-roll s)
+    print "solution" (+ n 1) "of segment" (+ seg 1) "chosen:" (length (score-events s)) "events in the score"
+    return nil
+}
 # (play-event score-id event-id)   play one event of a displayed score, alone (a double-click in the roll does this)
 function play-event (score-id event-id) {
     var s (displayed-score score-id)
@@ -1107,8 +1124,30 @@ function connection (result choices) {
 }
 # (best-connection result)   the first solution of every segment
 function best-connection (result) (connection result (map (get result 'segments) (function (g) 0)))
-# (connect! s at result choices)   a connection placed in a score
-function connect! (s at result choices) (add! s at (connection result choices))
+# (connect! s at result choices)   a connection placed in a score; the score remembers the orchestration, so that the
+#                          roll (or score-choose!) can put another solution of a segment in its place
+function connect! (s at result choices) {
+    var evs (add! s at (connection result choices))
+    put! s 'orchestrations (concat-list (opt s 'orchestrations (list)) (list (record (list 'at at 'result result 'choices (map choices identity) 'events evs))))   # remembered: the roll lets another solution be chosen
+    return evs
+}
+# (score-choose! s k seg n)   in the k-th orchestration connected into the score (connect!, in order), solution n of
+#                          segment seg in place of the one chosen: its notes replaced; => the new events
+function score-choose! (s k seg n) {
+    var os (opt s 'orchestrations (list))
+    if (or (< k 0) (>= k (length os))) { error "score-choose!: no orchestration " k " in the score" }
+    var o (getidx os k)
+    var ids (map (get o 'events) (function (e) (get e 'id)))
+    put! s 'events (reject (get s 'events) (function (e) (contains? ids (get e 'id))))
+    setidx (get o 'choices) seg n
+    var evs (add! s (get o 'at) (connection (get o 'result) (get o 'choices)))
+    put! o 'events evs
+    score-clear-cache! s
+    return evs
+}
+# (score-solutions s)      the orchestrations connected into a score, with their segments and the solution chosen in
+#                          each: a list of (list at (list (list seg-at seg-dur chosen costs) ...)); what the roll shows
+function score-solutions (s) (map (opt s 'orchestrations (list)) (function (o) (list (get o 'at) (map (zip (get (get o 'result) 'segments) (get o 'choices)) (function (p) (list (get (head p) 'at) (get (head p) 'dur) (last p) (map (get (head p) 'solutions) head)))))))
 # (merge-continuations f)   in a fragment, a note starting where a note of the same instrument and pitch ends becomes
 #                          the continuation of that note (one longer event), as an orchestration's connection does;
 #                          notes that carry their 'player (the granulator's do) merge only with the same player's
@@ -2078,6 +2117,119 @@ function validation-print (r) {
       each (take (get r 'transposed) 6) (function (o) (print "  at" (fixed (head o) 2) "s:" (getidx o 1) (getidx o 2) "shifted by" (last o) "semitones"))
       if (> (length (get r 'transposed)) 6) { print "  ..." (- (length (get r 'transposed)) 6) "more" } }
     return (get r 'ok)
+}
+
+# --- mimetic orchestration: Orchidea --------------------------------------------------------------------------------
+# Assisted orchestration: a target sound is cut into segments at its onsets, each segment analysed into the features
+# of the database (as db-gen makes them) and into the pitches of its partials, and for each segment a genetic search
+# looks for the combination of sounds of the orchestra (one sound per player, or none) whose summed features are
+# nearest the target's, with an asymmetric distance (a partial the target lacks costs more than one it has and the
+# solution lacks). The search keeps its best solutions, ranked; a connection chooses one per segment so that the
+# segments follow each other (Orchidea's search core: src/music/orchidea.h).
+# (mimetic-target db x sr params)   the target analysed: x a vector (a sound read with read-wav, a rendered score, a
+#                          synthesis) at sr; params a record: 'segmentation ('flux: at the peaks of the spectral flux
+#                          above 'threshold (2; above 1 no peak passes: one segment, a static target) and at least a
+#                          'timegate apart (0.1 s); 'frames: every block; 'none: one segment; or a list of onsets in
+#                          seconds), 'partials-window (32768: the window the pitches are read with; large for a low
+#                          target), 'partials (0.2: the threshold on the partials, 0..1; 0: no pitch filter, every
+#                          sound of the database may serve: for noisy targets), 'extra-pitches (names added to every
+#                          segment's pitches). => a record ('sr 'seconds 'segments (records: at dur features notes)
+#                          'params); (mimetic-print target) prints the segments and their pitches
+function mimetic-target (db x sr params) {
+    var opts (record (list 'segmentation (opt params 'segmentation 'flux) 'threshold (opt params 'threshold 2) 'timegate (opt params 'timegate 0.1)
+                           'partials-window (opt params 'partials-window 32768) 'partials (opt params 'partials 0.2) 'extra-pitches (map (opt params 'extra-pitches (list)) str)))
+    var segs (orchidea-analyse x sr (get db 'type) (get db 'block) (get db 'hop) (get db 'ncoeff) opts)
+    return (record (list 'sr sr 'seconds (/ (length x) sr) 'segments segs 'params params))
+}
+function mimetic-print (target) {
+    var segs (get target 'segments)
+    print "target:" (fixed (get target 'seconds) 2) "s," (length segs) (if (== (length segs) 1) "segment (static)" "segments")
+    each (zip (take segs (min 12 (length segs))) (vec->list (range (min 12 (length segs))))) (function (p) {
+        var g (head p)
+        var notes (get g 'notes)
+        print "  " (+ 1 (last p)) ": at" (fixed (get g 'at) 2) "s," (fixed (get g 'dur) 2) "s;" (if (== (length notes) 0) "no pitch filter" (concat (str (length notes)) " pitches: " (join (map notes (function (kv) (concat (head kv) (if (== (last kv) 0) "" (concat " (" (str (last kv)) ")"))))) " ")))
+    })
+    if (> (length segs) 12) { print "  ..." (- (length segs) 12) "more" }
+    return target
+}
+# (note-of-entry db e)     a note event from a database entry itself (the very sound the search chose, not the nearest
+#                          by pitch and dynamics as note picks)
+function note-of-entry (db e) (record (list 'kind 'note 'source (get e 'file) 'db db 'entry e 'instr (get e 'instr) 'pitch (get e 'pitch) 'midi (get e 'midi)
+                                            'dyn (get e 'dyn) 'tech (get e 'tech) 'shift 0 'cents 0 'label (concat (get e 'instr) " " (get e 'pitch) " " (get e 'dyn))))
+# (mimetic-seating instr)  where an instrument sits, as an azimuth in degrees (left positive): the seating Orchidea's
+#                          mixes use (violins left, cellos right, the winds in the middle); 0 for one it does not know
+var mimetic-seats (record (list 'Vn 30 'Va -5 'Vc -30 'Cb -20 'Fl 0 'Picc 0 'Ob -10 'ClBb 10 'Cl 10 'Bn -5 'Hn 20 'TpC 10 'Tp 10 'Tbn -5 'BTb -15 'Hp 20 'Acc 20 'ASax -20))
+function mimetic-seating (instr) { var hit (find-first mimetic-seats (function (kv) (equal? (str (head kv)) (str instr))))
+                                   return (if (equal? (type hit) "nil") 0 (last hit)) }
+# (orchestrate-mimetic db orch x sr params)   Orchidea: the target x (a vector at sr, or a target from mimetic-target)
+#     orchestrated by the players of orch (an orchestra: a symbol is one player, "Fl|Picc" a doubling), one sound
+#     per player per segment (or a rest), chosen by the genetic search. params is a record (Orchidea's names in
+#     brackets):
+#       the target   'segmentation 'threshold 'timegate 'partials-window 'partials 'extra-pitches (mimetic-target)
+#       the search   'population (pop_size, 300), 'epochs (max_epochs, 300), 'pursuit (0: a random first population;
+#                    k: from the k sounds nearest the target per player), 'crossover (xover_rate, 0.8), 'mutation
+#                    (mutation_rate, 0.01), 'sparsity (0.001: how often a player is dropped; 0.1 for a single
+#                    instrument as target), 'positive and 'negative (0.5 and 10: the penalisations of a partial the
+#                    solution has and the target lacks, and the reverse), 'hysteresis (0: > 0 makes each segment's
+#                    solution lean towards the previous ones), 'regularization (0: > 0 sponsors sparse solutions)
+#       the space    'styles 'dynamics 'others: lists of names; only sounds with one of them enter the search
+#       the result   'solutions (10: the best kept per segment), 'connection ('closest: each segment's solution
+#                    nearest the previous segment, Orchidea's; 'best: the best of each), 'seating (1: the notes
+#                    placed as Orchidea's mixes seat the orchestra; 0: centred), 'seed, 'quiet (1: no progress)
+#     => an orchestration result ('mimetic) whose segments hold the ranked solutions as (list cost fragment), each
+#     fragment the notes at their time in the target (the very sounds chosen, at the target's cents, with 'player
+#     the player's index); 'choices the connection's solution per segment, (mimetic-connection result) that
+#     connection as a fragment, (best-connection result) the best of each; 'target the analysed target; 'curves
+#     the fitness per epoch of each segment. connect! places a connection in a score (a note continued across a
+#     boundary on the same player and pitch becomes one longer note)
+function orchestrate-mimetic (db orch x sr params) {
+    var target (if (and (equal? (type x) "list") (has? x 'segments)) x (mimetic-target db x sr params))
+    var players (map orch (function (p) (join (get p 'instrs) "|")))
+    var seating (opt params 'seating 1)
+    var t0 (clock)
+    var r (orchidea-search (get db 'entries) players (get target 'segments) params)
+    var segs (list)
+    each (zip (get target 'segments) (get r 'segments)) (function (pair) {
+        var g (head pair)
+        var m (last pair)
+        var slots (get m 'players)
+        var notes (get g 'notes)
+        var sols (map (get m 'solutions) (function (sol) {
+            var f (list)
+            each (zip (last sol) slots) (function (q) {
+                if (>= (head q) 0) {
+                    var e (getidx (get db 'entries) (head q))
+                    var n (note-of-entry db e)
+                    put! n 'player (last q)
+                    put! n 'cents (opt notes (get e 'pitch) 0)
+                    if seating { put! n 'az (mimetic-seating (get e 'instr)) }
+                    push f (list (get g 'at) (get g 'dur) n)
+                }
+            })
+            return (list (head sol) f)
+        }))
+        push segs (segment (get g 'at) (get g 'dur) sols)
+    })
+    var out (orchestration 'mimetic params segs)
+    put! out 'choices (get r 'choices)
+    put! out 'target target
+    put! out 'players players
+    put! out 'curves (map (get r 'segments) (function (m) (get m 'curve)))
+    if (not (opt params 'quiet 0)) { var costs (map segs (function (g) (fixed (head (head (get g 'solutions))) 3)))
+                                     print "orchestrate-mimetic:" (length segs) (if (== (length segs) 1) "segment," "segments,") (sum (vec (map segs (function (g) (length (get g 'solutions)))))) "solutions in" (fixed (- (clock) t0) 1) "s; the best costs" (join (take costs (min 12 (length costs))) " ") (if (> (length costs) 12) "..." "") }
+    return out
+}
+# (mimetic-connection result)   the connection Orchidea chose (result 'choices) as a fragment; (connect! s at result
+#                          (get result 'choices)) places it
+function mimetic-connection (result) (connection result (get result 'choices))
+# (solution-print result k)   the solutions of segment k printed, with their costs and sounds
+function solution-print (result k) {
+    var g (getidx (get result 'segments) k)
+    print "segment" (+ k 1) "at" (fixed (get g 'at) 2) "s," (fixed (get g 'dur) 2) "s:" (length (get g 'solutions)) "solutions"
+    each (zip (get g 'solutions) (vec->list (range (length (get g 'solutions))))) (function (p) {
+        print "  " (+ 1 (last p)) (concat "(cost " (str (fixed (head (head p)) 3)) "):") (join (map (last (head p)) (function (x) (concat (get (last x) 'instr) " " (get (last x) 'pitch) " " (get (last x) 'dyn) " " (get (last x) 'tech)))) ", ")
+    })
+    return nil
 }
 
 # --- saving and loading: Orchidea's connection format --------------------------------------------------------

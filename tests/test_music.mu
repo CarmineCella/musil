@@ -73,7 +73,7 @@ var bar (head (getidx (head (getidx roll 1)) 2))
 check (== (length bar) 13) "score-roll: a bar is row start dur label tip group lane lanes midi dyn event-id tech cents"
 check (== (getidx bar 8) -1) "score-roll: an unpitched event has no pitch"
 check (== (length bar) 13) "score-roll: ... tech cents at the end"
-check (== (last (head (getidx roll 1))) (register-score s)) "score-roll: carries the score's number"
+check (== (getidx (head (getidx roll 1)) 3) (register-score s)) "score-roll: carries the score's number (and the orchestrations' segments after it)"
 check (equal? (displayed-score (register-score s)) s) "displayed-score"
 check (equal? (type (play-event (register-score s) (get e1 'id))) "nil") "play-event: one event, alone"
 check (contains? (error-of (function () (play-event (register-score s) 999))) "no event") "play-event: unknown event"
@@ -487,6 +487,55 @@ check (equal? (map cie head) (list 0 5 10)) "chordinterp-env: breakpoints over t
 check (equal? (env-at cie 5) (list (list 66))) "chordinterp-env: the chord halfway"
 var merged (merge-continuations (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "D4" 'mf 'ord))))
 check (and (== (length merged) 2) (== (getidx (head merged) 1) 2)) "merge-continuations: a note continued becomes one longer note"
+
+# --- mimetic orchestration (Orchidea) ---
+seed 7
+var mt-score (score "mimetic target" 44100)
+event mt-score 0 2 (note db 'Ob "C4" 'mf 'ord)
+event mt-score 0 2 (note db 'Vn "G4" 'mf 'ord)
+event mt-score 2 2 (note db 'Hn "E4" 'mf 'ord)
+var mtx (head (score-render mt-score "mono"))
+var mtg (mimetic-target db mtx 44100 (record (list 'threshold 2 'partials 0.3)))
+check (== (length (get mtg 'segments)) 1) "mimetic-target: threshold 2, one segment (static)"
+var mseg (head (get mtg 'segments))
+check (and (== (get mseg 'at) 0) (near? (get mseg 'dur) 4.6 0.2) (== (length (get mseg 'features)) (get db 'ncoeff))) "mimetic-target: the segment spans the sound, its features have the database's size"
+check (near? (mean (get mseg 'features)) 0 1e-4) "mimetic-target: the features standardised (Orchidea's normalize2)"
+check (any? (get mseg 'notes) (function (kv) (contains? (list "C4" "G4" "E4") (head kv)))) "mimetic-target: the partials named as pitches with cents (C4 = 261.6 Hz, as the database's files)"
+var mtg2 (mimetic-target db mtx 44100 (record (list 'threshold 0.05 'timegate 0.5 'partials 0.3)))
+check (>= (length (get mtg2 'segments)) 2) "mimetic-target: a low threshold cuts the sound at its onsets"
+check (== (length (get (mimetic-target db mtx 44100 (record (list 'segmentation (list 0 1 2.5)))) 'segments)) 3) "mimetic-target: onsets given as a list"
+check (== (length (get (head (get (mimetic-target db mtx 44100 (record (list 'partials 0))) 'segments)) 'notes)) 0) "mimetic-target: partials 0, no pitch filter"
+var morch (orchestra (list 'Ob 'Hn 'Vn "Vn|Vc" 'Vc))
+var mprm (record (list 'population 40 'epochs 30 'sparsity 0.01 'partials 0 'solutions 4 'quiet 1 'seed 3))
+var mr (orchestrate-mimetic db morch mtx 44100 mprm)
+check (and (equal? (get mr 'method) 'mimetic) (== (length (get mr 'segments)) 1) (== (length (get mr 'choices)) 1)) "orchestrate-mimetic: a result with one segment and one choice"
+var msols (get (head (get mr 'segments)) 'solutions)
+check (and (> (length msols) 0) (<= (length msols) 4)) "orchestrate-mimetic: at most 'solutions solutions kept"
+check (all? (map (zip (tail msols) msols) (function (p) (>= (head (head p)) (head (last p))))) identity) "orchestrate-mimetic: the solutions ranked by cost, the best first"
+var mbest (last (head msols))
+check (and (> (length mbest) 0) (<= (length mbest) 5)) "orchestrate-mimetic: one sound per player at most"
+check (all? (map mbest (function (x) (and (== (head x) 0) (near? (getidx x 1) (get mseg 'dur) 1e-6) (has? (last x) 'player) (has? (last x) 'entry)))) identity) "orchestrate-mimetic: each note at the segment's time and length, from the very entry chosen, with its player"
+check (all? (map mbest (function (x) (< (get (last x) 'player) 5))) identity) "orchestrate-mimetic: the player is an index in the orchestra"
+check (any? mbest (function (x) (!= (opt (last x) 'az 0) 0))) "orchestrate-mimetic: the notes seated (azimuths)"
+check (all? (map (last (head (get (head (get (orchestrate-mimetic db morch mtg 44100 (put mprm 'seating 0)) 'segments)) 'solutions))) (function (x) (== (opt (last x) 'az 0) 0))) identity) "orchestrate-mimetic: seating 0 keeps them centred; a target already analysed is taken as it is"
+var mr2 (orchestrate-mimetic db morch mtx 44100 (put (put mprm 'segmentation (list 0 1.5 3)) 'connection 'best))
+check (and (== (length (get mr2 'segments)) 3) (equal? (get mr2 'choices) (list 0 0 0))) "orchestrate-mimetic: three segments given; connection 'best takes the best of each"
+var mr3 (orchestrate-mimetic db morch mtx 44100 (put mprm 'segmentation (list 0 1.5 3)))
+check (and (== (length (get mr3 'choices)) 3) (== (head (get mr3 'choices)) 0)) "orchestrate-mimetic: connection 'closest starts from the best and follows"
+var ms (score "mimetic" 44100)
+var mevs (connect! ms 0 mr3 (get mr3 'choices))
+check (== (length (opt ms 'orchestrations (list))) 1) "connect!: the score remembers the orchestration"
+check (equal? (map (last (head (score-solutions ms))) (function (g) (getidx g 2))) (get mr3 'choices)) "score-solutions: the segments with the solution chosen and the costs"
+var before (length (score-events ms))
+score-choose! ms 0 1 (- (length (get (getidx (get mr3 'segments) 1) 'solutions)) 1)
+check (equal? (getidx (get (head (opt ms 'orchestrations (list))) 'choices) 1) (- (length (get (getidx (get mr3 'segments) 1) 'solutions)) 1)) "score-choose!: the choice of a segment changed"
+check (all? (map (score-events ms) (function (e) (== (length (filter (score-events ms) (function (f) (== (get f 'id) (get e 'id))))) 1))) identity) "score-choose!: the replaced notes gone, the new ones in, no duplicate ids"
+var mroll (score-roll ms)
+var msegs (getidx (head (getidx mroll 1)) 4)
+check (and (== (length msegs) 3) (== (getidx (head msegs) 4) 0) (== (getidx (getidx msegs 1) 5) 1)) "score-roll: the roll layer carries the orchestration's segments (start end chosen costs orch seg)"
+check (equal? (map (mimetic-connection mr3) head) (map (connection mr3 (get mr3 'choices)) head)) "mimetic-connection: the connection Orchidea chose"
+check (== (length (get mr 'curves)) 1) "orchestrate-mimetic: a fitness curve per segment"
+check (near? (mimetic-seating 'Vn) 30 1e-9) "mimetic-seating: the violins at the left"
 
 # --- morphological orchestration ---
 seed 6

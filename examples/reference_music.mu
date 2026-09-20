@@ -139,6 +139,19 @@ var val (score-validate vs shared)
 print "continue, start : two granulators on one orchestra, overlapping, book the same people once; score-validate:" (if (get val 'ok) "playable" "NOT playable") "(a player of its own for every note, at a recorded pitch); peak" (get val 'peak) "; validation-print prints it; orchestra-rest! clears the state"
 print "db-index!       :" (length (keys (db-index! db))) "instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of" (db-techniques-of db 'Vn)
 
+# --- 5c'. Mimetic orchestration (Orchidea) --------------------------------------------------------------------
+print ""
+print "--- mimetic orchestration (Orchidea) ---"
+var mx (head (score-render (fragment->score "t" 44100 (notes db 'Ob 'mf 'ord (list "C4" "E4") (rhythm (list 1 1)))) "mono"))
+var mtarget (mimetic-target db mx 44100 (record (list 'threshold 2 'partials 0.3)))
+print "mimetic-target  :" (length (get mtarget 'segments)) "segment (threshold 2: static); its pitches" (map (get (head (get mtarget 'segments)) 'notes) head) "with cents; 'segmentation 'flux with 'threshold and 'timegate, 'frames, 'none, or a list of onsets; 'partials 0: no pitch filter"
+seed 5
+var mres (orchestrate-mimetic db (orchestra (list 'Ob 'Hn 'Vn "Vn|Vc")) mtarget 44100 (record (list 'population 40 'epochs 20 'partials 0 'solutions 3 'quiet 1 'seed 1)))
+print "orchestrate-mimetic:" (length (get mres 'segments)) "segment," (length (get (head (get mres 'segments)) 'solutions)) "solutions ranked by cost (the genetic search: 'population 'epochs 'sparsity 'mutation 'crossover 'pursuit 'positive 'negative 'hysteresis 'regularization; the space: 'styles 'dynamics 'others); 'choices the connection ('closest or 'best); the notes seated ('seating)"
+var mscore (score "mimetic" 44100)
+connect! mscore 0 mres (get mres 'choices)
+print "connect!        : the score remembers the orchestration; score-solutions:" (length (score-solutions mscore)) "orchestration; score-choose! puts another solution of a segment in place (the roll's menu, roll-choose); solution-print lists them"
+
 # --- 5d. Morphological orchestration -------------------------------------------------------------------
 print ""
 print "--- morphological ---"

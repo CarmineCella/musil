@@ -1409,7 +1409,7 @@ solution per segment into a fragment (a note continued across a boundary on the 
 instrument and pitch becomes one longer note), \musil{best-connection} takes the first
 of each, \musil{connect!} places a connection in a score. Three orchestrators share this:
 \musil{orchestrate-granular} (below), \musil{orchestrate-morphological} (the granulator driven by a target's analysis, below) and
-\musil{orchestrate-mimetic} (Orchidea), the last to come.
+\musil{orchestrate-mimetic} (Orchidea, below).
 
 \textbf{The orchestral granulator.} Orchestration as granular synthesis: a stochastic
 process, described by envelopes over time, realised by the players of an orchestra with
@@ -1537,6 +1537,55 @@ a long sound under short ones comes out as a long note under short ones, which i
 granulating rather than cutting is for. \texttt{morph\_orchestration.mu} orchestrates a
 recording this way and places the target after it to compare.
 
+\textbf{Mimetic orchestration (Orchidea).} \musil{orchestrate-mimetic db orch x sr params}
+is assisted orchestration: the target is imitated as a whole. Its search core is Orchidea's
+(\texttt{src/music/orchidea.h}: the genetic search, the additive forecast, the asymmetric
+fitness, the connection between segments and the continuity model, ported as they are);
+what Orchidea did with files, Musil's database, score and roll do. The target, a vector at
+a rate (or a target already analysed), is cut at its onsets: the peaks of the spectral flux
+above \musil{'threshold} (2 by default: above 1 nothing passes and the target is one
+segment, static; 0.1 cuts a piano phrase at every chord) and at least \musil{'timegate}
+seconds apart, or \musil{'segmentation 'frames}, \musil{'none}, or a list of onsets.
+Each segment is analysed into the database's features, standardised, and into the pitches
+of its partials with their cents (\musil{'partials}, the threshold on the partials, 0..1;
+0 turns the pitch filter off, for noisy targets where timbre matters more than pitch;
+\musil{'partials-window} the window they are read with, 32768, large for a low target;
+\musil{'extra-pitches} adds some). \musil{mimetic-target} does this alone and
+\musil{mimetic-print} shows it, to tune the segmentation before a long search. The search
+space of a segment is the sounds of the orchestra at the segment's pitches (and with the
+\musil{'styles}, \musil{'dynamics}, \musil{'others} asked for, when given); a genetic
+search of \musil{'population} individuals (300) over \musil{'epochs} (300), each individual
+one sound per player or a rest (a player is dropped with probability \musil{'sparsity} at
+every generation: 0.001 for symphonic targets, 0.1 for a single instrument as target), with
+\musil{'crossover} (0.8), \musil{'mutation} (0.01) and \musil{'pursuit} (0: a random first
+population; $k$: from the $k$ sounds nearest the target per player), looks for the
+combination whose summed features are nearest the target's by an asymmetric distance: a
+partial the solution has and the target lacks costs \musil{'positive} (0.5), the reverse
+\musil{'negative} (10); \musil{'hysteresis} ($>0$) makes each segment's solution lean
+towards the previous ones and \musil{'regularization} ($>0$) sponsors sparse solutions.
+The \musil{'solutions} best unique individuals (10) are kept per segment, ranked by cost, and
+a \musil{'connection} chooses one per segment: \musil{'closest} (Orchidea's), each segment's
+solution nearest the previous segment's target, or \musil{'best}. The result is an
+orchestration like the others: its segments hold the ranked solutions as fragments, each
+note the very sound chosen, at the target's cents, with its \musil{'player} and, with
+\musil{'seating} (1), the azimuth of Orchidea's seating (violins left, cellos right);
+\musil{'choices} is the connection, \musil{mimetic-connection} that connection as a
+fragment, \musil{best-connection} the best of each segment, \musil{solution-print} the
+solutions of a segment with their costs. \musil{connect!} places a connection in a score, a
+note continued across a boundary on the same player and pitch becoming one longer note
+(Orchidea's continuity model), and the score remembers the orchestration: in the roll a
+dashed line marks every segment, and clicking in one fills the \emph{solution} menu with its
+solutions by cost; choosing one replaces the segment's notes (\musil{score-choose!},
+\musil{score-solutions}) and the playback follows. The search prints its progress
+(\musil{'quiet} 1 silences it), Esc interrupts it in the IDE, \musil{'seed} fixes its draws.
+\texttt{static\_orchidea.mu} orchestrates a bell, \texttt{dynamic\_orchidea.mu} a piano
+phrase cut at its chords, \texttt{orchfest.mu} puts the three orchestrators one after the
+other on the same sound. The names are Musil's; Orchidea's (\texttt{pop\_size},
+\texttt{max\_epochs}, \texttt{xover\_rate}, \texttt{onsets\_threshold},
+\texttt{partials\_filtering}...) are in the function's documentation. One difference from
+Orchidea's own analysis: the target's pitches are named as the database's files name theirs,
+C4 = 261.6\,Hz, so the pitch filter keeps the sounds at the target's pitch.
+
 \texttt{gran\_orchestration.mu} realises a unison that accelerates into a storm of every
 style over five octaves and then slows down towards the harmonic series of E2;
 \texttt{modulations.mu} follows the analysis of Grisey's \emph{Modulations}, section by
@@ -1663,7 +1712,7 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return); Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{static\_orchidea.mu}, \texttt{dynamic\_orchidea.mu}, \texttt{orchfest.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return); Orchidea on a bell (static) and on a piano phrase cut at its chords (dynamic), the solutions chosen in the roll; the three orchestrators one after the other on the same bell; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

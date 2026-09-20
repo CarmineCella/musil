@@ -80,6 +80,11 @@ the players     : 'seat (an ossia player keeps its instrument), 'leap (steps fro
 continue, start : two granulators on one orchestra, overlapping, book the same people once; score-validate: playable (a player of its own for every note, at a recorded pitch); peak ((Hn 1) (Vc 1) (Ob 1) (Vn 1)) ; validation-print prints it; orchestra-rest! clears the state
 db-index!       : 4 instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of (ord)
 
+--- mimetic orchestration (Orchidea) ---
+mimetic-target  : 1 segment (threshold 2: static); its pitches (A#6 B5 C4 C6 E4 E5 E6 G#6 G6) with cents; 'segmentation 'flux with 'threshold and 'timegate, 'frames, 'none, or a list of onsets; 'partials 0: no pitch filter
+orchestrate-mimetic: 1 segment, 3 solutions ranked by cost (the genetic search: 'population 'epochs 'sparsity 'mutation 'crossover 'pursuit 'positive 'negative 'hysteresis 'regularization; the space: 'styles 'dynamics 'others); 'choices the connection ('closest or 'best); the notes seated ('seating)
+connect!        : the score remembers the orchestration; score-solutions: 1 orchestration; score-choose! puts another solution of a segment in place (the roll's menu, roll-choose); solution-print lists them
+
 --- morphological ---
 target-analyse  : 2.6 s, 111 frames; curves: density (flux peaks a second), centroid, spread, low, loudness; 1 flux peaks
 target-envelopes: the granulator's parameters from the curves: (density dynamics register)

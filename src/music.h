@@ -16,6 +16,7 @@
 #include "system.h"
 #include "signals.h"
 #include "music/midi.h"
+#include "music/orchidea.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -209,9 +210,141 @@ inline vptr mus_db_locate(vlist& a, Interp& i) {
 }
 inline vptr mus_db_index_size(vlist& a, Interp& i) { return v_num((double)db_index_of(i.read_path(i.str(a[0]))).size()); }
 
+// --- mimetic orchestration: Orchidea's search (music/orchidea.h) -------------------------------------------------
+// a record's value by key (a symbol or a string), or nil
+inline vptr rec_get(const vptr& rec, const char* key) {
+    if (!rec || rec->t != Value::LIST) return nullptr;
+    for (auto& p : rec->l) if (p && p->t == Value::LIST && p->l.size() == 2 && p->l[0] && (p->l[0]->t == Value::SYM || p->l[0]->t == Value::STR) && p->l[0]->s == key) return p->l[1];
+    return nullptr;
+}
+// (orchidea-analyse x sr type block hop ncoeff opts)   the target's segments for a mimetic orchestration: x a vector at
+//   sr (resampled to 44100 Hz, the databases' rate), cut at its onsets, each segment analysed into the features of the
+//   database's type (block, hop, ncoeff, as db-gen makes them) and standardised, and into the pitches of its partials
+//   with their cents. opts a record: 'segmentation ("flux": the onsets of the spectral flux above 'threshold, a
+//   'timegate apart; "frames": every block; "none": one segment; or a list of onset times in seconds), 'threshold
+//   (2: above 1 there is one segment, a static target), 'timegate (0.1 s), 'partials-window (32768), 'partials
+//   (0.2: the threshold on the partials, 0..1, 0 for no pitch filter), 'extra-pitches (names added to every segment)
+//   => a list of records (at dur features notes), notes a record from pitch name to cents
+inline vptr mus_orchidea_analyse(vlist& a, Interp& i) {
+    varr x = i.num(a[0]); double sr = i.scalar(a[1]); std::string type = i.str(a[2]);
+    int block = (int)i.scalar(a[3]), hop = (int)i.scalar(a[4]), ncoeff = (int)i.scalar(a[5]);
+    vptr opts = a[6];
+    auto opt_num = [&](const char* key, double dflt) { vptr v = rec_get(opts, key); return v && v->t == Value::NUM && v->num.size() == 1 ? v->num[0] : dflt; };
+    auto opt_val = [&](const char* key) { return rec_get(opts, key); };
+    if (sr != 44100.0) x = resample_sinc(x, 44100.0 / sr);
+    std::vector<double> mono(std::begin(x), std::end(x)); const double SR = 44100.0;
+    if (mono.size() < (size_t)block) mono.resize((size_t)block, 0.0);
+    // the onsets
+    std::vector<double> onsets; vptr segv = opt_val("segmentation"); std::string segmentation = "flux";
+    if (segv && (segv->t == Value::STR || segv->t == Value::SYM)) segmentation = segv->s;
+    if (segv && segv->t == Value::LIST) { for (auto& e : segv->l) onsets.push_back(i.scalar(e)); segmentation = "list"; }
+    else if (segv && segv->t == Value::NUM) { for (double t : segv->num) onsets.push_back(t); segmentation = "list"; }
+    double threshold = opt_num("threshold", 2), timegate = opt_num("timegate", 0.1);
+    if (segmentation == "flux") onsets = orchidea::flux_onsets(mono, block, hop, SR, threshold, timegate, [](double* d, size_t n, int sg) { fft_inplace(d, n, sg); });
+    else if (segmentation == "frames") { for (size_t p = 0; p < mono.size(); p += (size_t)block) onsets.push_back((double)p / SR); }
+    else if (segmentation == "none" || segmentation == "static") onsets.clear();
+    else if (segmentation != "list") i.bad("orchidea-analyse: segmentation is flux, frames, none, or a list of onsets");
+    if (onsets.empty()) onsets.push_back(0);
+    std::sort(onsets.begin(), onsets.end()); if (onsets[0] > 0) onsets.insert(onsets.begin(), 0.0);
+    // the segments
+    int pwin = (int)opt_num("partials-window", 32768); double pfilter = opt_num("partials", 0.2);
+    if (pwin < 64 || (pwin & (pwin - 1))) i.bad("orchidea-analyse: partials-window must be a power of two");
+    std::vector<std::string> extra; if (vptr ev = opt_val("extra-pitches")) { if (ev->t == Value::LIST) for (auto& e : ev->l) extra.push_back(str_of(e)); }
+    vlist out;
+    for (size_t k = 0; k < onsets.size(); k++) {
+        size_t start = (size_t)std::floor(onsets[k] * SR); if (start >= mono.size()) break;
+        size_t end = k + 1 < onsets.size() ? std::min(mono.size(), (size_t)std::floor(onsets[k + 1] * SR)) : mono.size();
+        if (end <= start) continue;
+        std::vector<double> piece(mono.begin() + (long)start, mono.begin() + (long)end);
+        std::vector<double> f = db_features_of(piece, block, hop, ncoeff, type);
+        std::vector<float> feats(f.begin(), f.end()); orchidea::standardise(feats);
+        varr fv(feats.size()); for (size_t j = 0; j < feats.size(); j++) fv[j] = feats[j];
+        vlist notes;
+        if (pfilter > 0) {
+            std::map<std::string, int> ns = orchidea::partials_to_notes(piece, pwin, pwin / 4, pfilter, SR,
+                [](const std::vector<double>& y, int w, int h) { return average_spectrum(y, w, h); }, [](int m) { return midi_to_pitch(m); });
+            for (auto& e : extra) ns[e] = 0;
+            for (auto& kv : ns) notes.push_back(v_list({ v_str(kv.first), v_num(kv.second) }));
+        }
+        out.push_back(v_list({ v_list({ v_sym("at"), v_num((double)start / SR) }), v_list({ v_sym("dur"), v_num((double)(end - start) / SR) }),
+                               v_list({ v_sym("features"), v_arr(std::move(fv)) }), v_list({ v_sym("notes"), v_list(std::move(notes)) }) }));
+        i.yield_check();
+    }
+    return v_list(std::move(out));
+}
+// (orchidea-search entries orchestra segments opts)   Orchidea's genetic search: entries a database's entries (records
+//   with instr tech pitch dyn other features), orchestra a list of players as strings ("Fl", "Fl|Picc"), segments as
+//   orchidea-analyse gives them, opts a record: 'population 'epochs 'pursuit 'crossover 'mutation 'sparsity 'positive
+//   'negative 'hysteresis 'regularization 'solutions (the best kept per segment) 'connection ("closest" or "best")
+//   'styles 'dynamics 'others (lists of names that filter the search space) 'seed 'quiet
+//   => a record: 'segments a list, one per segment, each a record ('solutions (list (list cost (list index...)) ...),
+//   the best first, an index -1 for a silent player; 'curve the fitness per epoch; 'players the index in the
+//   orchestra of each of the solution's slots: the players that had sounds in the search space), and 'choices the
+//   connection's solution per segment
+inline vptr mus_orchidea_search(vlist& a, Interp& i) {
+    vptr entries = a[0]; if (entries->t != Value::LIST) i.bad("orchidea-search: entries must be a list");
+    std::vector<orchidea::entry> db; db.reserve(entries->l.size());
+    auto field = [&](const vptr& e, const char* key) { vptr v = rec_get(e, key); return v ? str_of(v) : std::string("N"); };
+    for (size_t k = 0; k < entries->l.size(); k++) {
+        const vptr& e = entries->l[k]; orchidea::entry x; x.index = (int)k; x.instr = field(e, "instr"); x.tech = field(e, "tech"); x.pitch = field(e, "pitch"); x.dyn = field(e, "dyn"); x.other = field(e, "other");
+        vptr f = rec_get(e, "features"); if (!f || f->t != Value::NUM) i.bad("orchidea-search: an entry without features");
+        x.features.assign(std::begin(f->num), std::end(f->num)); db.push_back(std::move(x));
+    }
+    std::vector<std::string> orchestra; if (a[1]->t != Value::LIST) i.bad("orchidea-search: the orchestra must be a list"); for (auto& p : a[1]->l) orchestra.push_back(str_of(p));
+    if (orchestra.empty()) i.bad("orchidea-search: an empty orchestra");
+    vptr segs = a[2]; if (segs->t != Value::LIST || segs->l.empty()) i.bad("orchidea-search: no segments");
+    std::vector<orchidea::segment> segments;
+    for (auto& s : segs->l) { orchidea::segment g; vptr at = rec_get(s, "at"), dur = rec_get(s, "dur"), f = rec_get(s, "features"), notes = rec_get(s, "notes");
+        if (!at || !dur || !f) i.bad("orchidea-search: a segment is a record (at dur features notes)");
+        g.start = at->num[0]; g.length = dur->num[0]; g.features.assign(std::begin(f->num), std::end(f->num));
+        if (notes && notes->t == Value::LIST) for (auto& kv : notes->l) if (kv->t == Value::LIST && kv->l.size() == 2) g.notes[str_of(kv->l[0])] = (int)std::lround(kv->l[1]->num[0]);
+        segments.push_back(std::move(g)); }
+    vptr opts = a[3];
+    auto opt_num = [&](const char* key, double dflt) { vptr v = rec_get(opts, key); return v && v->t == Value::NUM && v->num.size() == 1 ? v->num[0] : dflt; };
+    auto opt_list = [&](const char* key) { std::vector<std::string> out; vptr v = rec_get(opts, key); if (v && v->t == Value::LIST) for (auto& e : v->l) out.push_back(str_of(e)); return out; };
+    orchidea::params p;
+    p.pop_size = std::max(2, (int)opt_num("population", 300)); p.pop_size = (p.pop_size / 2) * 2;
+    p.max_epochs = std::max(1, (int)opt_num("epochs", 300)); p.pursuit = std::max(0, (int)opt_num("pursuit", 0));
+    p.xover_rate = opt_num("crossover", 0.8); p.mutation_rate = opt_num("mutation", 0.01); p.sparsity = opt_num("sparsity", 0.001);
+    p.positive = opt_num("positive", 0.5); p.negative = opt_num("negative", 10); p.hysteresis = opt_num("hysteresis", 0); p.regularization = opt_num("regularization", 0);
+    p.max_solutions = (int)opt_num("solutions", 10);
+    if (p.mutation_rate <= 0 || p.mutation_rate > 1) i.bad("orchidea-search: mutation must be in (0, 1]");
+    if (p.xover_rate <= 0 || p.xover_rate > 1) i.bad("orchidea-search: crossover must be in (0, 1]");
+    if (p.sparsity < 0 || p.sparsity > 1) i.bad("orchidea-search: sparsity must be in 0..1");
+    if (p.hysteresis < 0 || p.positive < 0 || p.negative < 0) i.bad("orchidea-search: the penalisations and the hysteresis must be >= 0");
+    vptr sv = rec_get(opts, "seed"); p.seed = sv && sv->t == Value::NUM ? (unsigned)sv->num[0] : (unsigned)i.rng();
+    bool quiet = opt_num("quiet", 0) != 0; std::string conn = "closest"; if (vptr cv = rec_get(opts, "connection")) conn = str_of(cv);
+    std::vector<std::string> styles = opt_list("styles"), dynamics = opt_list("dynamics"), others = opt_list("others");
+    orchidea::genetic ga(p);
+    std::vector<orchidea::model> models(segments.size());
+    for (size_t k = 0; k < segments.size(); k++) {
+        try { orchidea::make_model(db, orchestra, segments[k], styles, dynamics, others, models[k]); }
+        catch (std::exception& e) { i.bad(std::string("segment ") + std::to_string(k + 1) + ": " + e.what()); }
+        int last_shown = -1; size_t seg = k;
+        ga.p.progress = [&, seg](int epoch, int epochs) -> bool {
+            i.yield_check();                                                     // Esc in the IDE, the windows kept alive
+            if (!quiet && epochs >= 10 && epoch % std::max(1, epochs / 10) == 0 && epoch != last_shown) { last_shown = epoch;
+                *i.out << "orchestrate-mimetic: segment " << (seg + 1) << "/" << segments.size() << ", epoch " << epoch << "/" << epochs << "\n" << std::flush; }
+            return true; };
+        ga.search(models[k]);
+    }
+    std::vector<int> choices = orchidea::connect(models, p, conn != "best");
+    vlist out_segments;
+    for (auto& m : models) {
+        vlist sols;
+        for (auto& s : m.solutions) { vlist idx; for (int k : s.indices) idx.push_back(v_num(k == -1 ? -1 : m.database[(size_t)k]->index)); sols.push_back(v_list({ v_num(m.cost_of(s)), v_list(std::move(idx)) })); }
+        varr curve(m.curve.size()); for (size_t j = 0; j < m.curve.size(); j++) curve[j] = m.curve[j];
+        vlist slots; for (int s : m.slots) slots.push_back(v_num(s));
+        out_segments.push_back(v_list({ v_list({ v_sym("solutions"), v_list(std::move(sols)) }), v_list({ v_sym("curve"), v_arr(std::move(curve)) }), v_list({ v_sym("players"), v_list(std::move(slots)) }) }));
+    }
+    vlist ch; for (int c : choices) ch.push_back(v_num(c));
+    return v_list({ v_list({ v_sym("segments"), v_list(std::move(out_segments)) }), v_list({ v_sym("choices"), v_list(std::move(ch)) }) });
+}
+
 inline void add_music(Interp& i) {
     i.def("pitch->midi", mus_pitch_to_midi, 1, 1); i.def("midi->pitch", mus_midi_to_pitch, 1, 1);
     i.def("db-read", mus_db_read, 1, 1); i.def("db-gen", mus_db_gen, 6, 6); add_midi(i); i.def("db-locate", mus_db_locate, 2, 2); i.def("db-index-size", mus_db_index_size, 1, 1);
+    i.def("orchidea-analyse", mus_orchidea_analyse, 7, 7); i.def("orchidea-search", mus_orchidea_search, 4, 4);
 }
 
 } // namespace musil

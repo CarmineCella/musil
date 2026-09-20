@@ -244,6 +244,9 @@ if(MUSIL_TESTS)
   set(NEEDS_gran_orchestration2 "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_gran_orchestration3 "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_morph_orchestration "${D}/A_minor.wav")
+  set(NEEDS_static_orchidea "${D}/archeos-bell.wav;${D}/microsol/microsol.spectrum.db")
+  set(NEEDS_dynamic_orchidea "${D}/skip-in-tests")   # a minute or two of search: run it, don't test it
+  set(NEEDS_orchfest "${D}/archeos-bell.wav;${D}/microsol/microsol.spectrum.db")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
   set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test

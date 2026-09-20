@@ -25,6 +25,7 @@
 #include <FL/Fl_Image_Surface.H>
 #include <FL/Fl_RGB_Image.H>
 #include <FL/Fl_Button.H>
+#include <FL/Fl_Choice.H>
 #include <FL/Fl_Native_File_Chooser.H>
 #include <FL/fl_draw.H>
 #include <FL/platform.H>
@@ -42,7 +43,10 @@ struct figure;
 // A roll: rows (a name and a clef: "treble", "bass" or "none") and bars (row, start, duration, a lane within the
 // row, a MIDI pitch or -1, a dynamics label) with a tooltip: a score drawn like music, note heads and duration lines
 struct roll_bar { int row = 0; double start = 0, dur = 0; std::string label, tip; int group = 0; int lane = 0, lanes = 1; double midi = -1; std::string dyn; int event_id = -1; std::string tech; double cents = 0; };
-struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows, clefs; std::vector<roll_bar> bars; int score_id = -1; };
+// an orchestration's segment in a roll: its span, the solution chosen and the costs of all, and which orchestration
+// and segment of the score it is (the solution menu: roll-choose)
+struct roll_segment { double start = 0, end = 0; int chosen = 0; std::vector<double> costs; int orch = 0, seg = 0; };
+struct plot_layer { std::string kind, label; varr x, y; std::vector<varr> m; std::shared_ptr<figure> sub; std::vector<std::string> rows, clefs; std::vector<roll_bar> bars; int score_id = -1; std::vector<roll_segment> segments; };
 struct figure {
     std::string title, xlabel, ylabel;
     std::vector<plot_layer> layers;
@@ -85,6 +89,12 @@ inline figure parse_figure(const vptr& v) {
                 if (b->l.size() > 11) bar.tech = str_of(b->l[11]);
                 if (b->l.size() > 12 && b->l[12]->t == Value::NUM) bar.cents = b->l[12]->num[0];
                 p.bars.push_back(bar);
+            }
+            if (L->l.size() > 4 && L->l[4]->t == Value::LIST) for (auto& g : L->l[4]->l) {   // (list start end chosen costs orch seg)
+                if (g->t != Value::LIST || g->l.size() < 6) continue;
+                roll_segment sg; sg.start = g->l[0]->num[0]; sg.end = g->l[1]->num[0]; sg.chosen = (int)g->l[2]->num[0];
+                if (g->l[3]->t == Value::LIST) for (auto& c : g->l[3]->l) sg.costs.push_back(c->num.size() ? c->num[0] : 0); else if (g->l[3]->t == Value::NUM) for (double c : g->l[3]->num) sg.costs.push_back(c);
+                sg.orch = (int)g->l[4]->num[0]; sg.seg = (int)g->l[5]->num[0]; p.segments.push_back(sg);
             }
         } else if (p.kind == "image" || p.kind == "surface") {
             if (L->l.size() < 2 || L->l[1]->t != Value::LIST || L->l[1]->l.empty()) plot_fail(p.kind + ": needs a matrix (list of rows)");
@@ -309,6 +319,13 @@ inline void render_roll(const figure& f, const plot_layer& L, int ox, int oy, in
         int px = (int)X(t); fl_color(232, 232, 232); fl_line(px, g.top, px, g.top + (int)g.ph);
         std::string sl = tick_label(t); fl_color(80, 80, 80); fl_draw(sl.c_str(), px - (int)(fl_width(sl.c_str()) / 2), g.top + (int)g.ph + fs + 2);
     }
+    // the orchestrations' segments: a boundary at each, the solution chosen over the segment ("2/5")
+    for (auto& sg : L.segments) {
+        if (sg.end < g.xmin || sg.start > g.xmax) continue;
+        int px = (int)X(sg.start); fl_color(150, 170, 210); fl_line_style(FL_DASH, 1); fl_line(px, g.top, px, g.top + (int)g.ph); fl_line_style(0);
+        std::string lab = std::to_string(sg.chosen + 1) + "/" + std::to_string(sg.costs.size()); fl_color(90, 110, 160); fl_font(FL_HELVETICA, fs - 3); fl_draw(lab.c_str(), px + 3, g.top + fs - 3);
+    }
+    fl_font(FL_HELVETICA, fs - 2);
     // rows: the staves (five lines and the clef's letter), or a single line for unpitched rows; the names at the left
     fl_push_clip(ox, g.top, w, (int)g.ph);
     for (int r = 0; r < g.rows; r++) {
@@ -661,6 +678,18 @@ inline void figure_to_png_view(const figure& f, const std::string& path, int w, 
 // --- the window ---
 struct plot_widget : Fl_Widget {
     figure f; plot_view view; int lastx = 0, lasty = 0; bool has_roll = false; int dragging_bar = 0; Fl_Button* play_btn = nullptr;
+    Fl_Choice* sol_menu = nullptr; int sol_orch = -1, sol_seg = -1;   // the solution menu: the orchestration's segment under the cursor
+    // the menu follows the cursor: the segment under it, its solutions by cost, the chosen one marked
+    void update_solution_menu() {
+        if (!sol_menu) return;
+        const roll_segment* hit = nullptr;
+        for (auto& L : f.layers) if (L.kind == "roll") for (auto& sg : L.segments) if (view.cursor_time >= sg.start && view.cursor_time < sg.end) { hit = &sg; break; }
+        sol_menu->clear();
+        if (!hit || hit->costs.empty()) { sol_orch = sol_seg = -1; sol_menu->add("no segment here"); sol_menu->value(0); sol_menu->deactivate(); sol_menu->redraw(); return; }
+        sol_orch = hit->orch; sol_seg = hit->seg;
+        for (size_t k = 0; k < hit->costs.size(); k++) { char b[96]; std::snprintf(b, sizeof b, "solution %d   cost %.3g", (int)k + 1, hit->costs[k]); sol_menu->add(b, 0, nullptr); }
+        sol_menu->value(std::min<int>(hit->chosen, (int)hit->costs.size() - 1)); sol_menu->activate(); sol_menu->redraw();
+    }
     int score_id() { for (auto& L : f.layers) if (L.kind == "roll") return L.score_id; return -1; }
     bool roll_playing() { playhead_state& ph = playhead(); return ph.on && live_now() < ph.end && (ph.owner < 0 || ph.owner == score_id()); }
     void roll_stop() { if (plot_submit() && has_roll) plot_submit()("(roll-stop)"); }
@@ -731,7 +760,7 @@ struct plot_widget : Fl_Widget {
                     if (hit >= 0 && Fl::event_clicks() > 0 && plot_submit()) {   // a double click on an event plays it
                         for (auto& L : f.layers) if (L.kind == "roll" && L.score_id >= 0 && L.bars[(size_t)hit].event_id >= 0) plot_submit()("(play-event " + std::to_string(L.score_id) + " " + std::to_string(L.bars[(size_t)hit].event_id) + ")");
                     } else if (hit < 0 && lastx >= g.left && lastx <= g.left + g.pw && lasty >= g.top && lasty <= g.top + g.ph) {   // the background: the cursor
-                        view.cursor_time = std::max(0.0, g.xmin + (lastx - g.left) / g.pw * (g.xmax - g.xmin)); redraw();
+                        view.cursor_time = std::max(0.0, g.xmin + (lastx - g.left) / g.pw * (g.xmax - g.xmin)); update_solution_menu(); redraw();
                     }
                 }
             }
@@ -813,12 +842,35 @@ inline void plot_open_window(figure f, int w, int h) {
             std::string q = "\""; for (char c : path) { if (c == '"' || c == '\\') q += '\\'; q += c; } q += "\"";
             plot_submit()("(roll-save " + std::to_string(w->score_id()) + " " + q + ")");
         }, pw);
+        bool has_segments = false; for (auto& L : pw->f.layers) if (L.kind == "roll" && !L.segments.empty()) has_segments = true;
+        if (has_segments) {                              // an orchestration's solutions: the menu of the segment under the cursor
+            pw->sol_menu = new Fl_Choice(360, 5, 190, 24); pw->sol_menu->clear_visible_focus(); pw->sol_menu->tooltip("the solutions of the segment under the cursor (click in the background to place it), by cost: choosing one replaces the segment's notes");
+            pw->sol_menu->callback([](Fl_Widget* wd, void* d) {
+                plot_widget* w = (plot_widget*)d; Fl_Choice* c = (Fl_Choice*)wd; if (!plot_submit() || w->score_id() < 0 || w->sol_orch < 0) return;
+                plot_submit()("(roll-choose " + std::to_string(w->score_id()) + " " + std::to_string(w->sol_orch) + " " + std::to_string(w->sol_seg) + " " + std::to_string(c->value()) + ")");
+            }, pw);
+            pw->update_solution_menu();
+        }
     }
     win->resizable(pw); win->end(); win->size_range(300, 200);
     win->callback([](Fl_Widget* wd, void*) { wd->hide(); });
     plot_windows().push_back(win); win->show(); pw->take_focus();
 }
 inline int plot_windows_open() { int n = 0; for (auto* w : plot_windows()) if (w->shown()) n++; return n; }
+// a score's roll redrawn from a new figure (the score changed: another solution chosen); the view and the cursor kept
+inline void plot_refresh_roll(figure f) {
+    int id = -1; for (auto& L : f.layers) if (L.kind == "roll") id = L.score_id;
+    for (auto* win : plot_windows()) {
+        if (!win->shown()) continue;
+        for (int k = 0; k < win->children(); k++) {
+            plot_widget* pw = dynamic_cast<plot_widget*>(win->child(k));
+            if (!pw || !pw->has_roll || pw->score_id() != id) continue;
+            pw->f = f; pw->roll_cache_key.clear(); pw->update_solution_menu(); pw->redraw();
+        }
+    }
+}
+struct plot_refresh_request { figure f; };
+inline void plot_refresh_cb(void* p) { plot_refresh_request* r = (plot_refresh_request*)p; plot_refresh_roll(std::move(r->f)); delete r; }
 // Hosts with the interpreter on another thread (the IDE) set this so windows are made on the FLTK thread
 inline bool& plot_needs_awake() { static bool b = false; return b; }
 struct plot_request { figure f; int w, h; };
@@ -851,8 +903,17 @@ inline vptr plot_show(vlist& a, Interp& i) {
 // (plot-windows) => how many plot windows are open; (close-plots) closes them
 inline vptr plot_windows_count(vlist&, Interp&) { return v_num(plot_windows_open()); }
 inline vptr plot_close_all(vlist&, Interp&) { for (auto* w : plot_windows()) w->hide(); return v_nil(); }
+// (roll-refresh fig) the roll windows showing a score take a new figure of it (score-roll), keeping their view: what
+//   roll-choose calls after replacing a segment's notes
+inline vptr plot_roll_refresh(vlist& a, Interp& i) {
+    figure f; try { f = parse_figure(a[0]); } catch (std::exception& e) { i.bad(e.what()); }
+    if (std::getenv("MUSIL_NOSHOW")) return v_nil();
+    if (plot_needs_awake()) Fl::awake(plot_refresh_cb, new plot_refresh_request{ std::move(f) });
+    else { plot_refresh_roll(std::move(f)); Fl::check(); }
+    return v_nil();
+}
 inline void add_plot(Interp& i) {
-    i.def("save-png", plot_save_png, 2, 4); i.def("show", plot_show, 1, 3);
+    i.def("save-png", plot_save_png, 2, 4); i.def("show", plot_show, 1, 3); i.def("roll-refresh", plot_roll_refresh, 1, 1);
     i.def("plot-windows", plot_windows_count, 0, 0); i.def("close-plots", plot_close_all, 0, 0);
     if (!plot_needs_awake()) { auto prev = i.idle_fn; i.idle_fn = [prev]() { if (prev) prev(); if (Fl::first_window()) Fl::check(); }; }   // keep the windows alive while the interpreter waits (only once there is one: no GUI setup for plain scripts)
     if (!plot_submit()) {                                    // a window's request is kept until the event loop has repainted, then run from the idle hook (the IDE queues on its own)

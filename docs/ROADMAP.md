@@ -170,9 +170,20 @@ cmake --build build --target uninstall
    Open: dynamic features per sound (following the whole file rather than its average spectrum) would let
    the morphological pursuit choose playing styles by their evolution in time, and are what Maple needs;
    they would be a second feature file next to the published ones, not a change to those.
-   Next: `orchestrate-mimetic` (Orchidea: the search over combinations for a target's spectrum, sharing
-   target-analyse and mp), then sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and
-   MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
+   `orchestrate-mimetic` (done, 0.9.0): Orchidea's search core ported into `src/music/orchidea.h` (the
+   genetic search, the additive forecast, the asymmetric fitness with sparsity, hysteresis and
+   regularisation, the closest/best connection, the continuity model), the target analysed with Musil's
+   feature code (`orchidea-analyse`: flux onsets, standardised features, the partials as pitches with cents,
+   named C4 = 261.6 Hz as the databases' files are; Orchidea's own Hz2Note counted the octave from A, an
+   octave low for C..G#), the search as `orchidea-search`, both wrapped by `mimetic-target` and
+   `orchestrate-mimetic` in music.mu; the result an orchestration with ranked solutions per segment and
+   the connection's choices; `connect!` remembers the orchestration on the score and the roll offers the
+   solutions of the segment under the cursor (`score-choose!`, `roll-choose`, `roll-refresh`); the
+   population evaluated on every core. Examples: `static_orchidea.mu`, `dynamic_orchidea.mu`, `orchfest.mu`.
+   Open: the pitch filter as it is drops a segment whose pitches the orchestra lacks entirely (an error, as
+   in Orchidea); a fallback to no filter for that segment could be offered; `'others` and `'styles` filters
+   are Orchidea's exact matches; the search could keep the forecasts of unchanged individuals between epochs.
+   Next: sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
    for databases). A `player` bundle (instrument + what it can play)
    replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.
 4. **Generators**: random score generator, orchestral granulator.
