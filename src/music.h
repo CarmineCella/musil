@@ -275,8 +275,9 @@ inline vptr mus_orchidea_analyse(vlist& a, Interp& i) {
 // (orchidea-search entries orchestra segments opts)   Orchidea's genetic search: entries a database's entries (records
 //   with instr tech pitch dyn other features), orchestra a list of players as strings ("Fl", "Fl|Picc"), segments as
 //   orchidea-analyse gives them, opts a record: 'population 'epochs 'pursuit 'crossover 'mutation 'sparsity 'positive
-//   'negative 'hysteresis 'regularization 'solutions (the best kept per segment) 'connection ("closest" or "best")
-//   'styles 'dynamics 'others (lists of names that filter the search space) 'seed 'quiet
+//   'negative 'hysteresis 'regularization 'dovetail 'movement 'solutions (the best kept per segment) 'connection
+//   ("closest", "best" or "path") 'octaves (the pitch filter widened by octaves) 'styles 'dynamics 'others (lists of
+//   names that filter the search space) 'seed 'quiet
 //   => a record: 'segments a list, one per segment, each a record ('solutions (list (list cost (list index...)) ...),
 //   the best first, an index -1 for a silent player; 'curve the fitness per epoch; 'players the index in the
 //   orchestra of each of the solution's slots: the players that had sounds in the search space), and 'choices the
@@ -287,6 +288,7 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     auto field = [&](const vptr& e, const char* key) { vptr v = rec_get(e, key); return v ? str_of(v) : std::string("N"); };
     for (size_t k = 0; k < entries->l.size(); k++) {
         const vptr& e = entries->l[k]; orchidea::entry x; x.index = (int)k; x.instr = field(e, "instr"); x.tech = field(e, "tech"); x.pitch = field(e, "pitch"); x.dyn = field(e, "dyn"); x.other = field(e, "other");
+        if (vptr mv = rec_get(e, "midi")) if (mv->t == Value::NUM && mv->num.size() == 1) x.midi = (int)mv->num[0];
         vptr f = rec_get(e, "features"); if (!f || f->t != Value::NUM) i.bad("orchidea-search: an entry without features");
         x.features.assign(std::begin(f->num), std::end(f->num)); db.push_back(std::move(x));
     }
@@ -307,7 +309,17 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     p.max_epochs = std::max(1, (int)opt_num("epochs", 300)); p.pursuit = std::max(0, (int)opt_num("pursuit", 0));
     p.xover_rate = opt_num("crossover", 0.8); p.mutation_rate = opt_num("mutation", 0.01); p.sparsity = opt_num("sparsity", 0.001);
     p.positive = opt_num("positive", 0.5); p.negative = opt_num("negative", 10); p.hysteresis = opt_num("hysteresis", 0); p.regularization = opt_num("regularization", 0);
-    p.max_solutions = (int)opt_num("solutions", 10);
+    p.max_solutions = (int)opt_num("solutions", 10); p.dovetail = opt_num("dovetail", 0); p.movement = opt_num("movement", 1);
+    if (p.dovetail < 0) i.bad("orchidea-search: dovetail must be >= 0");
+    // the pitch filter widened by octaves: 'octaves (list 0 -1) admits the partials' pitches and the octave below them
+    std::vector<int> octaves; if (vptr ov = rec_get(opts, "octaves")) { if (ov->t == Value::LIST) for (auto& e : ov->l) octaves.push_back((int)std::lround(i.scalar(e))); else if (ov->t == Value::NUM) for (double d : ov->num) octaves.push_back((int)std::lround(d)); }
+    if (octaves.empty()) octaves.push_back(0);
+    bool widen = octaves.size() != 1 || octaves[0] != 0;
+    if (widen) for (auto& g : segments) if (!g.notes.empty()) {
+        std::map<std::string, int> wider;
+        for (auto& kv : g.notes) { int m = pitch_to_midi(kv.first); for (int o : octaves) { if (m < 0 && o != 0) continue; wider[o == 0 ? kv.first : midi_to_pitch(m + 12 * o)] = kv.second; } }
+        g.notes = wider;
+    }
     if (p.mutation_rate <= 0 || p.mutation_rate > 1) i.bad("orchidea-search: mutation must be in (0, 1]");
     if (p.xover_rate <= 0 || p.xover_rate > 1) i.bad("orchidea-search: crossover must be in (0, 1]");
     if (p.sparsity < 0 || p.sparsity > 1) i.bad("orchidea-search: sparsity must be in 0..1");
@@ -315,8 +327,12 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     vptr sv = rec_get(opts, "seed"); p.seed = sv && sv->t == Value::NUM ? (unsigned)sv->num[0] : (unsigned)i.rng();
     bool quiet = opt_num("quiet", 0) != 0; std::string conn = "closest"; if (vptr cv = rec_get(opts, "connection")) conn = str_of(cv);
     std::vector<std::string> styles = opt_list("styles"), dynamics = opt_list("dynamics"), others = opt_list("others");
+    if (conn != "closest" && conn != "best" && conn != "path") i.bad("orchidea-search: connection is closest, best or path");
     orchidea::genetic ga(p);
     std::vector<orchidea::model> models(segments.size());
+    std::vector<int> choices; std::vector<float> prev_forecast;
+    // segment by segment: the search, then the choice for this segment (closest to the previous choice, or the best;
+    // the path is found at the end), which the next segment's search remembers (hysteresis, dovetailing)
     for (size_t k = 0; k < segments.size(); k++) {
         try { orchidea::make_model(db, orchestra, segments[k], styles, dynamics, others, models[k]); }
         catch (std::exception& e) { i.bad(std::string("segment ") + std::to_string(k + 1) + ": " + e.what()); }
@@ -327,8 +343,14 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
                 *i.out << "orchestrate-mimetic: segment " << (seg + 1) << "/" << segments.size() << ", epoch " << epoch << "/" << epochs << "\n" << std::flush; }
             return true; };
         ga.search(models[k]);
+        if (models[k].solutions.empty()) i.bad(std::string("segment ") + std::to_string(k + 1) + ": the search found no solution");
+        int choice = conn == "closest" ? orchidea::closest_choice(models[k], prev_forecast, p) : 0;
+        choices.push_back(choice);
+        const orchidea::solution& chosen = models[k].solutions[(size_t)choice];
+        ga.remember(models[k], chosen);
+        prev_forecast.assign(models[k].seg->features.size(), 0.0f); orchidea::additive_forecast(chosen, models[k].database, prev_forecast); orchidea::standardise(prev_forecast);
     }
-    std::vector<int> choices = orchidea::connect(models, p, conn != "best");
+    if (conn == "path") choices = orchidea::shortest_path(models, p.movement);
     vlist out_segments;
     for (auto& m : models) {
         vlist sols;

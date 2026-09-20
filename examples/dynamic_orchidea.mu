@@ -7,12 +7,12 @@
 # Usage: musil dynamic_orchidea.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 1)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
 var sr 44100
 
 # --- the target: the piano phrase ----------------------------------------------------------------------------------
-var path "data/jazz_piano.wav"
+var path "data/A_minor.wav"
 var w (read-wav path)
 var x (head (getidx w 1))
 var fsr (head w)
@@ -30,7 +30,7 @@ var params (record (list
     'sparsity   0.001
     'threshold  0.1            # onsets_threshold: the flux peaks above a tenth of the strongest are onsets
     'timegate   0.1            # onsets_timegate: at least a tenth of a second apart
-    'partials   (if small 0 0.4)
+    'partials   (if small 0 0.3)
     'solutions  10
     'connection 'closest))     # each segment's solution the nearest to the previous segment (Orchidea's); 'best: the best of each
 if small { print "MicroSOL: the pitch filter is off (its four instruments have no sound at most of the piano's pitches)" }

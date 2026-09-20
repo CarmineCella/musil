@@ -59,9 +59,17 @@ function event-at (s at dur what az el) {
     put! e 'az az
     put! e 'el el
     if (not (has? e 'gain)) { put! e 'gain 1 }                               # a payload may carry its gain (fragment-gain)
-    put! e 'id (+ 1 (length (get s 'events)))
+    put! e 'id (score-next-id! s)
     push (get s 'events) e
     return e
+}
+# (score-next-id! s)       a fresh event number: ids are never reused, even after events are removed (the roll and
+#                          score-choose! find events by their id)
+function score-next-id! (s) {
+    var n (opt s 'next-id nil)
+    if (equal? (type n) "nil") { set n (+ 1 (if (== (length (get s 'events)) 0) 0 (max-of (map (get s 'events) (function (e) (get e 'id)))))) }
+    put! s 'next-id (+ n 1)
+    return n
 }
 # (payload->event what)    the event record of a payload (kind and source), without its time
 function payload->event (what) {
@@ -1120,7 +1128,7 @@ function connection (result choices) {
     var segs (get result 'segments)
     var out (list)
     each (range (length segs)) (function (k) (each (solution result k (getidx choices k)) (function (x) (push out x))))
-    return (merge-continuations (sort-by out head))
+    return (merge-continuations-within (sort-by out head) (opt result 'hold 1e9))
 }
 # (best-connection result)   the first solution of every segment
 function best-connection (result) (connection result (map (get result 'segments) (function (g) 0)))
@@ -1151,7 +1159,10 @@ function score-solutions (s) (map (opt s 'orchestrations (list)) (function (o) (
 # (merge-continuations f)   in a fragment, a note starting where a note of the same instrument and pitch ends becomes
 #                          the continuation of that note (one longer event), as an orchestration's connection does;
 #                          notes that carry their 'player (the granulator's do) merge only with the same player's
-function merge-continuations (f) {
+function merge-continuations (f) (merge-continuations-within f 1e9)
+# (merge-continuations-within f hold)   the same, a continued note never longer than hold seconds: a player who
+#                          cannot hold a note that long (an oboe without a breath) starts it again instead
+function merge-continuations-within (f hold) {
     var out (list)
     var by-key (list)                                                       # instrument|pitch -> the notes so far of that sound (a few), not the whole list
     each f (function (x) {
@@ -1160,7 +1171,7 @@ function merge-continuations (f) {
         var key (if (equal? (get pl 'kind) 'note) (concat (get pl 'instr) "|" (str (get pl 'midi)) "|" (str (opt pl 'player ""))) nil)   # the same player, when the notes say who played them
         if (not (equal? (type key) "nil")) {
             var same (opt by-key key nil)
-            if (not (equal? (type same) "nil")) { set prev (find-first same (function (y) (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.03))) }
+            if (not (equal? (type same) "nil")) { set prev (find-first same (function (y) (and (< (abs (- (+ (head y) (getidx y 1)) (head x))) 0.03) (<= (- (+ (head x) (getidx x 1)) (head y)) hold)))) }
         }
         if (equal? (type prev) "nil") {
             var fresh (list (head x) (getidx x 1) pl)
@@ -2129,14 +2140,24 @@ function validation-print (r) {
 # (mimetic-target db x sr params)   the target analysed: x a vector (a sound read with read-wav, a rendered score, a
 #                          synthesis) at sr; params a record: 'segmentation ('flux: at the peaks of the spectral flux
 #                          above 'threshold (2; above 1 no peak passes: one segment, a static target) and at least a
-#                          'timegate apart (0.1 s); 'frames: every block; 'none: one segment; or a list of onsets in
+#                          'timegate apart (0.1 s); 'adaptive: the peaks of the flux against their local median
+#                          (flux-peaks, 'ratio 2: twice the median), so the sensitivity follows the sound rather than
+#                          its loudest attack; 'frames: every block; 'none: one segment; or a list of onsets in
 #                          seconds), 'partials-window (32768: the window the pitches are read with; large for a low
 #                          target), 'partials (0.2: the threshold on the partials, 0..1; 0: no pitch filter, every
 #                          sound of the database may serve: for noisy targets), 'extra-pitches (names added to every
 #                          segment's pitches). => a record ('sr 'seconds 'segments (records: at dur features notes)
 #                          'params); (mimetic-print target) prints the segments and their pitches
 function mimetic-target (db x sr params) {
-    var opts (record (list 'segmentation (opt params 'segmentation 'flux) 'threshold (opt params 'threshold 2) 'timegate (opt params 'timegate 0.1)
+    var segmentation (opt params 'segmentation 'flux)
+    if (equal? segmentation 'adaptive) {                                   # the onsets of signals' flux-peaks: a peak counts against its local median, not the file's maximum
+        var peaks (vec->list (flux-peaks x sr (get db 'block) (get db 'hop) (opt params 'ratio 2) 21))
+        var gate (opt params 'timegate 0.1)
+        var kept (list)
+        each peaks (function (t) (if (or (== (length kept) 0) (> (- t (last kept)) gate)) (push kept t)))
+        set segmentation (if (== (length kept) 0) (list 0) kept)
+    }
+    var opts (record (list 'segmentation segmentation 'threshold (opt params 'threshold 2) 'timegate (opt params 'timegate 0.1)
                            'partials-window (opt params 'partials-window 32768) 'partials (opt params 'partials 0.2) 'extra-pitches (map (opt params 'extra-pitches (list)) str)))
     var segs (orchidea-analyse x sr (get db 'type) (get db 'block) (get db 'hop) (get db 'ncoeff) opts)
     return (record (list 'sr sr 'seconds (/ (length x) sr) 'segments segs 'params params))
@@ -2170,11 +2191,20 @@ function mimetic-seating (instr) { var hit (find-first mimetic-seats (function (
 #                    k: from the k sounds nearest the target per player), 'crossover (xover_rate, 0.8), 'mutation
 #                    (mutation_rate, 0.01), 'sparsity (0.001: how often a player is dropped; 0.1 for a single
 #                    instrument as target), 'positive and 'negative (0.5 and 10: the penalisations of a partial the
-#                    solution has and the target lacks, and the reverse), 'hysteresis (0: > 0 makes each segment's
-#                    solution lean towards the previous ones), 'regularization (0: > 0 sponsors sparse solutions)
+#                    solution has and the target lacks, and the reverse), 'regularization (0: > 0 sponsors sparse
+#                    solutions)
 #       the space    'styles 'dynamics 'others: lists of names; only sounds with one of them enter the search
+#       the memory   'hysteresis (0: > 0 makes each segment's search lean, in timbre, towards the solutions chosen
+#                    for the segments before, fading by that factor a segment back), 'dovetail (0: > 0 raises the cost
+#                    of a candidate by that fraction of the pitches of the previous chosen solution it drops, on any
+#                    player: pivot notes passed between instruments), 'octaves (the pitch filter widened: (list 0 -1)
+#                    admits the partials' pitches and the octave below), 'hold (seconds: a note continued across
+#                    segments on the same player and pitch is never longer; the player starts it again)
 #       the result   'solutions (10: the best kept per segment), 'connection ('closest: each segment's solution
-#                    nearest the previous segment, Orchidea's; 'best: the best of each), 'seating (1: the notes
+#                    nearest, in timbre, to the one chosen for the segment before, Orchidea's; 'best: the best of
+#                    each; 'path: the shortest path through the solutions, each costing its distance from its
+#                    segment's best in percent plus 'movement (1) per semitone a player moves, or per player that
+#                    starts or stops: the least melodic movement, the continuity of lines), 'seating (1: the notes
 #                    placed as Orchidea's mixes seat the orchestra; 0: centred), 'seed, 'quiet (1: no progress)
 #     => an orchestration result ('mimetic) whose segments hold the ranked solutions as (list cost fragment), each
 #     fragment the notes at their time in the target (the very sounds chosen, at the target's cents, with 'player
@@ -2212,6 +2242,7 @@ function orchestrate-mimetic (db orch x sr params) {
     })
     var out (orchestration 'mimetic params segs)
     put! out 'choices (get r 'choices)
+    put! out 'hold (opt params 'hold 1e9)
     put! out 'target target
     put! out 'players players
     put! out 'curves (map (get r 'segments) (function (m) (get m 'curve)))

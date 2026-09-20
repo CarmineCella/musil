@@ -1561,11 +1561,25 @@ every generation: 0.001 for symphonic targets, 0.1 for a single instrument as ta
 population; $k$: from the $k$ sounds nearest the target per player), looks for the
 combination whose summed features are nearest the target's by an asymmetric distance: a
 partial the solution has and the target lacks costs \musil{'positive} (0.5), the reverse
-\musil{'negative} (10); \musil{'hysteresis} ($>0$) makes each segment's solution lean
-towards the previous ones and \musil{'regularization} ($>0$) sponsors sparse solutions.
-The \musil{'solutions} best unique individuals (10) are kept per segment, ranked by cost, and
-a \musil{'connection} chooses one per segment: \musil{'closest} (Orchidea's), each segment's
-solution nearest the previous segment's target, or \musil{'best}. The result is an
+\musil{'negative} (10); \musil{'regularization} ($>0$) sponsors sparse solutions.
+The memory between segments goes further than Orchidea's: the segments are searched and
+connected one after the other, so that each search knows the solution chosen for the
+segment before; \musil{'hysteresis} ($>0$) makes it lean, in timbre, towards the previous
+choices (the standardised forecasts, fading by that factor a segment back: the original
+compared a standardised candidate with unstandardised forecasts, which no weight could make
+meaningful); \musil{'dovetail} ($>0$) raises a candidate's cost by that fraction of the
+previous choice's pitches it drops, on any player, which is what dovetailing is: pivot notes
+passed from one instrument to another; \musil{'octaves} widens the pitch filter by octaves
+(\musil{(list 0 -1)}: the partials' pitches and the octave below); \musil{'hold} caps a
+note continued across segments at that many seconds (the player starts it again). The
+\musil{'solutions} best unique individuals (10) are kept per segment, ranked by cost, and a
+\musil{'connection} chooses one per segment: \musil{'closest} (Orchidea's), each segment's
+solution nearest in timbre to the one chosen before; \musil{'best}; or \musil{'path}, the
+shortest path through the solutions, each costing its distance from its segment's best in
+percent plus \musil{'movement} (1) per semitone a player moves or per player that starts or
+stops: the least melodic movement, the continuity of lines. The segmentation can also be
+\musil{'adaptive}: the flux peaks against their local median (\musil{'ratio}, 2), so the
+sensitivity follows the sound rather than its loudest attack. The result is an
 orchestration like the others: its segments hold the ranked solutions as fragments, each
 note the very sound chosen, at the target's cents, with its \musil{'player} and, with
 \musil{'seating} (1), the azimuth of Orchidea's seating (violins left, cellos right);

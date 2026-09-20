@@ -205,7 +205,7 @@ inline void serve_evaluate(Interp& i, int fd, std::string code) {
     while (!code.empty() && (code.back() == '\x04' || code.back() == '\n' || code.back() == '\r')) code.pop_back();
     if (server().on_receive) server().on_receive(code);
     std::string reply;
-    try { vptr r = i.run(code, "<editor>"); reply = r && r->t != Value::NIL ? str_of(r) : "ok"; }
+    try { vptr r = i.run(code, "<editor>"); reply = r && r->t != Value::NIL ? str_of_limited(r, 200000) : "ok"; }   // bounded: a score or a database would be gigabytes
     catch (Exit_signal&) { reply = "exit"; }
     catch (std::exception& e) { reply = std::string("error: ") + e.what(); *i.out << "error: " << e.what() << "\n" << std::flush; }
     i.call_stack.clear(); i.function_depth = 0; i.loop_depth = 0; i.stack_depth = 0;

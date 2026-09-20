@@ -536,6 +536,32 @@ check (and (== (length msegs) 3) (== (getidx (head msegs) 4) 0) (== (getidx (get
 check (equal? (map (mimetic-connection mr3) head) (map (connection mr3 (get mr3 'choices)) head)) "mimetic-connection: the connection Orchidea chose"
 check (== (length (get mr 'curves)) 1) "orchestrate-mimetic: a fitness curve per segment"
 check (near? (mimetic-seating 'Vn) 30 1e-9) "mimetic-seating: the violins at the left"
+# the ids of events are never reused: a score with a file at its end keeps it through replacements of a segment
+var mids (score "ids" 44100)
+var mev1 (connect! mids 0 mr3 (get mr3 'choices))
+var tailev (event mids 10 1 (note db 'Ob "C4" 'mf 'ord))
+var tail-id (get tailev 'id)
+score-choose! mids 0 0 1
+score-choose! mids 0 1 1
+check (and (any? (score-events mids) (function (e) (== (get e 'id) tail-id))) (== (length (unique (map (score-events mids) (function (e) (get e 'id))))) (length (score-events mids)))) "score-choose!: an event added after the orchestration survives two replacements (ids never reused)"
+check (== (score-next-id! mids) (+ 1 (max-of (map (score-events mids) (function (e) (get e 'id)))))) "score-next-id!: past every id in use"
+# the memory between segments: hysteresis, dovetailing, the path connection, the octaves, the hold
+var mseg3 (put mprm 'segmentation (list 0 1.5 3))
+var mhy (orchestrate-mimetic db morch mtx 44100 (put mseg3 'hysteresis 0.5))
+check (== (length (get mhy 'choices)) 3) "orchestrate-mimetic: hysteresis > 0 runs (the standardised forecasts of the chosen solutions remembered)"
+var mdv (orchestrate-mimetic db morch mtx 44100 (put mseg3 'dovetail 2))
+check (== (length (get mdv 'segments)) 3) "orchestrate-mimetic: dovetail > 0 runs (the previous solution's pitches favoured)"
+var mpath (orchestrate-mimetic db morch mtx 44100 (put (put mseg3 'connection 'path) 'movement 1))
+check (and (== (length (get mpath 'choices)) 3) (all? (map (get mpath 'choices) (function (c) (>= c 0))) identity)) "orchestrate-mimetic: connection 'path chooses by the shortest melodic path"
+var mgoct (mimetic-target db mtx 44100 (record (list 'threshold 2 'partials 0.3)))
+var moct (orchestrate-mimetic db morch mgoct 44100 (put (put mprm 'octaves (list 0 -1)) 'partials 0.3))
+check (== (length (get moct 'segments)) 1) "orchestrate-mimetic: 'octaves widens the pitch filter by octaves"
+var mhold (orchestrate-mimetic db (orchestra (list 'Ob)) mtx 44100 (put (put mseg3 'hold 2) 'partials 0))
+var mhf (connection mhold (get mhold 'choices))
+check (all? (map mhf (function (x) (<= (getidx x 1) 2.01))) identity) "hold: a note continued across segments never longer than 'hold seconds"
+var madapt (mimetic-target db mtx 44100 (record (list 'segmentation 'adaptive 'ratio 2 'timegate 0.2 'partials 0)))
+check (>= (length (get madapt 'segments)) 1) "mimetic-target: 'adaptive segmentation (flux-peaks against the local median)"
+check (== (length (merge-continuations-within (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "C4" 'mf 'ord))) 2)) 2) "merge-continuations-within: the hold splits a continuation (three seconds of C4 in two notes)"
 
 # --- morphological orchestration ---
 seed 6

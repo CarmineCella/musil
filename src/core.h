@@ -157,6 +157,29 @@ inline std::string str_of(const vptr& v) {
     }
     return "";
 }
+// (str_of_limited v limit) what the value prints as, stopped once limit characters are out: for a host's echo of a
+// value (a score holds thousands of notes, each its database: printing it whole would take minutes and gigabytes)
+inline void str_of_into(const vptr& v, std::string& out, size_t limit, int depth) {
+    if (out.size() >= limit) return;
+    if (!v) { out += "nil"; return; }
+    if (depth > 200) { out += "..."; return; }
+    switch (v->t) {
+    case Value::NIL: out += "nil"; return;
+    case Value::NUM: {
+        std::ostringstream os;
+        if (v->num.size() == 1) { put_double(os, v->num[0]); out += os.str(); return; }
+        os << "("; for (size_t i = 0; i < v->num.size() && (size_t)os.tellp() + out.size() < limit; i++) { if (i) os << " "; put_double(os, v->num[i]); } os << ")";
+        out += os.str(); return; }
+    case Value::STR: case Value::SYM: out += v->s.size() + out.size() > limit + 1 ? v->s.substr(0, limit + 1 - std::min(limit + 1, out.size())) : v->s; return;
+    case Value::FN: out += v->op ? "<builtin>" : v->s.empty() ? "<fn>" : "<fn " + v->s + ">"; return;
+    case Value::LIST:
+        out += "(";
+        for (size_t i = 0; i < v->l.size() && out.size() < limit; i++) { if (i) out += " "; str_of_into(v->l[i], out, limit, depth + 1); }
+        out += ")"; return;
+    case Value::OPAQUE: out += "<opaque:" + v->opaque_tag + ">"; return;
+    }
+}
+inline std::string str_of_limited(const vptr& v, size_t limit) { std::string s; str_of_into(v, s, limit, 0); if (s.size() > limit) s = s.substr(0, limit) + " ..."; return s; }
 inline bool equal(const vptr& a, const vptr& b) {
     if (a == b) return true;                       // the same object: equal without a walk (a score holds thousands of notes, each its database)
     if (!a || !b) return (!a || a->t == Value::NIL) && (!b || b->t == Value::NIL);

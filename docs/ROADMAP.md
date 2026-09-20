@@ -180,9 +180,19 @@ cmake --build build --target uninstall
    the connection's choices; `connect!` remembers the orchestration on the score and the roll offers the
    solutions of the segment under the cursor (`score-choose!`, `roll-choose`, `roll-refresh`); the
    population evaluated on every core. Examples: `static_orchidea.mu`, `dynamic_orchidea.mu`, `orchfest.mu`.
+   Then: the segments searched and connected one after the other, so the memory sees the chosen solution;
+   the hysteresis fixed (standardised forecasts of the chosen solutions; the original compared standardised
+   candidates with raw forecasts of the best of the population); `'dovetail` (the previous choice's pitches
+   kept on any player), `'connection 'path` (the shortest melodic path, `'movement`), `'hold`, `'octaves`,
+   `'segmentation 'adaptive` (flux-peaks against the local median). Event ids are never reused
+   (`score-next-id!`: replacing a segment's notes used to give new notes the ids of events added after the
+   orchestration, and a later replacement removed those too). `str_of_limited` bounds the evaluation port's
+   reply and the IDE's echo. `orchfest.mu` on the piano phrase (a dynamic target for all three).
    Open: the pitch filter as it is drops a segment whose pitches the orchestra lacks entirely (an error, as
    in Orchidea); a fallback to no filter for that segment could be offered; `'others` and `'styles` filters
-   are Orchidea's exact matches; the search could keep the forecasts of unchanged individuals between epochs.
+   are Orchidea's exact matches; the search could keep the forecasts of unchanged individuals between epochs;
+   NMF stems before the segmentation, a classifier of morphologies, an onset continuation in the search
+   itself (see the discussion of 19 Sept 2026).
    Next: sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
    for databases). A `player` bundle (instrument + what it can play)
    replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.

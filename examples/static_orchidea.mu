@@ -7,7 +7,7 @@
 # Usage: musil static_orchidea.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 1)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
+var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
 var sr 44100
 

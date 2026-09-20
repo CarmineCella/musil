@@ -29,12 +29,14 @@ struct params {
     int pop_size = 300, max_epochs = 300, pursuit = 0;
     double xover_rate = 0.8, mutation_rate = 0.01, sparsity = 0.001;
     double positive = 0.5, negative = 10.0, hysteresis = 0.0, regularization = 0.0;
+    double dovetail = 0.0;                                // the pitches of the previous segment's solution kept (on any player): the memory in pitch
+    double movement = 1.0;                                // the 'path connection: the cost of a semitone of melodic movement per player, against a percent of fitness
     int max_solutions = 10;                               // how many of the best unique solutions are kept per segment
     unsigned seed = 1;
     std::function<bool(int, int)> progress;               // (epoch, epochs) => false to stop the search
 };
 // a database entry: what the search needs of a sound (the index is its place in the database's entries)
-struct entry { int index = 0; std::string instr, tech, pitch, dyn, other; std::vector<float> features; };
+struct entry { int index = 0; int midi = -1; std::string instr, tech, pitch, dyn, other; std::vector<float> features; };
 // a segment of the target: its features (standardised, as Orchidea's normalize2), the pitches of its partials with
 // their cents, its place in seconds
 struct segment { double start = 0, length = 0; std::vector<float> features; std::map<std::string, int> notes; };
@@ -109,9 +111,27 @@ inline void make_model(const std::vector<entry>& db, const std::vector<std::stri
     if (m.orchestra.empty()) throw std::runtime_error("empty orchestra: none of its instruments has a sound in the search space");
 }
 
+// the pitches a solution sounds (the names), for the dovetailing and the movement
+inline std::vector<std::string> pitches_of(const solution& id, const std::vector<const entry*>& db) {
+    std::vector<std::string> out; for (int k : id.indices) if (k != -1) out.push_back(db[(size_t)k]->pitch); std::sort(out.begin(), out.end()); out.erase(std::unique(out.begin(), out.end()), out.end()); return out;
+}
+
 // --- the genetic search (GeneticOrchestra) ---
+// The memory of the segments before: the hysteresis compares each candidate with the standardised forecasts of the
+// solutions chosen for the previous segments (the original compared a standardised candidate with unstandardised
+// forecasts of the best of the population, which no weight could make meaningful), fading by 'hysteresis per
+// segment back; the dovetailing counts the pitches of the previous chosen solution the candidate keeps, on any
+// player (a pivot note passed from one instrument to another is what dovetailing is), and raises the cost of a
+// candidate by 'dovetail times the fraction it drops
 struct genetic {
-    params p; std::mt19937 rng; std::deque<std::vector<float>> history;   // the best forecasts of the segments before (hysteresis)
+    params p; std::mt19937 rng; std::deque<std::vector<float>> history;   // the standardised forecasts of the solutions chosen before (hysteresis)
+    std::vector<std::string> prev_pitches;                                  // the pitches of the solution chosen for the previous segment (dovetailing)
+    // what the driver tells the search after choosing a segment's solution: the memory for the next
+    void remember(const model& m, const solution& chosen) {
+        std::vector<float> f(m.seg->features.size(), 0.0f); additive_forecast(chosen, m.database, f); standardise(f); history.push_front(f);
+        while (history.size() > 8) history.pop_back();
+        prev_pitches = pitches_of(chosen, m.database);
+    }
     static const int MAX_EQUAL_EPOCHS = 150;
     genetic(const params& pr) : p(pr), rng(pr.seed) {}
     double frand() { return std::uniform_real_distribution<double>(0.0, 1.0)(rng); }
@@ -148,8 +168,14 @@ struct genetic {
         long sum = 0; for (int k : id.indices) if (k != -1) sum++;
         float reg = (float)(p.regularization * sum);
         float memory = 0; double forget = 1;
-        for (size_t k = 0; k < history.size() && forget > 0.0001; k++) { float h = asym_distance(values, history[k], p.positive, p.negative); forget *= p.hysteresis; memory += (float)(h * forget); }
-        return s + reg + memory;
+        for (size_t k = 0; k < history.size() && forget > 0.0001; k++) { forget *= p.hysteresis; if (forget <= 0.0001) break; float h = asym_distance(values, history[k], p.positive, p.negative); memory += (float)(h * forget); }
+        float dove = 0;
+        if (p.dovetail > 0 && !prev_pitches.empty()) {                        // the fraction of the previous pitches the candidate drops
+            size_t kept = 0;
+            for (auto& q : prev_pitches) { for (int k : id.indices) if (k != -1 && db[(size_t)k]->pitch == q) { kept++; break; } }
+            dove = (float)(p.dovetail * (1.0 - (double)kept / (double)prev_pitches.size()) * s);
+        }
+        return s + reg + memory + dove;
     }
     // the population evaluated, the individuals shared among the cores (the evaluation reads only; the draws stay sequential)
     float evaluate_population(std::vector<solution>& pop, const std::vector<float>& target, const std::vector<const entry*>& db, std::vector<float>& values) {
@@ -210,29 +236,58 @@ struct genetic {
         std::sort(m.solutions.begin(), m.solutions.end()); std::reverse(m.solutions.begin(), m.solutions.end());
         if (p.max_solutions > 0 && m.solutions.size() > (size_t)p.max_solutions) m.solutions.resize((size_t)p.max_solutions);
         for (auto& s : m.solutions) s.durations.assign(s.indices.size(), m.seg->length);
-        if (!m.solutions.empty()) { std::vector<float> forecast(target.size(), 0.0f); additive_forecast(m.solutions[0], m.database, forecast); history.push_front(forecast); }
         return max_fit;
     }
 };
 
-// --- the connection between the segments (connections.h): the solution of each segment chosen ---
-// 'closest': from the best solution of the first segment, each next segment's solution is the one whose forecast is
-// nearest the previous segment's target (the asymmetric distance); 'best': the best of each
-inline std::vector<int> connect(std::vector<model>& models, const params& p, bool closest) {
-    std::vector<int> choices;
-    if (models.empty()) return choices;
-    choices.push_back(0);
-    const segment* current = models[0].seg;
-    for (size_t k = 1; k < models.size(); k++) {
-        model& m = models[k]; int argmin = 0;
-        if (closest && !m.solutions.empty()) {
-            float best = 1e30f; std::vector<float> values(m.seg->features.size(), 0.0f);
-            for (size_t j = 0; j < m.solutions.size(); j++) { additive_forecast(m.solutions[j], m.database, values); standardise(values);
-                float s = asym_distance(values, current->features, p.positive, p.negative); if (s < best) { best = s; argmin = (int)j; } }
+// --- the movement between two solutions of consecutive segments (the 'path connection) ---
+// each player that sounds in both: the interval it moves by, in semitones (0 when it keeps its pitch); a player
+// that starts or stops: a leap of 'rest semitones; players are matched by their slot in the orchestra
+inline double movement_between(const solution& a, const std::vector<const entry*>& dba, const std::vector<int>& slots_a,
+                               const solution& b, const std::vector<const entry*>& dbb, const std::vector<int>& slots_b, double rest = 6.0) {
+    std::map<int, int> ma, mb;                                             // slot -> midi (-1 unpitched)
+    for (size_t k = 0; k < a.indices.size(); k++) if (a.indices[k] != -1) ma[slots_a[k]] = dba[(size_t)a.indices[k]]->midi;
+    for (size_t k = 0; k < b.indices.size(); k++) if (b.indices[k] != -1) mb[slots_b[k]] = dbb[(size_t)b.indices[k]]->midi;
+    double cost = 0;
+    for (auto& kv : ma) { auto it = mb.find(kv.first); if (it == mb.end()) cost += rest; else if (kv.second >= 0 && it->second >= 0) cost += std::min(12.0, (double)std::abs(kv.second - it->second)); }
+    for (auto& kv : mb) if (!ma.count(kv.first)) cost += rest;
+    return cost;
+}
+// the shortest path through the segments' solutions (a layered graph, dynamic programming): each node costs how much
+// worse its solution is than its segment's best, in percent; each edge the movement between its solutions times
+// 'movement; => the solution chosen per segment
+inline std::vector<int> shortest_path(const std::vector<model>& models, double movement) {
+    std::vector<int> choices; size_t n = models.size(); if (n == 0) return choices;
+    std::vector<std::vector<double>> cost(n); std::vector<std::vector<int>> from(n);
+    auto node_cost = [&](const model& m, size_t j) { double best = m.cost_of(m.solutions[0]), c = m.cost_of(m.solutions[j]); return best > 0 ? 100.0 * (c / best - 1.0) : 0.0; };
+    for (size_t k = 0; k < n; k++) {
+        size_t ns = models[k].solutions.size(); cost[k].assign(ns, 1e300); from[k].assign(ns, -1);
+        for (size_t j = 0; j < ns; j++) {
+            double own = node_cost(models[k], j);
+            if (k == 0) { cost[k][j] = own; continue; }
+            for (size_t i = 0; i < models[k - 1].solutions.size(); i++) {
+                double c = cost[k - 1][i] + own + movement * movement_between(models[k - 1].solutions[i], models[k - 1].database, models[k - 1].slots, models[k].solutions[j], models[k].database, models[k].slots);
+                if (c < cost[k][j]) { cost[k][j] = c; from[k][j] = (int)i; }
+            }
         }
-        choices.push_back(argmin); current = m.seg;
     }
+    choices.assign(n, 0);
+    size_t last = n - 1; int best = 0; for (size_t j = 0; j < cost[last].size(); j++) if (cost[last][j] < cost[last][(size_t)best]) best = (int)j;
+    for (size_t k = last + 1; k-- > 0;) { choices[k] = best; if (k > 0) best = from[k][(size_t)best]; if (best < 0) best = 0; }
     return choices;
+}
+
+// --- the connection between the segments (connections.h) ---
+// 'closest' (Orchidea's): the solution of a segment whose forecast is nearest, by the asymmetric distance, to the
+// forecast of the solution chosen for the segment before (the original measured against the previous segment's
+// target instead); the first segment takes its best. => the index chosen for the model given, prev the forecast
+// of the previous choice (standardised; empty for the first)
+inline int closest_choice(const model& m, const std::vector<float>& prev, const params& p) {
+    if (m.solutions.size() < 2 || prev.empty()) return 0;
+    float best = 1e30f; int argmin = 0; std::vector<float> values(m.seg->features.size(), 0.0f);
+    for (size_t j = 0; j < m.solutions.size(); j++) { additive_forecast(m.solutions[j], m.database, values); standardise(values);
+        float s = asym_distance(values, prev, p.positive, p.negative); if (s < best) { best = s; argmin = (int)j; } }
+    return argmin;
 }
 
 // --- the target's analysis ---

@@ -124,30 +124,10 @@ static void status_cb(void* p) {
 static void set_status(const std::string& s) { Fl::awake(status_cb, new awake_text{ s }); }
 
 // --- the variables snapshot ---
-// A preview is the first 60 characters of what the value prints as, and it stops there: str_of on a whole database
-// (thousands of entries, each a feature vector) took minutes after every command, with the Stop button lit meanwhile
-static void preview_into(const vptr& v, std::string& out, size_t limit, int depth) {
-    if (out.size() >= limit) return;
-    if (!v) { out += "nil"; return; }
-    if (depth > 20) { out += "..."; return; }
-    switch (v->t) {
-    case Value::NIL: out += "nil"; return;
-    case Value::NUM: {
-        std::ostringstream os;
-        if (v->num.size() == 1) { put_double(os, v->num[0]); out += os.str(); return; }
-        os << "("; for (size_t i = 0; i < v->num.size() && os.tellp() < (long)limit; i++) { if (i) os << " "; put_double(os, v->num[i]); } os << ")";
-        out += os.str(); return; }
-    case Value::STR: case Value::SYM: out += v->s.substr(0, limit); return;
-    case Value::FN: out += v->op ? "<builtin>" : v->s.empty() ? "<fn>" : "<fn " + v->s + ">"; return;
-    case Value::LIST:
-        out += "(";
-        for (size_t i = 0; i < v->l.size() && out.size() < limit; i++) { if (i) out += " "; preview_into(v->l[i], out, limit, depth + 1); }
-        out += ")"; return;
-    case Value::OPAQUE: out += "<opaque:" + v->opaque_tag + ">"; return;
-    }
-}
+// A preview is the first 60 characters of what the value prints as, and it stops there (str_of_limited): str_of on a
+// whole database took minutes after every command, with the Stop button lit meanwhile
 static std::string preview(const vptr& v) {
-    std::string s; preview_into(v, s, 60, 0);
+    std::string s = str_of_limited(v, 60);
     if (s.size() > 60) s = s.substr(0, 57) + "...";
     for (auto& c : s) if (c == '\n') c = ' ';
     return s;
@@ -211,7 +191,7 @@ static void interpreter_thread() {
         S.busy = true; set_status("running...  (Esc stops)");
         try {
             vptr r = I.run(cmd.first, cmd.second);
-            if (r && r->t != Value::NIL && cmd.second == "<console>") { std::string echo; preview_into(r, echo, 20000, 0); if (echo.size() > 20000) echo = echo.substr(0, 20000) + " ...";  console_post(echo + "\n"); }   // the value echoed, bounded (a whole database is not printed)
+            if (r && r->t != Value::NIL && cmd.second == "<console>") console_post(str_of_limited(r, 20000) + "\n");   // the value echoed, bounded (a whole database is not printed)
         } catch (Exit_signal&) { S.quit = true; }
         catch (std::exception& e) { console_post(std::string("error: ") + e.what() + "\n"); }
         buf.sync();

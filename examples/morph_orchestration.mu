@@ -9,8 +9,8 @@
 load "music.mu"
 load "plot.mu"
 seed (if (> (length args) 1) (num (getidx args 1)) 3)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument and technique (short ones too)
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument and technique (short ones too)
 var path (if (> (length args) 0) (getidx args 0) "data/A_minor.wav")
 
 # --- the target and its analysis: the same spectral space as the database's features ------------------------------
