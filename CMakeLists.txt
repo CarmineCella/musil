@@ -249,7 +249,6 @@ if(MUSIL_TESTS)
   set(NEEDS_orchfest "${D}/archeos-bell.wav;${D}/microsol/microsol.spectrum.db")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
-  set(NEEDS_bootstrap "${D}/skip-in-tests")        # ends at a prompt when run at a terminal: not a test
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")
     set(NEEDS_iris_plot "${D}/no-fltk")

@@ -18,8 +18,7 @@
 load "music.mu"
 var k (if (> (length args) 0) (num (getidx args 0)) 1)          # the timeline: 1 is the piece, 0.25 four times faster
 seed (if (> (length args) 1) (num (getidx args 1)) 11)
-#var db (db-load "data/microsol/microsol.spectrum.db")         # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch only)
-var db (db-load "../datasets/TinySOL.spectrum.db")         # FullSOL: every instrument and technique
+var db (db-load-first (list "../datasets/TinySOL.spectrum.db" "data/microsol/microsol.spectrum.db"))   # TinySOL after ./fetch_tinysol.sh (or FullSOL2020), else the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var sr 44100
 
 # --- the orchestra: Ligeti's, halved, seated as a real one (13 first and second violins, 5 violas, 5 cellos, 4 basses;

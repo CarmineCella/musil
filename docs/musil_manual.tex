@@ -1643,7 +1643,9 @@ from a folder of sounds (Orchidea's dbgen, in C++: the energy-weighted average s
 \texttt{mfcc} or \texttt{moments}; the bundled TinySOL features are reproduced exactly);
 \musil{db-make} generates and loads. Several databases whose features agree load as one:
 \musil{(db-load (list "a.db" "b.db"))} or \musil{db-merge}; every entry keeps its own
-sounds' folder, and \musil{note} draws on all of them. \musil{note} finds the entry
+sounds' folder, and \musil{note} draws on all of them. \musil{db-load-first} loads the first
+of a list of feature files that is on disk: the examples name TinySOL (or FullSOL) first and
+the bundled MicroSOL last, and run with what is there. \musil{note} finds the entry
 for an instrument, pitch, dynamics and technique, or the nearest available pitch of that
 instrument, and shifts it by resampling; only sounds present on disk are candidates, so a
 feature file describing more than is present still works. A sharp in a pitch is written as

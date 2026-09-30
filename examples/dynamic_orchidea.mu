@@ -1,14 +1,13 @@
 # dynamic_orchidea: assisted orchestration of a piano phrase (Orchidea, dynamic). The target is cut at its onsets
 # (the peaks of the spectral flux above 0.1 of the strongest, at least 0.1 s apart: some hundred and eighty segments
 # of the A minor phrase), each segment analysed into the database's features and the pitches of its partials, and
-# each orchestrated by the genetic search (300 individuals, 300 epochs). The connection then chooses, segment by
-# segment, the solution nearest the previous one, and a note continued across a boundary on the same player and
-# pitch becomes one longer note. Some minutes of search: the progress is printed.
+# each orchestrated by the genetic search (500 individuals, 500 epochs). The connection then chooses, segment by
+# segment, the solutions with the least melodic movement between them ('path), and a note continued across a
+# boundary on the same player and pitch becomes one longer note. Some minutes of search: the progress is printed.
 # Usage: musil dynamic_orchidea.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 1)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
-var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
+var db (db-load-first (list "../datasets/FullSOL2020.spectrum.db" "data/microsol/microsol.spectrum.db"))   # TinySOL after ./fetch_tinysol.sh (or FullSOL2020), else the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var sr 44100
 
 # --- the target: the piano phrase ----------------------------------------------------------------------------------
@@ -32,10 +31,10 @@ var params (record (list
     'timegate   0.1            # onsets_timegate: at least a tenth of a second apart
     'partials   (if small 0 0.3)
     'solutions  5
-    'sustain    1             # a player whose pitch the phrase keeps holds its sound on into the next segment (one long note)
+    'sustain    1              # a player whose pitch the phrase keeps holds its sound on into the next segment (one long note)
     'hold       4              # ... for four seconds at most
-    'dovetail  .75            # the previous chord's pitches favoured, on any player: pivot notes
-    'connection 'path))     # each segment's solution the nearest in timbre to the one chosen before (Orchidea's); 'best; 'path: the least melodic movement
+    'dovetail   0.75           # the previous chord's pitches favoured, on any player: pivot notes
+    'connection 'path))        # the sequence of solutions with the least melodic movement; 'closest: each the nearest in timbre to the one before (Orchidea's); 'best
 if small { print "MicroSOL: the pitch filter is off (its four instruments have no sound at most of the piano's pitches)" }
 
 # --- the target analysed, then orchestrated ------------------------------------------------------------------------

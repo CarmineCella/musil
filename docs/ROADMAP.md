@@ -201,6 +201,12 @@ cmake --build build --target uninstall
    in Orchidea); a fallback to no filter for that segment could be offered; `'others` and `'styles` filters
    are Orchidea's exact matches; with `'sustain` a segment where every player holds on leaves nobody for a
    new partial ('hold, or a rule releasing the weakest, would answer that).
+   Examples (Sept 30): the orchestration examples name the database they prefer first and the bundled MicroSOL
+   last (`db-load-first`: TinySOL after `./fetch_tinysol.sh`, FullSOL for atmospheres2), so a fresh checkout
+   and the tests run with what is there; dynamic_orchidea at 500/500, sparsity 0.01, dovetail 0.75,
+   'connection 'path; morph_orchestration over the whole phrase at 'density-scale 2. bootstrap.mu named a
+   builtin that never existed here (`cons`: `append`/`push` are the list constructors) and was skipped by the
+   tests; fixed and made a test (its REPL is off under MUSIL_NOSHOW).
    Next: sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
    for databases). A `player` bundle (instrument + what it can play)
    replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.

@@ -589,6 +589,13 @@ function db-load (path) {
     var root (db-sounds-folder dir (getidx r 4))
     return (record (list 'path full 'root root 'type (head r) 'block (getidx r 1) 'hop (getidx r 2) 'ncoeff (getidx r 3) 'entries (getidx r 4)))
 }
+# (db-load-first paths)    load the first database of a list that is on disk: the examples name the set they prefer
+#                          first (TinySOL, FullSOL) and the bundled MicroSOL last, and run with what is there
+function db-load-first (paths) {
+    var here (find-first paths (function (p) (or (exists? p) (not (equal? (find-file p) "")))))
+    if (equal? (type here) "nil") { error "db-load-first: none of " paths " is on disk" }
+    return (db-load here)
+}
 # (db-sounds-folder dir entries)   where the sounds of a feature file in dir are: the folder next to it (or dir itself)
 #                          under which the first entry's file exists, whatever the folder is called (TinySOL/, tinysol/,
 #                          a copy named otherwise); dir when nothing is found (a note then says the sound is missing)

@@ -16,8 +16,7 @@
 # Usage: musil orchfest.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 2)
-#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
-var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
+var db (db-load-first (list "../datasets/TinySOL.spectrum.db" "data/microsol/microsol.spectrum.db"))   # TinySOL after ./fetch_tinysol.sh (or FullSOL2020), else the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var sr 44100
 var path "data/A_minor.wav"
 var w (read-wav path)

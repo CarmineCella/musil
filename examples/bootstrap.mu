@@ -109,7 +109,7 @@ function truthy? (v) (not (or (equal? (type v) "nil") (equal? v 0) (equal? v "")
 
 # --- the global environment of the meta-level: the host's builtins, by name -------------------
 var meta-global (env-new nil)
-each (list "+" "-" "*" "/" "<" ">" "<=" ">=" "==" "!=" "equal?" "not" "list" "head" "tail" "length" "cons" "append" "push" "vec" "sum" "range" "map" "filter" "reduce" "print" "str" "concat" "sin" "cos" "sqrt" "abs" "mod" "type" "getidx")
+each (list "+" "-" "*" "/" "<" ">" "<=" ">=" "==" "!=" "equal?" "not" "list" "head" "tail" "length" "append" "push" "pop" "vec" "sum" "range" "map" "filter" "reduce" "print" "str" "concat" "sin" "cos" "sqrt" "abs" "mod" "type" "getidx")
     (function (name) (env-define meta-global name (eval (sym name))))
 env-define meta-global "pi" pi
 
@@ -123,7 +123,7 @@ print "higher order    :" (run "(map (list 1 2 3) (function (x) (* x x)))")
 print "vectors         :" (run "(+ (range 4) 10)")
 print "quote is data   :" (run "'(+ 1 2)")
 print "while           :" (run "var i 0\nvar acc 0\nwhile (< i 5) { set acc (+ acc i)\n set i (+ i 1) }\n(+ acc 0)")
-print "an error        :" (try (run "(nope 1)") catch e e)
+print "an error        :" (try (run "(nope 1)") catch e (head (split e "\n")))    # the message, without the host's backtrace
 
 # --- a REPL: the host reads and parses, the evaluator written above evaluates -----------------
 # (only when someone is at the keyboard: not under the test suite, which sets MUSIL_NOSHOW, nor a pipe)
