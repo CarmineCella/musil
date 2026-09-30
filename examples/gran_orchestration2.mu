@@ -16,8 +16,9 @@
 # Usage: musil gran_orchestration2.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 5)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (octaves 2, 3 and 6 are beyond it)
-# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument over its whole range
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (octaves 2, 3 and 6 are beyond it)
+var db (db-load "../datasets/TinySOL.spectrum.db")       # TinySOL: every instrument over its whole range, after ./fetch_tinysol.sh
+#var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument over its whole range
 var sr 44100
 
 # --- the orchestra: ossia players (the band decides the instrument), all in one group so they strike together -------

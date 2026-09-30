@@ -7,7 +7,7 @@
 # Usage: musil dynamic_orchidea.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 1)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
 var sr 44100
 
@@ -25,19 +25,23 @@ print (orchestra-size orch) "players:" (orchestra-instruments orch)
 # --- the parameters --------------------------------------------------------------------------------------------------
 var small (< (length (get db 'entries)) 100)                    # MicroSOL: no pitch filter (C4-G4 only), and a coarser segmentation
 var params (record (list
-    'population 300            # pop_size
-    'epochs     300            # max_epochs
-    'sparsity   0.001
+    'population 500            # pop_size
+    'epochs     500            # max_epochs
+    'sparsity   0.01
     'threshold  0.1            # onsets_threshold: the flux peaks above a tenth of the strongest are onsets
     'timegate   0.1            # onsets_timegate: at least a tenth of a second apart
     'partials   (if small 0 0.3)
-    'solutions  10
-    'connection 'closest))     # each segment's solution the nearest to the previous segment (Orchidea's); 'best: the best of each
+    'solutions  5
+    'sustain    1             # a player whose pitch the phrase keeps holds its sound on into the next segment (one long note)
+    'hold       4              # ... for four seconds at most
+    'dovetail  .75            # the previous chord's pitches favoured, on any player: pivot notes
+    'connection 'path))     # each segment's solution the nearest in timbre to the one chosen before (Orchidea's); 'best; 'path: the least melodic movement
 if small { print "MicroSOL: the pitch filter is off (its four instruments have no sound at most of the piano's pitches)" }
 
 # --- the target analysed, then orchestrated ------------------------------------------------------------------------
 var target (mimetic-print (mimetic-target db x fsr params))
 var r (orchestrate-mimetic db orch target fsr params)
+mimetic-report r                                                 # a line per segment: cost, players used and holding on, what the orchestra lacks
 
 # --- the score: the connection, then the piano itself to compare -----------------------------------------------------
 var s (score "dynamic orchidea" sr)

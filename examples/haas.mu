@@ -19,8 +19,9 @@
 load "music.mu"
 var k (if (> (length args) 0) (num (getidx args 0)) 1)
 seed (if (> (length args) 1) (num (getidx args 1)) 13)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-# var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument over its whole range
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
+var db (db-load "../datasets/TinySOL.spectrum.db")       
+#var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument over its whole range
 var sr 44100
 
 # --- the ensemble: 22 players after in vain's, the flutes doubling piccolo (a seated ossia) ------------------------

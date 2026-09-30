@@ -1545,7 +1545,8 @@ function granulate (db orch secs params) {
                 # still sounds (target-notes: a pursuit at the target's peaks), each lasting as long as the target keeps
                 # its sound, unless a 'duration of your own is given
                 var sounding (map (filter players (function (q) (> (get q 'busy-until) T))) (function (q) (get q 'current-note)))
-                each (target-notes db (get params 'target) t free sounding params) (function (f) {
+                var decide (if (equal? (opt params 'decision 'pursuit) 'genetic) target-notes-genetic target-notes)
+                each (decide db (get params 'target) t free sounding params) (function (f) {
                     var q (head f)
                     var n (getidx f 1)
                     put! n 'player (get q 'k)
@@ -2000,24 +2001,86 @@ function target-notes (db target t free sounding params) {
         if (opt params 'trace 0) { print "  " t (get e 'instr) (get e 'pitch) (get e 'tech) "weight" (fixed (last aw) 3) "explains" (fixed explains 2) }
         if (and (not (contains? taken q)) (> (last aw) 0) (or (== (length out) 0) (>= explains (opt params 'min-gain 0.2)))) {
             push taken q
-            var life (max (opt params 'min-length 0.1) (atom-persistence target (get e 'features) t (opt params 'persist 0.5) (opt params 'max-length 8)))
-            var entry e
-            if (and (< life (opt params 'short 0.4)) (not (technique-short? (get e 'tech)))) {          # a short life: a short technique of the same sound, the best fitting
-                var shorts (filter (get (opt (db-index! db) (get e 'instr) (record (list 'all (list)))) 'all) (function (b) (and (== (get b 'midi) (get e 'midi)) (technique-short? (get b 'tech)) (or (equal? (type (opt params 'styles nil)) "nil") (contains? (map (get params 'styles) str) (get b 'tech))))))   # any dynamics
-                if (> (length shorts) 0) { set entry (min-by shorts (function (s) (- 0 (/ (dot residual (entry-atom s)) (max 1e-9 (norm (entry-atom s))))))) }
-            }
-            var n (note db (get entry 'instr) (get entry 'midi) (get entry 'dyn) (get entry 'tech))   # the sound the pursuit chose, exactly
-            put! n 'dyn (str dyn)                                                                    # played at the target's level
-            put! n 'label (concat (get entry 'instr) " " (get n 'pitch) " " (str dyn))
-            put! n 'gain (level->gain level)
-            put! n 'atom (entry-atom entry)
-            var f0 (entry-f0 entry (get target 'sr) (get target 'block))
-            if (> (length peaks) 0) {                                                  # the tuning: the nearest peak, against the sound's own frequency, within a quarter tone
-                var near (getidx peaks (argmin (abs (- peaks f0))))
-                var cents (* 1200 (log2 (/ (max near 1) f0)))
-                put! n 'cents (if (< (abs cents) 50) (round cents) 0)
-            } { put! n 'cents 0 }
-            push out (list q n life)
+            push out (concat-list (list q) (target-note-of db target t e residual peaks level dyn params))
+        }
+    })
+    return out
+}
+# (target-note-of db target t e residual peaks level dyn params)   the note a morphological orchestration makes of a
+#                          database entry chosen at time t: as long as the target holds the sound (atom-persistence), a
+#                          short technique of the same sound when its life is short, at the target's level, tuned to the
+#                          nearest peak; => (list note life)
+function target-note-of (db target t e residual peaks level dyn params) {
+    var life (max (opt params 'min-length 0.1) (atom-persistence target (get e 'features) t (opt params 'persist 0.5) (opt params 'max-length 8)))
+    var entry e
+    if (and (< life (opt params 'short 0.4)) (not (technique-short? (get e 'tech)))) {          # a short life: a short technique of the same sound, the best fitting
+        var shorts (filter (get (opt (db-index! db) (get e 'instr) (record (list 'all (list)))) 'all) (function (b) (and (== (get b 'midi) (get e 'midi)) (technique-short? (get b 'tech)) (or (equal? (type (opt params 'styles nil)) "nil") (contains? (map (get params 'styles) str) (get b 'tech))))))   # any dynamics
+        if (> (length shorts) 0) { set entry (min-by shorts (function (s) (- 0 (/ (dot residual (entry-atom s)) (max 1e-9 (norm (entry-atom s))))))) }
+    }
+    var n (note db (get entry 'instr) (get entry 'midi) (get entry 'dyn) (get entry 'tech))   # the sound chosen, exactly
+    put! n 'dyn (str dyn)                                                                    # played at the target's level
+    put! n 'label (concat (get entry 'instr) " " (get n 'pitch) " " (str dyn))
+    put! n 'gain (level->gain level)
+    put! n 'atom (entry-atom entry)
+    var f0 (entry-f0 entry (get target 'sr) (get target 'block))
+    if (> (length peaks) 0) {                                                  # the tuning: the nearest peak, against the sound's own frequency, within a quarter tone
+        var near (getidx peaks (argmin (abs (- peaks f0))))
+        var cents (* 1200 (log2 (/ (max near 1) f0)))
+        put! n 'cents (if (< (abs cents) 50) (round cents) 0)
+    } { put! n 'cents 0 }
+    return (list n life)
+}
+# (target-notes-genetic db target t free sounding params)   the same decision as target-notes, but made by Orchidea's
+#                          search instead of a greedy pursuit: at each event a genetic search over the free players'
+#                          sounds at the target's peaks (the dictionary of the moment) looks for the combination, one
+#                          sound per free player or a rest, whose summed spectrum is nearest the target's now, less what
+#                          still sounds (the residual): the mimetic decision inside the morphological clock, no
+#                          segmentation, the durations from persistence. 'genetic is a record of the search's
+#                          parameters (population 60, epochs 40, sparsity 0.1, and the others of orchestrate-mimetic);
+#                          => a list of (list player note dur)
+function target-notes-genetic (db target t free sounding params) {
+    if (< (target-at target 'loudness t) (- (max (get target 'loudness)) (opt params 'range 40))) { return (list) }
+    var level (target-level target t (opt params 'range 40))
+    var reg (param-at params 'register t (list 0 8))
+    var lo (* 12 (+ 1 (head reg)))
+    var hi (- (* 12 (+ 2 (last reg))) 1)
+    var dyn (level->dynamics level)
+    var peaks (target-peaks target t 24)
+    var atoms (target-dictionary db peaks free lo hi dyn (opt params 'styles nil))
+    if (== (length atoms) 0) { set atoms (target-dictionary db peaks free 0 127 dyn (opt params 'styles nil)) }
+    if (== (length atoms) 0) { return (list) }
+    var rf (target-residual target t sounding (length (get (last (head atoms)) 'features)))
+    var frame (last rf)
+    var residual (if (< (norm (head rf)) (* (opt params 'floor 0.1) (norm frame))) frame (head rf))
+    if (<= (norm frame) 1e-9) { return (list) }
+    # the search space: each free player its own instrument ("p0", "p1"...), its sounds the atoms the dictionary gave it
+    var players (list)
+    var local (list)                                                          # the entries as the search sees them: the player as instrument
+    var who (list)                                                            # (player entry) for each of them
+    each atoms (function (a) {
+        var k (find players (head a))
+        if (< k 0) { push players (head a)
+                     set k (- (length players) 1) }
+        push local (put (last a) 'instr (concat "p" (str k)))
+        push who a
+    })
+    var names (map (vec->list (range (length players))) (function (k) (concat "p" (str k))))
+    var target-lin (pow (max 0 residual) 2)                                   # the residual back in the features' space (the pursuit works in its square root)
+    var m (mean target-lin)
+    var sd (sqrt (mean (pow (- target-lin m) 2)))
+    var feats (if (> sd 0) (/ (- target-lin m) sd) (* 0 target-lin))
+    var g (opt params 'genetic (record (list)))
+    var opts (record (list 'population (opt g 'population 60) 'epochs (opt g 'epochs 40) 'sparsity (opt g 'sparsity 0.1) 'mutation (opt g 'mutation 0.02)
+                           'positive (opt g 'positive 0.5) 'negative (opt g 'negative 10) 'pursuit (opt g 'pursuit 0) 'patience (opt g 'patience 20)
+                           'solutions 1 'sustain 0 'quiet 1 'seed (floor (* (rand) 1e9))))
+    var r (orchidea-search local names (list (record (list 'at t 'dur 1 'features feats 'notes (list)))) opts)
+    var seg (head (get r 'segments))
+    var sol (head (get seg 'solutions))
+    var out (list)
+    each (zip (last sol) (get seg 'players)) (function (q) {
+        if (>= (head q) 0) {
+            var a (getidx who (head q))
+            push out (concat-list (list (head a)) (target-note-of db target t (last a) residual peaks level dyn params))
         }
     })
     return out
@@ -2033,7 +2096,10 @@ function target-notes (db target t free sounding params) {
 #     'range (40 dB: the dynamics' span), 'density-scale (1), 'min-density (0.5), 'step, 'styles (the techniques
 #     allowed; all by default),
 #     'solutions, 'trace (1: every atom considered is printed), and 'density, 'register, 'dynamics or 'duration of
-#     your own in place of the target's
+#     your own in place of the target's; 'decision ('pursuit, the greedy matching pursuit, or 'genetic: at each event
+#     Orchidea's search over the free players' sounds for the combination nearest the residual, one sound per player
+#     or a rest, the mimetic decision inside the morphological clock; its parameters in 'genetic, a record:
+#     population 60, epochs 40, sparsity 0.1, patience 20, and the others of orchestrate-mimetic)
 function orchestrate-morphological (db orch target params) {
     var envs (target-envelopes target params)
     var p (record (list 'method 'target 'target target))
@@ -2204,7 +2270,11 @@ function mimetic-seating (instr) { var hit (find-first mimetic-seats (function (
 #                    nearest, in timbre, to the one chosen for the segment before, Orchidea's; 'best: the best of
 #                    each; 'path: the shortest path through the solutions, each costing its distance from its
 #                    segment's best in percent plus 'movement (1) per semitone a player moves, or per player that
-#                    starts or stops: the least melodic movement, the continuity of lines), 'seating (1: the notes
+#                    starts or stops: the least melodic movement, the continuity of lines; chosen at the end, so
+#                    'sustain is off with it), 'sustain (1: a player whose pitch the target keeps holds its very
+#                    sound on into the next segment, fixed in every chromosome, so the search fills only what
+#                    changed and a held chord comes out as long notes; 0: every segment searched afresh),
+#                    'patience (150: epochs without a better population before a search stops), 'seating (1: the notes
 #                    placed as Orchidea's mixes seat the orchestra; 0: centred), 'seed, 'quiet (1: no progress)
 #     => an orchestration result ('mimetic) whose segments hold the ranked solutions as (list cost fragment), each
 #     fragment the notes at their time in the target (the very sounds chosen, at the target's cents, with 'player
@@ -2241,6 +2311,9 @@ function orchestrate-mimetic (db orch x sr params) {
         push segs (segment (get g 'at) (get g 'dur) sols)
     })
     var out (orchestration 'mimetic params segs)
+    put! out 'report (map (zip (get r 'segments) segs) (function (pair) (record (list 'at (get (last pair) 'at) 'dur (get (last pair) 'dur) 'cost (head (head (get (last pair) 'solutions)))
+                                                                             'used (opt (head pair) 'used 0) 'held (opt (head pair) 'held 0) 'missing (opt (head pair) 'missing (list)) 'space (opt (head pair) 'space 0)))))
+    put! out 'cache (opt r 'cache (list 0 0))
     put! out 'choices (get r 'choices)
     put! out 'hold (opt params 'hold 1e9)
     put! out 'target target
@@ -2249,6 +2322,21 @@ function orchestrate-mimetic (db orch x sr params) {
     if (not (opt params 'quiet 0)) { var costs (map segs (function (g) (fixed (head (head (get g 'solutions))) 3)))
                                      print "orchestrate-mimetic:" (length segs) (if (== (length segs) 1) "segment," "segments,") (sum (vec (map segs (function (g) (length (get g 'solutions)))))) "solutions in" (fixed (- (clock) t0) 1) "s; the best costs" (join (take costs (min 12 (length costs))) " ") (if (> (length costs) 12) "..." "") }
     return out
+}
+# (mimetic-report result)  a mimetic orchestration's report printed, a line per segment: its time, the cost of its best
+#                          solution, the players the chosen solution sounds and those holding their sound on from the
+#                          segment before, the sounds in its search space, and the target's pitches no instrument of the
+#                          orchestra covers (where a segment sounds thin, this says why); => the report (result 'report)
+function mimetic-report (result) {
+    var rep (get result 'report)
+    var c (opt result 'cache (list 0 0))
+    print "mimetic:" (length rep) (if (== (length rep) 1) "segment;" "segments;") "the search evaluated" (last c) "combinations," (head c) "taken from the cache"
+    each (zip (take rep (min 40 (length rep))) (vec->list (range (min 40 (length rep))))) (function (p) {
+        var g (head p)
+        print "  " (+ 1 (last p)) ": at" (fixed (get g 'at) 2) "s," (fixed (get g 'dur) 2) "s; cost" (fixed (get g 'cost) 1) ";" (get g 'used) "players," (get g 'held) "holding on;" (get g 'space) "sounds in the space" (if (== (length (get g 'missing)) 0) "" (concat "; not in the orchestra: " (join (get g 'missing) " ")))
+    })
+    if (> (length rep) 40) { print "  ..." (- (length rep) 40) "more" }
+    return rep
 }
 # (mimetic-connection result)   the connection Orchidea chose (result 'choices) as a fragment; (connect! s at result
 #                          (get result 'choices)) places it

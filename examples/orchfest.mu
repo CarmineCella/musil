@@ -5,16 +5,18 @@
 #              made of the pitches Orchidea reads in each segment, at the segment's time), the register its centroid
 #              (target-analyse), the density its onsets: the phrase as a cloud that keeps its harmony but not its notes
 #   10-18 s    morphological: the phrase's morphology drives the granulator (the flux peaks give the density, the
-#              centroid the register, the loudness the dynamics) and a matching pursuit at each event picks the
-#              sounds at the phrase's partials; nothing is segmented
+#              centroid the register, the loudness the dynamics) and at each event Orchidea's search ('decision
+#              'genetic) picks the combination of the free players' sounds nearest what the phrase still lacks;
+#              nothing is segmented, each note lasts as long as the phrase keeps its sound
 #   20-28 s    mimetic (Orchidea): the phrase cut at its onsets and each chord matched as a whole by a genetic search
-#              over the orchestra's sounds at the chord's pitches; the solutions connected by the shortest melodic
-#              path ('path) with dovetailing; a dashed line at every segment in the roll, a menu of its solutions
+#              over the orchestra's sounds at the chord's pitches; a player whose pitch the phrase keeps holds its
+#              sound on ('sustain: a held chord comes out as long notes), the previous chord's pitches favoured on
+#              any player ('dovetail); a dashed line at every segment in the roll, a menu of its solutions
 #   30 s       the piano itself, to compare
 # Usage: musil orchfest.mu [seed]
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 2)
-var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
+#var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4 (a sketch)
 var db (db-load "../datasets/TinySOL.spectrum.db")           # TinySOL, after ./fetch_tinysol.sh; or FullSOL2020
 var sr 44100
 var path "data/A_minor.wav"
@@ -46,16 +48,16 @@ connect! s 0 gran (list 0)
 print "granular:" (length (best-connection gran)) "notes"
 
 # --- 2. morphological: the phrase's curves drive the granulator, a pursuit at every event -----------------------------------
-var morph (orchestrate-morphological db orch morph-target (record (list 'solutions 1 'density-scale 1.5)))
+var morph (orchestrate-morphological db orch morph-target (record (list 'solutions 1 'density-scale 1.5 'decision 'genetic)))   # Orchidea's search at every event, in the morphological clock
 connect! s 10 morph (list 0)
 print "morphological:" (length (best-connection morph)) "notes"
 
-# --- 3. mimetic: Orchidea, segment by segment, the solutions connected by the shortest melodic path ----------------------
+# --- 3. mimetic: Orchidea, segment by segment, the players holding their sounds on where the phrase keeps them -----------
 var mparams (record (list 'population 100 'epochs 100 'sparsity 0.01 'threshold 0.1 'timegate 0.1 'partials (if small 0 0.3)
-                          'solutions 6 'connection 'path 'movement 1 'dovetail 0.5 'hold 4))
+                          'solutions 6 'connection 'closest 'sustain 1 'hold 4 'dovetail 0.5))
 var mimetic (orchestrate-mimetic db orch (if small x target) fsr mparams)
 connect! s 20 mimetic (get mimetic 'choices)
-solution-print mimetic 0
+mimetic-report mimetic
 
 # --- the piano itself, then the whole ------------------------------------------------------------------------------------
 event s 30 0 (fragment->score "the piano" sr (list (list 0 secs path)))

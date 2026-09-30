@@ -32,6 +32,7 @@ struct params {
     double dovetail = 0.0;                                // the pitches of the previous segment's solution kept (on any player): the memory in pitch
     double movement = 1.0;                                // the 'path connection: the cost of a semitone of melodic movement per player, against a percent of fitness
     int max_solutions = 10;                               // how many of the best unique solutions are kept per segment
+    int patience = 150;                                   // epochs without a better population before the search stops (MAX_EQUAL_EPOCHS)
     unsigned seed = 1;
     std::function<bool(int, int)> progress;               // (epoch, epochs) => false to stop the search
 };
@@ -54,6 +55,8 @@ struct model {
     std::map<std::string, std::vector<int>> instruments;
     std::vector<std::string> orchestra;
     std::vector<int> slots;                               // for each player kept, its index in the orchestra given
+    std::vector<int> fixed;                               // per slot: the local index of the sound the player holds on from the segment before (-1: free)
+    std::vector<std::string> missing;                     // the target's pitches no sound of the orchestra covers
     std::vector<solution> solutions;
     std::vector<float> curve;                             // the population's total fitness per epoch
     float cost_of(const solution& s) const { return s.fitness > 0 ? (float)(1.0 / std::sqrt((double)s.fitness)) : 1e9f; }
@@ -109,6 +112,29 @@ inline void make_model(const std::vector<entry>& db, const std::vector<std::stri
         } else if (m.instruments.count(player)) { m.orchestra.push_back(player); m.slots.push_back((int)k); }
     }
     if (m.orchestra.empty()) throw std::runtime_error("empty orchestra: none of its instruments has a sound in the search space");
+    m.fixed.assign(m.orchestra.size(), -1);
+    m.missing.clear();
+    for (auto& kv : seg.notes) {                              // a pitch of the target no instrument of the orchestra has a sound at
+        bool covered = false;
+        for (const entry* e : m.database) if (e->pitch == kv.first) { for (auto& player : m.orchestra) { if (player == e->instr || player.find(e->instr) != std::string::npos) { covered = true; break; } } if (covered) break; }
+        if (!covered) m.missing.push_back(kv.first);
+    }
+}
+// (hold_on m prev prev_choice next_notes hold) the players whose sound continues into this segment: a player of the
+// previous chosen solution whose pitch the target still has (the partial goes on) keeps its very sound, fixed in
+// every chromosome, unless it has already held it 'hold seconds; => how many hold on
+inline int hold_on(model& m, const model& prev, const solution& chosen, double hold, std::vector<double>& held_since) {
+    int n = 0;
+    for (size_t k = 0; k < chosen.indices.size(); k++) {
+        if (chosen.indices[k] == -1) continue;
+        const entry* e = prev.database[(size_t)chosen.indices[k]]; int slot = prev.slots[k];
+        if (!m.seg->notes.count(e->pitch) && !m.seg->notes.empty()) continue;   // the target dropped that pitch
+        if (held_since[(size_t)slot] >= 0 && m.seg->start + m.seg->length - held_since[(size_t)slot] > hold) continue;   // held long enough: a fresh start
+        for (size_t j = 0; j < m.slots.size(); j++) if (m.slots[j] == slot) {
+            for (size_t i = 0; i < m.database.size(); i++) if (m.database[i] == e) { m.fixed[j] = (int)i; n++; break; }
+        }
+    }
+    return n;
 }
 
 // the pitches a solution sounds (the names), for the dovetailing and the movement
@@ -143,12 +169,13 @@ struct genetic {
     }
     void random_chromosome(model& m, std::vector<int>& f) {
         f.resize(m.orchestra.size());
-        for (size_t k = 0; k < f.size(); k++) { auto& pool = m.instruments[instrument_of(m, k)]; f[k] = pool[(size_t)irand((int)pool.size())]; }
+        for (size_t k = 0; k < f.size(); k++) { if (m.fixed[k] >= 0) { f[k] = m.fixed[k]; continue; } auto& pool = m.instruments[instrument_of(m, k)]; f[k] = pool[(size_t)irand((int)pool.size())]; }
     }
     // the stochastic pursuit: each slot one of the kth sounds of its instrument nearest the target (by projection, less the norm)
     void pursuit_chromosome(model& m, std::vector<int>& f, const std::vector<float>& target, int kth) {
         f.resize(m.orchestra.size());
         for (size_t k = 0; k < f.size(); k++) {
+            if (m.fixed[k] >= 0) { f[k] = m.fixed[k]; continue; }
             auto& pool = m.instruments[instrument_of(m, k)];
             std::vector<std::pair<float, int>> scored;
             for (int idx : pool) { const entry* e = m.database[(size_t)idx]; float d = inner_prod(target, e->features); scored.push_back({ std::fabs(d) - norm_of(e->features), idx }); }
@@ -158,10 +185,10 @@ struct genetic {
         }
     }
     void mutate(model& m, solution& id) {
-        for (size_t k = 0; k < id.indices.size(); k++) { if (id.indices[k] == -1) continue;
+        for (size_t k = 0; k < id.indices.size(); k++) { if (id.indices[k] == -1 || m.fixed[k] >= 0) continue;
             if (frand() < p.mutation_rate) { auto& pool = m.instruments[instrument_of(m, k)]; id.indices[k] = pool[(size_t)irand((int)pool.size())]; } }
     }
-    void apply_sparsity(solution& id) { for (auto& k : id.indices) if (frand() < p.sparsity) k = -1; }
+    void apply_sparsity(const model& m, solution& id) { for (size_t k = 0; k < id.indices.size(); k++) if (m.fixed[k] < 0 && frand() < p.sparsity) id.indices[k] = -1; }
     float evaluate_individual(const solution& id, const std::vector<float>& target, const std::vector<const entry*>& db, std::vector<float>& values) {
         additive_forecast(id, db, values); standardise(values);
         float s = asym_distance(values, target, p.positive, p.negative);
@@ -177,20 +204,26 @@ struct genetic {
         }
         return s + reg + memory + dove;
     }
-    // the population evaluated, the individuals shared among the cores (the evaluation reads only; the draws stay sequential)
+    // the population evaluated: a chromosome seen before takes its fitness from the cache (a child of parents that
+    // crossed and mutated nowhere is its parent), the others are shared among the cores
+    std::map<std::vector<int>, float> cache; size_t cache_hits = 0, cache_misses = 0;
     float evaluate_population(std::vector<solution>& pop, const std::vector<float>& target, const std::vector<const entry*>& db, std::vector<float>& values) {
+        std::vector<size_t> todo;
+        for (size_t k = 0; k < pop.size(); k++) { auto it = cache.find(pop[k].indices); if (it != cache.end()) { pop[k].fitness = it->second; cache_hits++; } else todo.push_back(k); }
+        cache_misses += todo.size();
+        auto eval = [&](size_t k, std::vector<float>& vals) { float v = evaluate_individual(pop[k], target, db, vals); pop[k].fitness = v == 0 ? 1e9f : (float)std::pow(1.0 / v, 2.0); };
         unsigned cores = std::max(1u, std::min(8u, std::thread::hardware_concurrency()));
-        if (pop.size() < 64 || cores < 2) {
-            for (auto& id : pop) { float v = evaluate_individual(id, target, db, values); id.fitness = v == 0 ? 1e9f : (float)std::pow(1.0 / v, 2.0); }
-        } else {
-            std::vector<std::thread> pool; size_t share = (pop.size() + cores - 1) / cores;
+        if (todo.size() < 64 || cores < 2) { for (size_t k : todo) eval(k, values); }
+        else {
+            std::vector<std::thread> pool; size_t share = (todo.size() + cores - 1) / cores;
             for (unsigned c = 0; c < cores; c++) {
-                size_t from = c * share, to = std::min(pop.size(), from + share); if (from >= to) break;
-                pool.emplace_back([this, &pop, &target, &db, from, to]() { std::vector<float> vals(target.size(), 0.0f);
-                    for (size_t k = from; k < to; k++) { float v = evaluate_individual(pop[k], target, db, vals); pop[k].fitness = v == 0 ? 1e9f : (float)std::pow(1.0 / v, 2.0); } });
+                size_t from = c * share, to = std::min(todo.size(), from + share); if (from >= to) break;
+                pool.emplace_back([&, from, to]() { std::vector<float> vals(target.size(), 0.0f); for (size_t j = from; j < to; j++) eval(todo[j], vals); });
             }
             for (auto& t : pool) t.join();
         }
+        for (size_t k : todo) cache[pop[k].indices] = pop[k].fitness;
+        if (cache.size() > 200000) cache.clear();
         double total = 0; for (auto& id : pop) total += id.fitness;
         return (float)total;
     }
@@ -204,7 +237,7 @@ struct genetic {
             const solution& a = select_parent(old, total); const solution& b = select_parent(old, total);
             solution o1, o2; o1.indices = a.indices; o2.indices = b.indices;
             if (frand() < p.xover_rate) { size_t cp = (size_t)(frand() * (double)o1.indices.size()); for (size_t k = cp; k < o1.indices.size(); k++) { o1.indices[k] = b.indices[k]; o2.indices[k] = a.indices[k]; } }
-            mutate(m, o1); mutate(m, o2); apply_sparsity(o1); apply_sparsity(o2);
+            mutate(m, o1); mutate(m, o2); apply_sparsity(m, o1); apply_sparsity(m, o2);
             fresh.push_back(o1); fresh.push_back(o2);
         }
         fresh.erase(std::remove_if(fresh.begin(), fresh.end(), [](const solution& s) { return s.is_empty(); }), fresh.end());
@@ -216,7 +249,7 @@ struct genetic {
         std::vector<solution> population((size_t)p.pop_size);
         for (auto& id : population) { if (p.pursuit == 0) random_chromosome(m, id.indices); else { pursuit_chromosome(m, id.indices, target, p.pursuit); mutate(m, id); } }
         std::vector<float> values(target.size(), 0.0f);
-        m.curve.clear(); m.solutions.clear();
+        m.curve.clear(); m.solutions.clear(); cache.clear();
         float max_fit = 0, old_fit = 0; int fit_count = 0; std::vector<solution> best_pop;
         for (int epoch = 0; epoch < p.max_epochs; epoch++) {
             if (p.progress && !p.progress(epoch, p.max_epochs)) break;
@@ -226,7 +259,7 @@ struct genetic {
             if (max_fit < total) { max_fit = total; best_pop = fresh; }
             m.curve.push_back(total);
             if (old_fit == max_fit) fit_count++; else fit_count = 0;
-            if (fit_count > MAX_EQUAL_EPOCHS) break;
+            if (fit_count > p.patience) break;
             old_fit = max_fit;
         }
         if (best_pop.empty()) best_pop = population;

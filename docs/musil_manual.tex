@@ -1579,7 +1579,20 @@ shortest path through the solutions, each costing its distance from its segment'
 percent plus \musil{'movement} (1) per semitone a player moves or per player that starts or
 stops: the least melodic movement, the continuity of lines. The segmentation can also be
 \musil{'adaptive}: the flux peaks against their local median (\musil{'ratio}, 2), so the
-sensitivity follows the sound rather than its loudest attack. The result is an
+sensitivity follows the sound rather than its loudest attack. The players are the same
+people from one segment to the next: with \musil{'sustain} (1) a player whose pitch the
+target still has holds its very sound on into the next segment, fixed in every chromosome,
+so the search fills only what changed and a held chord comes out as long notes, for at
+most \musil{'hold} seconds; the result carries a report (\musil{mimetic-report}: per
+segment the cost, the players sounding and holding on, the sounds in the search space and
+the target's pitches no instrument of the orchestra covers, which says why a segment sounds
+thin). A fitness cache spares the chromosomes seen before (most of a population, after the
+first epochs) and \musil{'patience} (150) stops a search that stalls. The same search can
+also make the decisions of the morphological orchestrator: \musil{'decision 'genetic}
+replaces its greedy pursuit at each event by a genetic search over the free players' sounds
+at the target's peaks for the combination nearest what still lacks, in the morphological
+clock, with the durations from persistence: the copy of the mimetic without the
+segmentation. The result is an
 orchestration like the others: its segments hold the ranked solutions as fragments, each
 note the very sound chosen, at the target's cents, with its \musil{'player} and, with
 \musil{'seating} (1), the azimuth of Orchidea's seating (violins left, cellos right);

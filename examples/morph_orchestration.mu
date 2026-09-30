@@ -10,12 +10,12 @@ load "music.mu"
 load "plot.mu"
 seed (if (> (length args) 1) (num (getidx args 1)) 3)
 #var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")       # FullSOL: every instrument and technique (short ones too)
+var db (db-load "../datasets/TinySOL.spectrum.db")    
 var path (if (> (length args) 0) (getidx args 0) "data/A_minor.wav")
 
 # --- the target and its analysis: the same spectral space as the database's features ------------------------------
 var w (read-wav path)
-var x (take (head (getidx w 1)) (* 12 (head w)))                 # up to twelve seconds
+var x (take (head (getidx w 1)) (* 70 (head w)))                 # up to twelve seconds
 var sr (head w)
 var t0 (clock)
 var target (target-analyse x sr (get db 'block) 1024)
@@ -37,7 +37,7 @@ print (orchestra-size orch) "players:" (orchestra-instruments orch)
 
 # --- the orchestration ---------------------------------------------------------------------------------------------
 set t0 (clock)
-var r (orchestrate-morphological db orch target (record (list 'solutions 1)))
+var r (orchestrate-morphological db orch target (record (list 'solutions 1 'density-scale 2)))
 var f (best-connection r)
 print "orchestration in" (fixed (- (clock) t0) 2) "s:" (length f) "notes; durations from" (fixed (min-of (map f (function (e) (getidx e 1)))) 2) "to" (fixed (max-of (map f (function (e) (getidx e 1)))) 2) "s"
 granulation-report r                                             # the players' shares, the events the pursuit left unplayed

@@ -150,6 +150,7 @@ var mres (orchestrate-mimetic db (orchestra (list 'Ob 'Hn 'Vn "Vn|Vc")) mtarget 
 print "orchestrate-mimetic:" (length (get mres 'segments)) "segment," (length (get (head (get mres 'segments)) 'solutions)) "solutions ranked by cost (the genetic search: 'population 'epochs 'sparsity 'mutation 'crossover 'pursuit 'positive 'negative 'hysteresis 'regularization; the space: 'styles 'dynamics 'others); 'choices the connection ('closest or 'best); the notes seated ('seating)"
 var mscore (score "mimetic" 44100)
 connect! mscore 0 mres (get mres 'choices)
+print "the memory      : 'sustain (a player whose pitch the target keeps holds its sound on), 'hold, 'hysteresis (timbre), 'dovetail (pitches, on any player), 'connection 'path (the least melodic movement); mimetic-report:" (length (get mres 'report)) "segment (cost, players used and holding on, pitches the orchestra lacks); 'decision 'genetic puts this search inside the morphological orchestrator's clock"
 print "connect!        : the score remembers the orchestration; score-solutions:" (length (score-solutions mscore)) "orchestration; score-choose! puts another solution of a segment in place (the roll's menu, roll-choose); solution-print lists them"
 
 # --- 5d. Morphological orchestration -------------------------------------------------------------------

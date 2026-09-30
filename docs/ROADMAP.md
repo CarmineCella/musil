@@ -188,11 +188,19 @@ cmake --build build --target uninstall
    (`score-next-id!`: replacing a segment's notes used to give new notes the ids of events added after the
    orchestration, and a later replacement removed those too). `str_of_limited` bounds the evaluation port's
    reply and the IDE's echo. `orchfest.mu` on the piano phrase (a dynamic target for all three).
+   Then (the plan of 19 Sept 2026, items 1, 2, 5, 6): `'sustain` (a player whose pitch the target keeps holds
+   its sound on into the next segment, fixed in the chromosomes: the onset continuation inside the search),
+   `'decision 'genetic` in the morphological orchestrator (Orchidea's search at every event over the free
+   players' dictionary against the residual, durations from persistence: the mimetic decision in the
+   morphological clock), the mimetic report (`mimetic-report`: cost, players used and holding on, the pitches
+   the orchestra lacks), the fitness cache (86% hits on the piano phrase: 107 s to 13 s) and `'patience`.
+   Next (items 3, 4, 7): the TSU classifier (six units, trained on units synthesised from SOL with a
+   hand-labelled test set; a trill or a glissando as one symbol, a segmentation policy per unit), NMF stems
+   with per-stem profiles and a weighted assignment of the players, then Maple.
    Open: the pitch filter as it is drops a segment whose pitches the orchestra lacks entirely (an error, as
    in Orchidea); a fallback to no filter for that segment could be offered; `'others` and `'styles` filters
-   are Orchidea's exact matches; the search could keep the forecasts of unchanged individuals between epochs;
-   NMF stems before the segmentation, a classifier of morphologies, an onset continuation in the search
-   itself (see the discussion of 19 Sept 2026).
+   are Orchidea's exact matches; with `'sustain` a segment where every player holds on leaves nobody for a
+   new partial ('hold, or a rule releasing the weakest, would answer that).
    Next: sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
    for databases). A `player` bundle (instrument + what it can play)
    replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.

@@ -561,6 +561,17 @@ var mhf (connection mhold (get mhold 'choices))
 check (all? (map mhf (function (x) (<= (getidx x 1) 2.01))) identity) "hold: a note continued across segments never longer than 'hold seconds"
 var madapt (mimetic-target db mtx 44100 (record (list 'segmentation 'adaptive 'ratio 2 'timegate 0.2 'partials 0)))
 check (>= (length (get madapt 'segments)) 1) "mimetic-target: 'adaptive segmentation (flux-peaks against the local median)"
+# the players hold their sound on across segments ('sustain), the report, the cache, the genetic decision
+var msus (orchestrate-mimetic db morch mtx 44100 (put mprm 'segmentation (list 0 1 2 3)))
+check (== (length (get msus 'report)) 4) "orchestrate-mimetic: a report, a record per segment"
+check (all? (map (get msus 'report) (function (g) (and (has? g 'cost) (has? g 'used) (has? g 'held) (has? g 'missing) (has? g 'space)))) identity) "report: cost, players used, holding on, the pitches not in the orchestra, the space"
+check (> (sum (vec (map (get msus 'report) (function (g) (get g 'held))))) 0) "sustain: players whose pitch the target keeps hold their sound on into the next segment (no pitch filter: every pitch kept)"
+var msus0 (orchestrate-mimetic db morch mtx 44100 (put (put mprm 'segmentation (list 0 1 2 3)) 'sustain 0))
+check (== (sum (vec (map (get msus0 'report) (function (g) (get g 'held))))) 0) "sustain 0: nobody holds on"
+check (> (head (get msus 'cache)) 0) "the fitness cache: chromosomes seen again are not evaluated again"
+var mpat (orchestrate-mimetic db morch mtx 44100 (put (put mprm 'epochs 200) 'patience 3))
+check (< (length (head (get mpat 'curves))) 200) "patience: a stalled search stops before its epochs are up"
+check (== (length (mimetic-report msus)) 4) "mimetic-report: prints and returns the report"
 check (== (length (merge-continuations-within (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "C4" 'mf 'ord))) 2)) 2) "merge-continuations-within: the hold splits a continuation (three seconds of C4 in two notes)"
 
 # --- morphological orchestration ---
@@ -571,6 +582,9 @@ each (range 6) (function (k) (event tsc (* k 0.4) 0.2 (put (note db 'Ob (+ 62 (m
 var tx (head (score-render tsc "mono"))
 var tg (target-analyse tx 44100 (get db 'block) 1024)
 check (equal? (get tg 'block) 2048) "target-analyse: the database's block"
+var mdyn (orchestrate-morphological db orch tg (record (list 'solutions 1 'decision 'genetic 'genetic (record (list 'population 30 'epochs 10)))))
+check (> (length (best-connection mdyn)) 0) "orchestrate-morphological: 'decision 'genetic, Orchidea's search at every event, in the morphological clock"
+check (all? (map (best-connection mdyn) (function (x) (and (has? (last x) 'atom) (> (getidx x 1) 0)))) identity) "... its notes as the pursuit's: the very sound, a persistence for a duration"
 check (== (length (get tg 'spectra)) (length (get tg 'density))) "target-analyse: one spectrum per curve sample"
 check (== (length (get tg 'fine)) (length (get tg 'spectra))) "target-analyse: the fine spectra alongside"
 check (and (has? tg 'attacks) (has? tg 'centroid) (has? tg 'spread) (has? tg 'low) (has? tg 'loudness)) "target-analyse: every curve"

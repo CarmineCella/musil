@@ -83,6 +83,7 @@ db-index!       : 4 instruments indexed once (what note draws from); db-candidat
 --- mimetic orchestration (Orchidea) ---
 mimetic-target  : 1 segment (threshold 2: static); its pitches (A#6 B5 C4 C6 E4 E5 E6 G#6 G6) with cents; 'segmentation 'flux with 'threshold and 'timegate, 'frames, 'none, or a list of onsets; 'partials 0: no pitch filter
 orchestrate-mimetic: 1 segment, 3 solutions ranked by cost (the genetic search: 'population 'epochs 'sparsity 'mutation 'crossover 'pursuit 'positive 'negative 'hysteresis 'regularization; the space: 'styles 'dynamics 'others); 'choices the connection ('closest or 'best); the notes seated ('seating)
+the memory      : 'sustain (a player whose pitch the target keeps holds its sound on), 'hold, 'hysteresis (timbre), 'dovetail (pitches, on any player), 'connection 'path (the least melodic movement); mimetic-report: 1 segment (cost, players used and holding on, pitches the orchestra lacks); 'decision 'genetic puts this search inside the morphological orchestrator's clock
 connect!        : the score remembers the orchestration; score-solutions: 1 orchestration; score-choose! puts another solution of a segment in place (the roll's menu, roll-choose); solution-print lists them
 
 --- morphological ---

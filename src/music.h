@@ -280,8 +280,11 @@ inline vptr mus_orchidea_analyse(vlist& a, Interp& i) {
 //   names that filter the search space) 'seed 'quiet
 //   => a record: 'segments a list, one per segment, each a record ('solutions (list (list cost (list index...)) ...),
 //   the best first, an index -1 for a silent player; 'curve the fitness per epoch; 'players the index in the
-//   orchestra of each of the solution's slots: the players that had sounds in the search space), and 'choices the
-//   connection's solution per segment
+//   orchestra of each of the solution's slots: the players that had sounds in the search space; 'missing the target's
+//   pitches no sound of the orchestra covers; 'used how many players the chosen solution sounds; 'held how many hold
+//   their sound on from the segment before ('sustain 1: a player whose pitch the target keeps is not searched again,
+//   for at most 'hold seconds); 'space the sounds in the search space), 'choices the connection's solution per
+//   segment, 'cache the fitness cache's hits and misses; 'patience (150) stops a search that stalls
 inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     vptr entries = a[0]; if (entries->t != Value::LIST) i.bad("orchidea-search: entries must be a list");
     std::vector<orchidea::entry> db; db.reserve(entries->l.size());
@@ -310,6 +313,8 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     p.xover_rate = opt_num("crossover", 0.8); p.mutation_rate = opt_num("mutation", 0.01); p.sparsity = opt_num("sparsity", 0.001);
     p.positive = opt_num("positive", 0.5); p.negative = opt_num("negative", 10); p.hysteresis = opt_num("hysteresis", 0); p.regularization = opt_num("regularization", 0);
     p.max_solutions = (int)opt_num("solutions", 10); p.dovetail = opt_num("dovetail", 0); p.movement = opt_num("movement", 1);
+    p.patience = std::max(1, (int)opt_num("patience", 150));
+    bool sustain = opt_num("sustain", 1) != 0; double hold = opt_num("hold", 1e9);
     if (p.dovetail < 0) i.bad("orchidea-search: dovetail must be >= 0");
     // the pitch filter widened by octaves: 'octaves (list 0 -1) admits the partials' pitches and the octave below them
     std::vector<int> octaves; if (vptr ov = rec_get(opts, "octaves")) { if (ov->t == Value::LIST) for (auto& e : ov->l) octaves.push_back((int)std::lround(i.scalar(e))); else if (ov->t == Value::NUM) for (double d : ov->num) octaves.push_back((int)std::lround(d)); }
@@ -330,12 +335,16 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
     if (conn != "closest" && conn != "best" && conn != "path") i.bad("orchidea-search: connection is closest, best or path");
     orchidea::genetic ga(p);
     std::vector<orchidea::model> models(segments.size());
-    std::vector<int> choices; std::vector<float> prev_forecast;
+    std::vector<int> choices; std::vector<float> prev_forecast; std::vector<double> held_since(orchestra.size(), -1.0); std::vector<int> held_count;
     // segment by segment: the search, then the choice for this segment (closest to the previous choice, or the best;
-    // the path is found at the end), which the next segment's search remembers (hysteresis, dovetailing)
+    // the path is found at the end), which the next segment's search remembers (hysteresis, dovetailing); a player
+    // whose pitch the target keeps holds its sound on into the next segment ('sustain): it is not searched again
     for (size_t k = 0; k < segments.size(); k++) {
         try { orchidea::make_model(db, orchestra, segments[k], styles, dynamics, others, models[k]); }
         catch (std::exception& e) { i.bad(std::string("segment ") + std::to_string(k + 1) + ": " + e.what()); }
+        int holding = 0;
+        if (sustain && k > 0 && conn != "path") holding = orchidea::hold_on(models[k], models[k - 1], models[k - 1].solutions[(size_t)choices[k - 1]], hold, held_since);
+        held_count.push_back(holding);
         int last_shown = -1; size_t seg = k;
         ga.p.progress = [&, seg](int epoch, int epochs) -> bool {
             i.yield_check();                                                     // Esc in the IDE, the windows kept alive
@@ -347,20 +356,31 @@ inline vptr mus_orchidea_search(vlist& a, Interp& i) {
         int choice = conn == "closest" ? orchidea::closest_choice(models[k], prev_forecast, p) : 0;
         choices.push_back(choice);
         const orchidea::solution& chosen = models[k].solutions[(size_t)choice];
+        for (size_t j = 0; j < chosen.indices.size(); j++) {                 // when each player's present sound began (for the hold)
+            int slot = models[k].slots[j];
+            if (chosen.indices[j] == -1) held_since[(size_t)slot] = -1;
+            else if (models[k].fixed[j] < 0 || held_since[(size_t)slot] < 0) held_since[(size_t)slot] = segments[k].start;
+        }
         ga.remember(models[k], chosen);
         prev_forecast.assign(models[k].seg->features.size(), 0.0f); orchidea::additive_forecast(chosen, models[k].database, prev_forecast); orchidea::standardise(prev_forecast);
     }
     if (conn == "path") choices = orchidea::shortest_path(models, p.movement);
     vlist out_segments;
-    for (auto& m : models) {
+    for (size_t k = 0; k < models.size(); k++) {
+        orchidea::model& m = models[k];
         vlist sols;
-        for (auto& s : m.solutions) { vlist idx; for (int k : s.indices) idx.push_back(v_num(k == -1 ? -1 : m.database[(size_t)k]->index)); sols.push_back(v_list({ v_num(m.cost_of(s)), v_list(std::move(idx)) })); }
+        for (auto& s : m.solutions) { vlist idx; for (int j : s.indices) idx.push_back(v_num(j == -1 ? -1 : m.database[(size_t)j]->index)); sols.push_back(v_list({ v_num(m.cost_of(s)), v_list(std::move(idx)) })); }
         varr curve(m.curve.size()); for (size_t j = 0; j < m.curve.size(); j++) curve[j] = m.curve[j];
         vlist slots; for (int s : m.slots) slots.push_back(v_num(s));
-        out_segments.push_back(v_list({ v_list({ v_sym("solutions"), v_list(std::move(sols)) }), v_list({ v_sym("curve"), v_arr(std::move(curve)) }), v_list({ v_sym("players"), v_list(std::move(slots)) }) }));
+        vlist missing; for (auto& q : m.missing) missing.push_back(v_str(q));
+        const orchidea::solution& chosen = m.solutions[(size_t)choices[k]]; int used = 0; for (int j : chosen.indices) if (j != -1) used++;
+        out_segments.push_back(v_list({ v_list({ v_sym("solutions"), v_list(std::move(sols)) }), v_list({ v_sym("curve"), v_arr(std::move(curve)) }), v_list({ v_sym("players"), v_list(std::move(slots)) }),
+                                        v_list({ v_sym("missing"), v_list(std::move(missing)) }), v_list({ v_sym("used"), v_num(used) }), v_list({ v_sym("held"), v_num(held_count[k]) }),
+                                        v_list({ v_sym("space"), v_num((double)m.database.size()) }) }));
     }
     vlist ch; for (int c : choices) ch.push_back(v_num(c));
-    return v_list({ v_list({ v_sym("segments"), v_list(std::move(out_segments)) }), v_list({ v_sym("choices"), v_list(std::move(ch)) }) });
+    return v_list({ v_list({ v_sym("segments"), v_list(std::move(out_segments)) }), v_list({ v_sym("choices"), v_list(std::move(ch)) }),
+                    v_list({ v_sym("cache"), v_list({ v_num((double)ga.cache_hits), v_num((double)ga.cache_misses) }) }) });
 }
 
 inline void add_music(Interp& i) {
