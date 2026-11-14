@@ -725,5 +725,135 @@ function bad (gate) (pvoc-stretch gate 2)
 var s4 (score "bad" 44100)
 event s4 0 0.1 (instrument bad (list))
 check (contains? (error-of (function () (score-schedule s4 1 0))) "does not stream") "score-schedule: a non-streamable instrument is refused (play-score renders it instead)"
+# --- notation: quantization and MusicXML ---
+var sn (score "notation" 44100)
+score-tempo! sn 120                                                        # a beat is half a second
+score-meter! sn 3 4
+check (equal? (score-meter sn) (list 3 4)) "score-meter!/score-meter"
+event sn 0 0.5 (note db 'Vn "C4" 'mf 'ord)
+event sn 0.52 0.25 (note db 'Vn "D4" 'mf 'ord)                            # 20 ms late: an eighth on the beat
+event sn 0.75 0.25 (note db 'Vn "E4" 'f 'ord)
+event sn 1 (/ 0.5 3) (note db 'Vn "F4" 'f 'pizz-lv)                       # a triplet
+event sn (+ 1 (/ 0.5 3)) (/ 0.5 3) (note db 'Vn "G4" 'f 'pizz-lv)
+event sn (+ 1 (/ 1 3)) (/ 0.5 3) (note db 'Vn "E4" 'f 'pizz-lv)
+event sn 1.5 1.5 (note-cents! (note db 'Vn "F4" 'p 'ord) 50)              # a quarter tone, across the bar
+event sn 2 0.5 (note db 'Vc "C3" 'mf 'ord)
+event sn 2 0.5 (note db 'Vc "E3" 'mf 'ord)                                # a chord
+event sn 2.5 0.1 (note db 'Vc "G3" 'ff 'ord)
+event sn 3 0.1 (note db 'Vc "G3" 'ff 'ord)                                # a quintuplet: 0.1 s is a fifth of the beat
+event sn 3.2 0.1 (note db 'Vc "G3" 'ff 'ord)
+event sn 3.4 0.1 (note db 'Vc "G3" 'ff 'ord)
+event sn 1 1 (sine 44100 440 1)
+var nm (score-notate sn (record (list)))
+check (== (get nm 'tpb) 240) "score-notate: 240 ticks per beat (the lcm of the divisions)"
+check (== (get nm 'bars) 3) "score-notate: bars"
+check (equal? (map (get nm 'parts) (function (p) (get p 'name))) (list "Violin" "Violoncello" "Buffers")) "score-notate: parts in orchestral order, the buffers last"
+var vn (head (get nm 'parts))
+check (equal? (take (get vn 'chosen) 4) (list 1 2 3 1)) "score-notate: divisions per beat: plain, eighths, a triplet, plain"
+check (== (length (get vn 'voices)) 1) "score-notate: one voice when nothing overlaps"
+var vn-notes (get vn 'notes)
+check (== (get (getidx vn-notes 1) 'start) 240) "score-notate: the late eighth snapped to the beat (within the tolerance)"
+check (near? (get (getidx vn-notes 1) 'disp) -0.04 1e-6) "score-notate: the displacement kept, in beats"
+check (equal? (map (take (drop vn-notes 3) 3) (function (n) (get n 'start))) (list 480 560 640)) "score-notate: the triplet on its grid"
+var vn-bar1 (head (head (get vn 'bars)))
+check (equal? (map vn-bar1 (function (pc) (get pc 'type))) (list "quarter" "eighth" "eighth" "eighth" "eighth" "eighth")) "voice-bars: the written values of bar 1"
+check (equal? (map vn-bar1 (function (pc) (get pc 'actual))) (list 0 0 0 3 3 3)) "voice-bars: the tuplet marked on the triplet only"
+check (and (get (getidx vn-bar1 3) 'tuplet-start) (get (getidx vn-bar1 5) 'tuplet-stop)) "voice-bars: the bracket from the first to the last"
+var vn-bar2 (getidx (head (get vn 'bars)) 1)
+check (equal? (map vn-bar2 (function (pc) (list (get pc 'type) (get pc 'dots) (opt pc 'tie-start 0)))) (list (list "half" 1 0))) "voice-bars: a note filling bar 2: a dotted half, no tie"
+check (equal? (map (getidx (head (get vn 'bars)) 2) (function (pc) (list (get pc 'type) (equal? (type (get pc 'note)) "nil")))) (list (list "half" 1) (list "quarter" 1))) "voice-bars: bar 3 rests, never dotted"
+var sn2 (score "tie" 44100)
+score-tempo! sn2 120
+event sn2 1 1.5 (note db 'Vn "A4" 'mf 'ord)                              # from beat 2 of 4/4 over the bar line
+var nm2 (score-notate sn2 (record (list)))
+var tie-bars (head (get (head (get nm2 'parts)) 'bars))
+check (equal? (map (head tie-bars) (function (pc) (list (get pc 'type) (opt pc 'tie-start 0)))) (list (list "half" 0) (list "half" 1))) "voice-bars: a half rest, then the note tied over the bar (a half from beat 3)"
+check (equal? (map (getidx tie-bars 1) (function (pc) (list (get pc 'type) (opt pc 'tie-stop 0)))) (list (list "quarter" 1) (list "quarter" 0) (list "half" 0))) "voice-bars: the tie's end, then the rests by the beat and the half bar"
+var vc (getidx (get nm 'parts) 1)
+check (== (length (get vc 'voices)) 1) "assign-voices: a chord in one voice"
+check (== (count (head (get vc 'voices)) (function (n) (opt n 'chord 0))) 1) "assign-voices: the second note of the chord marked"
+check (== (getidx (get vc 'chosen) 6) 5) "score-notate: the quintuplet beat"
+check (equal? (pitch-spelling 65 50) (list "F" 0.5 4 "quarter-sharp")) "pitch-spelling: a quarter tone up"
+check (equal? (pitch-spelling 66 -50) (list "F" 0.5 4 "quarter-sharp")) "pitch-spelling: F# a quarter down is the same"
+check (equal? (pitch-spelling 66 50) (list "G" -0.5 4 "quarter-flat")) "pitch-spelling: F# a quarter up is G a quarter down (the nearest semitone spells it)"
+check (equal? (pitch-spelling 64 -50) (list "E" -0.5 4 "quarter-flat")) "pitch-spelling: a quarter down from a natural"
+check (equal? (pitch-spelling 60 0) (list "C" 0 4 "")) "pitch-spelling: middle C"
+check (equal? (binary-value 0 360 960 1) (list 360 "quarter" 1)) "binary-value: a dotted quarter when it fills the span"
+check (equal? (binary-value 0 360 960 0) (list 240 "quarter" 0)) "binary-value: undotted when dots are off (a rest)"
+check (equal? (binary-value 120 480 960 1) (list 120 "eighth" 0)) "binary-value: off the beat, the value that starts there"
+check (equal? (map (choose-divisions (list (list 0 1) (list 0.5 1)) (list 1 2 3 4) 1 (/ 1 16)) (function (n) n)) (list 2)) "choose-divisions: eighths"
+check (equal? (choose-divisions (list (list 0 1) (list 0.333 1) (list 0.667 1)) (list 1 2 3 4) 1 (/ 1 16)) (list 3)) "choose-divisions: a triplet"
+check (equal? (choose-divisions (list (list 0.04 1)) (list 1 2 4 8 16) 1 (/ 1 16)) (list 1)) "choose-divisions: a small displacement accepted for the plain beat"
+check (equal? (choose-divisions (list (list 0.04 1)) (list 1 2 4 8 16) 1 0) (list 16)) "choose-divisions: with no tolerance the finest grid"
+check (== (length (choose-divisions (list) (list 1 2) 3 0)) 3) "choose-divisions: empty beats"
+var xml (musicxml-text nm)
+check (starts-with? xml "<?xml version=\"1.0\"") "musicxml-text: the header"
+check (contains? xml "<part-name>Violin</part-name><part-abbreviation>Vn</part-abbreviation>") "musicxml-text: the part list"
+check (contains? xml "<time><beats>3</beats><beat-type>4</beat-type></time>") "musicxml-text: the meter"
+check (contains? xml "<per-minute>120</per-minute>") "musicxml-text: the tempo"
+check (contains? xml "<pitch><step>F</step><alter>0.5</alter><octave>4</octave></pitch>") "musicxml-text: the quarter tone"
+check (contains? xml "<accidental>quarter-sharp</accidental>") "musicxml-text: its accidental"
+check (contains? xml "<time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification>") "musicxml-text: the triplet"
+check (contains? xml "<actual-notes>5</actual-notes><normal-notes>4</normal-notes>") "musicxml-text: the quintuplet"
+check (contains? xml "<tuplet type=\"start\" bracket=\"yes\"/>") "musicxml-text: the bracket"
+check (contains? xml "<tie type=\"start\"/>") "musicxml-text: the tie"
+check (contains? xml "<dynamics><mf/></dynamics>") "musicxml-text: the dynamics"
+check (contains? xml "<words>pizz-lv</words>") "musicxml-text: the technique tag as it is"
+check (== (count-substr xml "<words>ord</words>") 3) "musicxml-text: the technique written where it changes (Vn ord, pizz, ord; Vc ord)"
+check (contains? xml "<note><chord/><pitch><step>C</step><octave>3</octave>") "musicxml-text: the chord (the lower note joins the higher)"
+check (contains? xml "<staff-lines>1</staff-lines>") "musicxml-text: a one-line staff for the buffers"
+check (contains? xml "<unpitched>") "musicxml-text: its notes unpitched"
+check (contains? xml "<rest measure=\"yes\"/>") "musicxml-text: whole-bar rests"
+check (== (count-substr xml "<backup>") 0) "musicxml-text: no second voice here"
+function bar-sum (m) (all? (get m 'parts) (function (part) (all? (get part 'bars) (function (vbars) (all? vbars (function (pcs) (== (sum-by pcs (function (pc) (if (and (not (equal? (type (get pc 'note)) "nil")) (opt (get pc 'note) 'chord 0)) 0 (get pc 'dur)))) (* (head (get m 'meter)) (get m 'tpb)))))))))
+check (bar-sum nm) "voice-bars: every bar of every voice adds up to the bar"
+var mx (score-musicxml sn "/tmp/musil_test.musicxml" (record (list 'names 0)))
+check (equal? (map (get mx 'parts) (function (p) (get p 'name))) (list "Vn" "Vc" "buffers")) "score-musicxml: 'names 0 keeps the codes"
+check (contains? (read "/tmp/musil_test.musicxml") "</score-partwise>") "score-musicxml: the file written"
+var plain (score-notate sn (record (list 'divisions (list 1 2 4 8))))
+check (equal? (take (get (head (get plain 'parts)) 'chosen) 3) (list 1 2 8)) "score-notate: without triplets the triplet beat takes 32nds (the nearest binary grid)"
+check (== (get plain 'tpb) 16) "score-notate: 16 ticks per beat at least (64ths)"
+check (bar-sum plain) "voice-bars: still adding up"
+var m68 (score-notate sn (record (list 'meter (list 6 8) 'divisions (list 1 2 3 4))))
+check (== (get m68 'bars) 2) "score-notate: 6/8, the beat an eighth: two bars"
+check (bar-sum m68) "voice-bars: adding up in 6/8"
+score-quantize! sn (record (list))
+check (near? (get (getidx (get sn 'events) 1) 'at) 0.5 1e-9) "score-quantize!: the late eighth on the beat"
+check (near? (get (getidx (get sn 'events) 1) 'dur) 0.25 1e-9) "score-quantize!: its duration"
+check (near? (get (getidx (get sn 'events) 10) 'dur) 0.1 1e-9) "score-quantize!: the quintuplet kept"
+# parts per player: the notes that say who played them
+var sp (score "players" 44100)
+score-tempo! sp 120
+var pn1 (note db 'Vn "C4" 'mf 'ord)
+put! pn1 'player 3
+var pn2 (note db 'Vn "E4" 'mf 'ord)
+put! pn2 'player 4
+var pn3 (note db 'Vc "C3" 'mf 'ord)
+put! pn3 'player 4                                                        # the same player, doubling (an ossia Vn|Vc)
+var pn4 (note db 'Vn "G4" 'mf 'ord)
+put! pn4 'player 3
+var pn5 (note db 'Vn "D4" 'mf 'ord)
+put! pn5 'player 3
+event sp 0 0.5 pn1
+event sp 0 0.5 pn2
+event sp 1 0.5 pn3
+event sp 0.4 0.5 pn4                                                      # overlaps pn1 by 0.1 s on one player: pn1 cut at its start
+event sp 0.4 0.1 pn5                                                      # the same tick as pn4, ends before it: left out
+event sp 2 1 (note db 'Ob "C4" 'mf 'ord)                                  # no player: by instrument
+var mp (score-notate sp (record (list)))
+check (equal? (map (get mp 'parts) (function (q) (get q 'code))) (list "Ob" "Vn" "Vn|Vc")) "player-rows: a part per player, named by its instruments, the loose notes by instrument"
+check (equal? (map (get mp 'parts) (function (q) (get q 'name))) (list "Oboe" "Violin" "Violin / Violoncello")) "instrument-name: a doubling"
+check (equal? (instrument-name "Vn 2") "Violin 2") "instrument-name: a numbered player"
+var vn3 (getidx (get mp 'parts) 1)
+check (== (length (get vn3 'voices)) 1) "assign-voices: one voice for one player"
+check (== (get (head (get vn3 'notes)) 'end) 192) "assign-voices: the note still sounding at the next start cut there (0.4 s = 192 ticks)"
+check (== (count (get vn3 'notes) (function (n) (opt n 'dropped 0))) 1) "assign-voices: the grain on another's tick left out"
+check (contains? (musicxml-text mp) "<words font-weight=\"bold\">Violoncello</words>") "musicxml-text: a doubling player's instrument written where it changes"
+check (equal? (map (get (score-notate sp (record (list 'parts 'instruments))) 'parts) (function (q) (get q 'code))) (list "Ob" "Vn" "Vc")) "score-notate: 'parts 'instruments"
+var sp2 (score "two of them" 44100)
+each (list 1 2) (function (k) { var n (note db 'Vn "C4" 'mf 'ord)
+                                put! n 'player k
+                                event sp2 0 1 n })
+check (equal? (map (get (score-notate sp2 (record (list))) 'parts) (function (q) (get q 'name))) (list "Violin 1" "Violin 2")) "player-rows: two violins numbered"
 audio-quit
 report "test_music"

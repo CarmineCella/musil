@@ -769,3 +769,111 @@ function nmf-separate-with (x n hop W groups iterations) {
     var H (nmf-with-parts (nmf-spectrogram frames n) W iterations)
     return (list (nmf-sources x frames n hop W H groups) H)
 }
+
+# --- music information retrieval: key, tempo, beats, structure ------------------------------------------
+# The classic analyses of a recording, on the chromagram (chromagram), the onset strength (onset-strength) and the
+# self-similarity matrix (self-similarity, Foote): what key, what tempo, where the beats are, where the sections
+# change. Frames are hop samples apart: a value a frame is (/ sr hop) values a second (fps).
+var key-names (list "C" "C#" "D" "D#" "E" "F" "F#" "G" "G#" "A" "A#" "B")
+# Krumhansl & Kessler's key profiles: how well each pitch class fits a key, from the probe-tone experiments
+var major-profile (vec (list 6.35 2.23 3.48 2.33 4.38 4.09 2.52 5.19 2.39 3.66 2.29 2.88))
+var minor-profile (vec (list 6.33 2.68 3.52 5.38 2.60 3.53 2.54 4.75 3.98 2.69 3.34 3.17))
+# (chroma-mean C)          the pitch-class distribution of a chromagram: its rows averaged over time; => a vector of 12
+function chroma-mean (C) (vec (map C mean))
+# (rotate-vec v k)         the vector rotated right by k (v[0] goes to position k)
+function rotate-vec (v k) (vec (map (vec->list (range (length v))) (function (j) (getidx v (mod (- j k) (length v))))))
+# (key-scores chroma)      every key against a pitch-class distribution (a vector of 12, C first: chroma-mean of a
+#                          chromagram): the correlation of the distribution with the Krumhansl-Kessler profile of each
+#                          major and minor key (Krumhansl 1990); => (list (list "D" 'minor r) ...), best first
+function key-scores (chroma) {
+    var out (list)
+    each (vec->list (range 12)) (function (k) {
+        push out (list (getidx key-names k) 'major (correlation chroma (rotate-vec major-profile k)))
+        push out (list (getidx key-names k) 'minor (correlation chroma (rotate-vec minor-profile k)))
+    })
+    return (reverse (sort-by out last))
+}
+# (correlation a b)        Pearson's correlation of two vectors
+function correlation (a b) {
+    var da (- a (mean a))
+    var db (- b (mean b))
+    var d (sqrt (* (sum (* da da)) (sum (* db db))))
+    return (if (== d 0) 0 (/ (sum (* da db)) d))
+}
+# (key-estimate chroma)    the best of key-scores: (list "D" 'minor r)
+function key-estimate (chroma) (head (key-scores chroma))
+# (key-name k)             "D minor" from a key-scores entry
+function key-name (k) (concat (head k) " " (str (getidx k 1)))
+# (tempo-estimate flux fps)   the tempo of an onset strength (a vector, fps values a second): the autocorrelation
+#                          of the flux read at the lags of 30..300 bpm, weighted by a log-normal prior on the tempo a
+#                          listener taps, centred on 100 bpm and 0.6 octaves wide (the pulse of the eighths or the
+#                          bars is often as periodic as the beat's: the prior decides between the octaves); => bpm
+function tempo-estimate (flux fps) (tempo-estimate-with flux fps 100 0.6)
+# (tempo-estimate-with flux fps centre width)   the same with the prior's centre (bpm) and width (octaves) given;
+#                          (tempo-estimate-with flux fps 120 10) is the autocorrelation's own peak
+function tempo-estimate-with (flux fps centre width) {
+    var ac (autocorr (- flux (mean flux)))
+    var best 0
+    var best-bpm centre
+    for (var bpm 30) (<= bpm 300) (var bpm (+ bpm 0.5)) {
+        var lag (/ (* fps 60) bpm)
+        var l0 (floor lag)
+        if (< (+ l0 1) (length ac)) {
+            var v (+ (* (getidx ac l0) (- 1 (- lag l0))) (* (getidx ac (+ l0 1)) (- lag l0)))
+            var w (exp (* -0.5 (pow (/ (log2 (/ bpm centre)) width) 2)))
+            if (> (* v w) best) { set best (* v w)
+                                  set best-bpm bpm }
+        }
+    }
+    return best-bpm
+}
+# (beats x sr n hop)       the beat times of a recording in seconds: the onset strength (n, hop as onset-strength),
+#                          its tempo (tempo-estimate) and the beats tracked on it (beat-track, tightness 100); a
+#                          frame's time is the middle of its window (the flux rises when an attack enters it);
+#                          => (list bpm times)
+function beats (x sr n hop) {
+    var flux (onset-strength x n hop)
+    var fps (/ sr hop)
+    var bpm (tempo-estimate flux fps)
+    return (list bpm (/ (+ (* (beat-track flux fps bpm 100) hop) (/ n 2)) sr))
+}
+# (clicks times sr seconds)   a signal of seconds seconds with a short click at each of the times (a vector): to hear
+#                          the beats found over the recording ((+ x (clicks ...)) or in the other channel)
+function clicks (times sr seconds) {
+    var out (zeros (ceil (* sr seconds)))
+    var click (* (sine sr 1000 0.02) (exp (* -200 (/ (range (floor (* sr 0.02))) sr))))
+    each (vec->list times) (function (t) {
+        var at (floor (* t sr))
+        for (var k 0) (and (< k (length click)) (< (+ at k) (length out))) (var k (+ k 1)) { setidx out (+ at k) (getidx click k) }
+    })
+    return out
+}
+# (beat-sync M times fps)  a feature matrix (rows features, columns frames at fps) averaged between successive beat
+#                          times (seconds): one column per beat; the chromagram of a song in a few hundred columns
+#                          (a self-similarity matrix on it shows the form at the scale of the beat)
+function beat-sync (M times fps) {
+    var frames (length (head M))
+    var edges (map (vec->list times) (function (t) (min frames (floor (* t fps)))))
+    push edges frames
+    return (map M (function (row) (vec (map (vec->list (range (- (length edges) 1))) (function (k) {
+        var a (getidx edges k)
+        var b (getidx edges (+ k 1))
+        return (if (> b a) (mean (slice row a (- b a))) (getidx row (min a (- frames 1)))) })))))
+}
+# (novelty-peaks nov fps threshold width)   the times (seconds) of the peaks of a novelty curve (foote-novelty)
+#                          standing above threshold times its moving median over width frames (odd), at least a
+#                          second apart; the boundaries of the sections; => a vector
+function novelty-peaks (nov fps threshold width) {
+    if (< (length nov) 3) { return (vec) }
+    var level (* threshold (+ (median-filter nov width) (* 0.05 (max nov))))
+    var out (list)
+    var last -10
+    each (filter (vec->list (local-maxima nov)) (function (k) (> (getidx nov k) (getidx level k)))) (function (k) {
+        var t (/ k fps)
+        if (>= (- t last) 1) { push out t
+                               set last t }
+    })
+    return (vec out)
+}
+# (mat-log1p M scale)      log(1 + scale x) of every element: a spectrogram or a similarity matrix for an image
+function mat-log1p (M scale) (map M (function (row) (log (+ 1 (* scale row)))))

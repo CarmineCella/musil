@@ -2460,3 +2460,458 @@ function score-print (s) {
     print "score" (get s 'name) ":" (length (get s 'events)) "events," (fixed (score-duration s) 3) "s at" (get s 'sr) "Hz"
     each (sort-by (get s 'events) (function (e) (get e 'at))) (function (e) (print "  " (fixed (get e 'at) 3) (fixed (get e 'dur) 3) (get e 'kind) (get e 'label) (if (or (!= (get e 'az) 0) (!= (get e 'el) 0)) (concat "@" (str (get e 'az)) "," (str (get e 'el))) "")))
 }
+
+# --- notation: the score quantized to a grid, then MusicXML -----------------------------------------------
+# A score's times are seconds; a part is notation. score-notate reads the tempo (score-tempo!) and the meter
+# (score-meter!) and quantizes every part beat by beat: within a beat the onsets and ends of its notes are
+# snapped to one division of the beat, the one of 'divisions that moves them least (a small cost per division
+# keeps the simpler one when the difference is slight), then the notes are given voices, split at the bars and
+# into writable values, tied. score-musicxml writes that as MusicXML 4.0 (Dorico, Sibelius, Finale, MuseScore):
+# instrument, pitch (quarter tones), dynamics and the technique tag as it is on every note; files, synths
+# and calls on one-line staves. score-quantize! writes the grid back into the score, to hear it.
+# (score-meter! s num den) (score-meter s)   the score's meter, for notation (4 4 by default); the beat is 1/den
+function score-meter! (s num den) (put! s 'meter (list num den))
+function score-meter (s) (opt s 'meter (list 4 4))
+var notation-defaults (record (list
+    'divisions (list 1 2 3 4 5 6 8 16)         # what a beat may be divided into: binary to 64ths, triplets, quintuplets, sextuplets
+    'tolerance (/ 1 16)                        # in beats: a displacement about this size is accepted to keep a simpler division (0: none)
+    'names 1                                   # part names in full (Violin) rather than the code (Vn)
+    'parts 'players))                          # a part per player where the notes say who played them (the orchestrators' do: Violin 1, Violin 2), else per instrument; 'instruments: per instrument always
+var division-costs (list (list "1" 0) (list "2" 0.1) (list "4" 0.2) (list "8" 0.5) (list "16" 1) (list "32" 1.4)
+                         (list "3" 0.4) (list "6" 0.6) (list "5" 0.8) (list "7" 1.2) (list "12" 1.2) (list "9" 1.4) (list "10" 1.4))
+function division-cost (n) (opt division-costs (str n) 1.5)
+function binary-division? (n) (contains? (list 1 2 4 8 16 32 64) n)
+var instrument-names (list (list "Picc" "Piccolo") (list "Fl" "Flute") (list "AFl" "Alto Flute") (list "BFl" "Bass Flute")
+    (list "Ob" "Oboe") (list "EH" "English Horn") (list "ClEb" "Clarinet in Eb") (list "ClBb" "Clarinet in Bb") (list "Cl" "Clarinet")
+    (list "BCl" "Bass Clarinet") (list "CbCl" "Contrabass Clarinet") (list "Bn" "Bassoon") (list "CbBn" "Contrabassoon")
+    (list "SSax" "Soprano Saxophone") (list "ASax" "Alto Saxophone") (list "TSax" "Tenor Saxophone") (list "BSax" "Baritone Saxophone")
+    (list "Hn" "Horn") (list "TpC" "Trumpet in C") (list "Tp" "Trumpet") (list "Tbn" "Trombone") (list "BTb" "Bass Tuba") (list "Tba" "Tuba")
+    (list "Timp" "Timpani") (list "Perc" "Percussion") (list "Hp" "Harp") (list "Pno" "Piano") (list "Acc" "Accordion") (list "Gtr" "Guitar")
+    (list "Vn" "Violin") (list "Va" "Viola") (list "Vc" "Violoncello") (list "Cb" "Contrabass")
+    (list "files" "Sounds") (list "buffers" "Buffers") (list "synths" "Synths") (list "calls" "Algorithms") (list "scores" "Scores"))
+# (instrument-name code)   the full name of an instrument code (Vn: Violin; the code itself when unknown), of a
+#                          doubling (Fl|Picc: Flute / Piccolo) and of a numbered player (Vn 2: Violin 2)
+function instrument-name (code) {
+    var toks (split (str code) " ")
+    var number (if (and (> (length toks) 1) (regex-match? "^[0-9]+$" (last toks))) (concat " " (last toks)) "")
+    var codes (split (if (equal? number "") (str code) (join (take toks (- (length toks) 1)) " ")) "|")
+    return (concat (join (map codes (function (c) (opt instrument-names c c))) " / ") number)
+}
+
+# (score-notate s params)  the score as notation, quantized: => a record 'bpm 'meter 'tpb (ticks per beat) 'divisions
+#                          'bars and 'parts, each part 'name 'code 'clef 'kind ('pitched, or 'line for files, synths,
+#                          calls) 'chosen (the division of every beat) 'notes (records: the event's 'id, 'start and
+#                          'end in ticks, 'disp the onset's displacement in beats, 'note the event) 'voices (lists of
+#                          notes and rests) and 'bars (per voice, per bar: the pieces written, see split-span).
+#                          params: 'divisions 'tolerance 'names 'parts (see notation-defaults), 'bpm and 'meter to
+#                          override the score's
+function score-notate (s params) {
+    var p (record-merge notation-defaults params)
+    var bpm (opt p 'bpm (score-bpm s))
+    var meter (opt p 'meter (score-meter s))
+    var divs (get p 'divisions)
+    var tpb (reduce divs lcm 1)
+    if (< tpb 16) { set tpb (lcm tpb 16) }                                       # 64ths at least, whatever the divisions
+    var num (head meter)
+    var den (last meter)
+    var per-beat (/ bpm 60)                                                     # beats per second
+    var rows (if (equal? (get p 'parts) 'players) (player-rows s) (score-rows s))
+    var parts (list)
+    var last-tick 0
+    each rows (function (row) {
+        var evs (sort-by (last row) (function (e) (get e 'at)))
+        var pitched (any? evs (function (e) (has? e 'midi)))
+        var points (list)                                                       # (beat weight) of every onset and end
+        each evs (function (e) { push points (list (* (get e 'at) per-beat) 1)
+                                 push points (list (* (+ (get e 'at) (max 0.001 (get e 'dur))) per-beat) 0.5) })
+        var nbeats (+ 1 (floor (max-of (map points head))))
+        var chosen (choose-divisions points divs nbeats (get p 'tolerance))
+        var notes (map evs (function (e) {
+            var on (* (get e 'at) per-beat)
+            var off (* (+ (get e 'at) (max 0.001 (get e 'dur))) per-beat)
+            var start (snap-beat on chosen tpb)
+            var end (snap-beat off chosen tpb)
+            if (<= end start) { set end (+ start (/ tpb (getidx chosen (min (floor (/ start tpb)) (- (length chosen) 1))))) }   # a grain: one step of the beat it landed in
+            return (record (list 'id (get e 'id) 'start start 'end end 'disp (- (/ start tpb) on) 'note e))
+        }))
+        each notes (function (n) (set last-tick (max last-tick (get n 'end))))
+        var clef (if pitched (if (< (median (vec (map evs (function (e) (get e 'midi))))) 60) "bass" "treble") "none")
+        var mono (and pitched (all? evs (function (e) (has? e 'player))))          # one player: a note ends where the next starts
+        push parts (record (list 'name (if (get p 'names) (instrument-name (head row)) (head row)) 'code (head row) 'clef clef
+                                 'kind (if pitched 'pitched 'line) 'chosen chosen 'notes notes 'voices (assign-voices notes mono)))
+    })
+    var bar-ticks (* num tpb)
+    var bars (max 1 (ceil (/ last-tick bar-ticks)))
+    each parts (function (part) {
+        var chosen (get part 'chosen)
+        put! part 'bars (if (opt p 'skip-bars 0) (list) (map (get part 'voices) (function (v) (voice-bars v bars chosen tpb num den))))
+    })
+    return (record (list 'bpm bpm 'meter meter 'tpb tpb 'divisions divs 'bars bars 'parts parts 'name (get s 'name)))
+}
+# (player-rows s)          the rows of the notation when a part is a player: the notes carrying a 'player (the index
+#                          the orchestrators give) grouped by it, named after the instruments the player plays
+#                          with a number when the instrument has several players (Vn 1, Vn 2; Fl|Picc 1); notes
+#                          without a player by instrument, as score-rows; then the files, buffers, synths, calls
+function player-rows (s) {
+    var rows (score-rows s)
+    var out (list)
+    var instr-rows (filter rows (function (r) (equal? (get (head (last r)) 'kind) 'note)))
+    var others (filter rows (function (r) (not (equal? (get (head (last r)) 'kind) 'note))))
+    var notes (reduce (map instr-rows last) concat-list (list))
+    var by-player (group-by (filter notes (function (e) (has? e 'player))) (function (e) (str (get e 'player))))
+    var loose (filter notes (function (e) (not (has? e 'player))))
+    var groups (map by-player (function (g) {
+        var instrs (unique (map (last g) (function (e) (get e 'instr))))
+        return (list (join (sort-by instrs instrument-rank) "|") (num (head g)) (last g))
+    }))
+    each (group-by loose (function (e) (get e 'instr))) (function (g) (push groups (list (head g) -1 (last g))))
+    var ordered (sort-by groups (function (g) (+ (* 1000 (instrument-rank (head (split (head g) "|")))) (max 0 (getidx g 1)))))
+    var counts (group-by (filter ordered (function (g) (>= (getidx g 1) 0))) head)
+    var seen (list)
+    each ordered (function (g) {
+        var name (head g)
+        var played (>= (getidx g 1) 0)
+        var several (> (length (opt counts name (list))) 1)
+        var k (+ 1 (opt seen name 0))
+        if played { put! seen name k }
+        push out (list (if (and several played) (concat name " " (str k)) name) (sort-by (last g) (function (e) (get e 'at))))
+    })
+    each others (function (r) (push out r))
+    return out
+}
+# (record-merge a b)       a new record: a's fields, those of b on top
+function record-merge (a b) {
+    var out (map a (function (p) (list (head p) (last p))))
+    each b (function (p) (put! out (head p) (last p)))
+    return out
+}
+# (choose-divisions points divs nbeats tolerance)   the division of every beat 0..nbeats-1: the one of divs with the
+#                          least weighted squared displacement of the points (beat weight) in it, plus the square of
+#                          the tolerance times the division's cost (division-cost); => a list, one number per beat
+function choose-divisions (points divs nbeats tolerance) {
+    var by-beat (map (vec->list (range nbeats)) (function (b) (list)))
+    each points (function (pt) {
+        var b (floor (head pt))
+        if (and (>= b 0) (< b nbeats)) { push (getidx by-beat b) pt }
+    })
+    return (map (zip by-beat (vec->list (range nbeats))) (function (pair) {
+        var pts (head pair)
+        var b (last pair)
+        if (== (length pts) 0) { return 1 }
+        var best (min-by divs (function (n) (+ (* tolerance tolerance (division-cost n))
+                                              (sum-by pts (function (pt) {
+                                                  var x (- (head pt) b)
+                                                  var d (- x (/ (round (* x n)) n))
+                                                  return (* (last pt) d d) })))))
+        return best
+    }))
+}
+# (snap-beat x chosen tpb)   a time in beats to the nearest tick of its beat's division; => ticks
+function snap-beat (x chosen tpb) {
+    var b (max 0 (min (floor x) (- (length chosen) 1)))
+    var n (getidx chosen b)
+    return (round (+ (* b tpb) (* (round (* (- x b) n)) (/ tpb n))))
+}
+# (assign-voices notes mono)   the notes (records with 'start 'end 'note) into voices: a note with the start and end
+#                          of the last note of a voice joins it as a chord (marked 'chord), else it goes to the first
+#                          voice free at its start; a higher pitch to the lower-numbered voice among simultaneous ones.
+#                          With mono (one player's part) a note still sounding when the next starts is cut there
+#                          instead (the grid made them overlap), and of two landing on the same tick the second is
+#                          pushed to the first's end, or left out when it would end no later (marked 'dropped);
+#                          => a list of voices, each a list of notes
+function assign-voices (notes mono) {
+    var voices (list)
+    var ends (list)
+    var order (sort-by notes (function (n) (- (* 1e7 (get n 'start)) (opt (get n 'note) 'midi 0))))
+    var prev nil
+    var prev-k 0
+    each order (function (n) {
+        var keep 1
+        if (and mono (not (equal? (type prev) "nil")) (> (get prev 'end) (get n 'start))) {
+            if (< (get prev 'start) (get n 'start)) {
+                put! prev 'end (get n 'start)
+                setidx ends prev-k (get n 'start)
+            } {
+                if (and (!= (get prev 'end) (get n 'end)) (> (get n 'end) (get prev 'end))) { put! n 'start (get prev 'end) } {
+                    if (!= (get prev 'end) (get n 'end)) { put! n 'dropped 1
+                                                           set keep 0 }
+                }
+            }
+        }
+        if keep {
+        set prev n
+        var k 0
+        var pitched (has? (get n 'note) 'midi)
+        while (and (< k (length voices)) (not (and pitched (== (get (last (getidx voices k)) 'start) (get n 'start)) (== (getidx ends k) (get n 'end))))) { set k (+ k 1) }
+        if (< k (length voices)) { put! n 'chord 1 } {
+            set k 0
+            while (and (< k (length voices)) (> (getidx ends k) (get n 'start))) { set k (+ k 1) }
+            if (== k (length voices)) { push voices (list)
+                                        push ends 0 }
+        }
+        push (getidx voices k) n
+        setidx ends k (get n 'end)
+        set prev-k k
+        }
+    })
+    return voices
+}
+# (voice-bars voice bars chosen tpb num den)   a voice (its notes in order) written bar by bar: => a list of bars,
+#                          each a list of pieces (see split-span), rests filling the gaps
+function voice-bars (voice bars chosen tpb num den) {
+    var bar-ticks (* num tpb)
+    var out (map (vec->list (range bars)) (function (b) (list)))
+    var items (list)                                                            # notes and rests, as (start end note-or-nil)
+    var t 0
+    each voice (function (n) {
+        if (and (> (get n 'start) t) (not (opt n 'chord 0))) { push items (list t (get n 'start) nil) }
+        push items (list (get n 'start) (get n 'end) n)
+        set t (get n 'end)
+    })
+    if (< t (* bars bar-ticks)) { push items (list t (* bars bar-ticks) nil) }
+    each items (function (it) {
+        var start (head it)
+        var end (getidx it 1)
+        var n (last it)
+        var pieces (list)
+        var b (floor (/ start bar-ticks))
+        while (< (* b bar-ticks) end) {
+            var lo (max start (* b bar-ticks))
+            var hi (min end (* (+ b 1) bar-ticks))
+            var beat-divs (map (vec->list (range num)) (function (k) { var j (+ (* b num) k)
+                                                                        return (if (< j (length chosen)) (getidx chosen j) 1) }))
+            each (split-span (- lo (* b bar-ticks)) (- hi (* b bar-ticks)) beat-divs tpb num den n) (function (pc) {
+                put! pc 'bar b
+                push pieces pc })
+            set b (+ b 1)
+        }
+        if (not (equal? (type n) "nil")) {                                     # ties between the pieces of one note
+            var k 0
+            each pieces (function (pc) { put! pc 'tie-stop (> k 0)
+                                         put! pc 'tie-start (< k (- (length pieces) 1))
+                                         set k (+ k 1) })
+        }
+        each pieces (function (pc) (push (getidx out (get pc 'bar)) pc))
+    })
+    return out
+}
+# (split-span off end beat-divs tpb num den note)   the ticks [off, end) of one bar as written pieces: in a beat
+#                          divided in two, four, eight... the largest values that start where they may (a value
+#                          starting off the beat stays inside it); in a beat divided in three, five, six... tuplet
+#                          notes (n in the time of m, m the power of two under n), a beat filled whole as a plain
+#                          note; => records 'off 'dur (ticks) 'type 'dots 'actual 'normal (the tuplet, 0 when none)
+#                          'tuplet-start 'tuplet-stop 'note (the note, nil for a rest)
+function split-span (off end beat-divs tpb num den note) {
+    var out (list)
+    var tpw (* tpb den)                                                         # ticks per whole note
+    var p off
+    while (< p end) {
+        var k (floor (/ p tpb))
+        var n (getidx beat-divs k)
+        var bstart (* k tpb)
+        var bend (* (+ k 1) tpb)
+        if (binary-division? n) {
+            var r (min end bend)
+            var j (+ k 1)
+            while (and (< r end) (< j num) (binary-division? (getidx beat-divs j))) { set r (min end (* (+ j 1) tpb))
+                                                                                     set j (+ j 1) }
+            if (!= (mod p tpb) 0) { set r (min r bend) }                            # off the beat: not across it
+            if (equal? (type note) "nil") { set r (rest-end p r tpb num) }           # a rest: by the beat, or a half or whole bar
+            var v (binary-value p r tpw (not (equal? (type note) "nil")))         # a rest is never dotted
+            push out (record (list 'off p 'dur (head v) 'type (getidx v 1) 'dots (last v) 'actual 0 'normal 0 'tuplet-start 0 'tuplet-stop 0 'note note))
+            set p (+ p (head v))
+        } {
+            var r (min end bend)
+            if (and (== p bstart) (== r bend)) {
+                var v (binary-value p r tpw 1)
+                push out (record (list 'off p 'dur tpb 'type (getidx v 1) 'dots (last v) 'actual 0 'normal 0 'tuplet-start 0 'tuplet-stop 0 'note note))
+                set p r
+            } {
+                var u (/ tpb n)                                                  # one tuplet unit, in ticks
+                var m (pow 2 (floor (log2 n)))                                   # n in the time of m
+                var o (round (/ (- p bstart) u))
+                var rem (round (/ (- r p) u))
+                var size (if (and (== (mod o 4) 0) (>= rem 4)) 4 (if (and (== (mod o 2) 0) (>= rem 2)) 2 1))
+                var written (binary-value 0 (* size (/ tpb m)) tpw 0)            # the value as written under the bracket
+                push out (record (list 'off p 'dur (* size u) 'type (getidx written 1) 'dots 0 'actual n 'normal m
+                                       'tuplet-start (== o 0) 'tuplet-stop (== (+ o size) n) 'note note))
+                set p (+ p (* size u))
+            }
+        }
+    }
+    return out
+}
+# (rest-end p r tpb num)   how far one written rest may reach from p when the span ends at r: a whole bar, a half bar
+#                          (an even meter) from its start, else the beat's end
+function rest-end (p r tpb num) {
+    var bar (* num tpb)
+    var half (* (/ num 2) tpb)
+    if (and (== p 0) (== r bar)) { return r }
+    if (and (== (mod num 2) 0) (== (mod p half) 0) (>= r (+ p half))) { return (+ p half) }
+    return (min r (* (+ 1 (floor (/ p tpb))) tpb))
+}
+var note-values (list (list "whole" 1) (list "half" 2) (list "quarter" 4) (list "eighth" 8) (list "16th" 16) (list "32nd" 32) (list "64th" 64) (list "128th" 128) (list "256th" 256))
+# (binary-value p r tpw dotted)   the largest written value that starts at tick p, ends by r, and starts on a multiple
+#                          of its plain value; dotted (when dotted allows it) when the dotted value ends exactly at r;
+#                          => (list ticks type dots)
+function binary-value (p r tpw dotted) {
+    var best nil
+    each note-values (function (nv) {
+        var plain (/ tpw (last nv))
+        if (and (equal? (type best) "nil") (== plain (floor plain)) (== (mod p plain) 0)) {
+            if (and dotted (== (+ p (* 1.5 plain)) r)) { set best (list (* 1.5 plain) (head nv) 1) } {
+                if (<= plain (- r p)) { set best (list plain (head nv) 0) }
+            }
+        }
+    })
+    if (equal? (type best) "nil") { error "binary-value: no written value for " (- r p) " ticks at " p }
+    return best
+}
+# (pitch-spelling midi cents)   a pitch as written: step, alter (sharps; quarter tones as 0.5), octave and the
+#                          accidental's name; => (list step alter octave accidental)
+function pitch-spelling (midi cents) {
+    var total (+ midi (/ cents 100))
+    var base (round total)
+    var q (* 0.5 (round (* 2 (- total base))))
+    var pc (mod base 12)
+    var alter (+ (getidx (list 0 1 0 1 0 0 1 0 1 0 1 0) pc) q)
+    var acc (opt (list (list "-1.5" "three-quarters-flat") (list "-1" "flat") (list "-0.5" "quarter-flat") (list "0" "") (list "0.5" "quarter-sharp")
+                       (list "1" "sharp") (list "1.5" "three-quarters-sharp")) (str alter) "")
+    return (list (getidx (list "C" "C" "D" "D" "E" "F" "F" "G" "G" "A" "A" "B") pc) alter (- (floor (/ base 12)) 1) acc)
+}
+# (xml-escape s)           a string for XML text: & < > and quotes as entities
+function xml-escape (s) (replace (replace (replace (replace (str s) "&" "&amp;") "<" "&lt;") ">" "&gt;") "\"" "&quot;")
+
+# (score-musicxml s path params)   the score quantized (score-notate) and written as MusicXML at path; => the
+#                          notation record (notation-report prints what the quantization did)
+function score-musicxml (s path params) {
+    var m (score-notate s params)
+    write path (musicxml-text m)
+    print "score-musicxml:" (sum-by (get m 'parts) (function (part) (length (get part 'notes)))) "notes in" (length (get m 'parts)) "parts," (get m 'bars) "bars ->" path
+    return m
+}
+# (musicxml-text m)        the MusicXML document of a notation record, as a string
+function musicxml-text (m) {
+    var tpb (get m 'tpb)
+    var num (head (get m 'meter))
+    var den (last (get m 'meter))
+    var bar-ticks (* num tpb)
+    var out (list "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                  "<!DOCTYPE score-partwise PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://www.musicxml.org/dtds/partwise.dtd\">"
+                  "<score-partwise version=\"4.0\">"
+                  (concat "  <work><work-title>" (xml-escape (get m 'name)) "</work-title></work>")
+                  (concat "  <identification><encoding><software>Musil " version "</software></encoding></identification>")
+                  "  <part-list>")
+    var k 1
+    each (get m 'parts) (function (part) {
+        push out (concat "    <score-part id=\"P" (str k) "\"><part-name>" (xml-escape (get part 'name)) "</part-name><part-abbreviation>" (xml-escape (get part 'code)) "</part-abbreviation></score-part>")
+        set k (+ k 1)
+    })
+    push out "  </part-list>"
+    set k 1
+    each (get m 'parts) (function (part) {
+        push out (concat "  <part id=\"P" (str k) "\">")
+        var marked (list)                                                       # (tick dyn tech) already written, in order of writing
+        each (vec->list (range (get m 'bars))) (function (b) {
+            push out (concat "    <measure number=\"" (str (+ b 1)) "\">")
+            if (== b 0) {
+                var clef (get part 'clef)
+                push out (concat "      <attributes><divisions>" (str (/ (* tpb den) 4)) "</divisions><key><fifths>0</fifths></key><time><beats>" (str num) "</beats><beat-type>" (str den) "</beat-type></time>"
+                                 (if (equal? clef "none") "<clef><sign>percussion</sign></clef><staff-details><staff-lines>1</staff-lines></staff-details>"
+                                     (if (equal? clef "bass") "<clef><sign>F</sign><line>4</line></clef>" "<clef><sign>G</sign><line>2</line></clef>"))
+                                 "</attributes>")
+                if (== k 1) { push out (concat "      <direction placement=\"above\"><direction-type><metronome><beat-unit>" (opt (list (list "2" "half") (list "4" "quarter") (list "8" "eighth")) (str den) "quarter") "</beat-unit><per-minute>" (str (get m 'bpm)) "</per-minute></metronome></direction-type><sound tempo=\"" (str (* (get m 'bpm) (/ 4 den))) "\"/></direction>") }
+            }
+            var v 1
+            each (get part 'bars) (function (vbars) {
+                var pieces (getidx vbars b)
+                var empty (all? pieces (function (pc) (equal? (type (get pc 'note)) "nil")))
+                if (or (== v 1) (not empty)) {                                   # a voice beyond the first is left out of a bar it rests through
+                    if (> v 1) { push out (concat "      <backup><duration>" (str bar-ticks) "</duration></backup>") }
+                    if empty {
+                        push out (concat "      <note><rest measure=\"yes\"/><duration>" (str bar-ticks) "</duration><voice>" (str v) "</voice></note>")
+                    } {
+                        each pieces (function (pc) (each (musicxml-piece pc v part marked (+ (* b bar-ticks) (get pc 'off))) (function (line) (push out line))))
+                    }
+                }
+                set v (+ v 1)
+            })
+            push out "    </measure>"
+        })
+        push out "  </part>"
+        set k (+ k 1)
+    })
+    push out "</score-partwise>"
+    return (join out "\n")
+}
+# (musicxml-piece pc voice part marked tick)   the lines of one written piece: the directions that change here
+#                          (dynamics below, the technique or the label above), then the note or rest
+function musicxml-piece (pc voice part marked tick) {
+    var out (list)
+    var n (get pc 'note)
+    var e (if (equal? (type n) "nil") nil (get n 'note))
+    var tuplet (> (get pc 'actual) 0)
+    var chord (if (equal? (type n) "nil") 0 (opt n 'chord 0))
+    if (and (not (equal? (type e) "nil")) (not (get pc 'tie-stop)) (not chord)) {  # the marks, at a note's start only
+        var dyn (str (opt e 'dyn ""))
+        var tech (str (opt e 'tech ""))
+        var instr (if (contains? (get part 'code) "|") (str (opt e 'instr "")) "")                 # a doubling player: the instrument where it changes
+        var label (if (equal? (get part 'kind) 'line) (str (opt e 'label "")) "")
+        var before (filter marked (function (mk) (<= (head mk) tick)))
+        var last-dyn (if (== (length before) 0) "" (getidx (last before) 1))
+        var last-tech (if (== (length before) 0) "" (getidx (last before) 2))
+        var last-instr (if (== (length before) 0) "" (getidx (last before) 3))
+        if (and (> (length instr) 0) (not (equal? instr last-instr))) { push out (concat "      <direction placement=\"above\"><direction-type><words font-weight=\"bold\">" (xml-escape (instrument-name instr)) "</words></direction-type></direction>") }
+        if (and (> (length dyn) 0) (not (equal? dyn last-dyn))) {
+            var known (contains? (list "pppp" "ppp" "pp" "p" "mp" "mf" "f" "ff" "fff" "ffff" "sf" "sfz" "fp" "fz" "rf" "rfz") dyn)
+            push out (concat "      <direction placement=\"below\"><direction-type><dynamics>" (if known (concat "<" dyn "/>") (concat "<other-dynamics>" (xml-escape dyn) "</other-dynamics>")) "</dynamics></direction-type></direction>")
+        }
+        if (and (> (length tech) 0) (not (equal? tech last-tech))) { push out (concat "      <direction placement=\"above\"><direction-type><words>" (xml-escape tech) "</words></direction-type></direction>") }
+        if (> (length label) 0) { push out (concat "      <direction placement=\"above\"><direction-type><words>" (xml-escape label) "</words></direction-type></direction>") }
+        push marked (list tick (if (> (length dyn) 0) dyn last-dyn) (if (> (length tech) 0) tech last-tech) (if (> (length instr) 0) instr last-instr))
+    }
+    var body (if (equal? (type e) "nil") "<rest/>"
+                 (if (has? e 'midi) { var sp (pitch-spelling (get e 'midi) (opt e 'cents 0))
+                                      concat "<pitch><step>" (head sp) "</step>" (if (!= (getidx sp 1) 0) (concat "<alter>" (str (getidx sp 1)) "</alter>") "") "<octave>" (str (getidx sp 2)) "</octave></pitch>" }
+                     "<unpitched><display-step>E</display-step><display-octave>4</display-octave></unpitched>"))
+    var ties (if (equal? (type e) "nil") "" (concat (if (get pc 'tie-stop) "<tie type=\"stop\"/>" "") (if (get pc 'tie-start) "<tie type=\"start\"/>" "")))
+    var acc (if (or (equal? (type e) "nil") (not (has? e 'midi))) "" { var sp (pitch-spelling (get e 'midi) (opt e 'cents 0))
+                                                                       if (> (length (last sp)) 0) (concat "<accidental>" (last sp) "</accidental>") "" })
+    var tmod (if tuplet (concat "<time-modification><actual-notes>" (str (get pc 'actual)) "</actual-notes><normal-notes>" (str (get pc 'normal)) "</normal-notes></time-modification>") "")
+    var notations (concat (if (equal? (type e) "nil") "" (concat (if (get pc 'tie-stop) "<tied type=\"stop\"/>" "") (if (get pc 'tie-start) "<tied type=\"start\"/>" "")))
+                          (if (and tuplet (get pc 'tuplet-start) (not chord)) "<tuplet type=\"start\" bracket=\"yes\"/>" "")
+                          (if (and tuplet (get pc 'tuplet-stop) (not chord)) "<tuplet type=\"stop\"/>" ""))
+    push out (concat "      <note>" (if chord "<chord/>" "") body "<duration>" (str (get pc 'dur)) "</duration>" ties "<voice>" (str voice) "</voice><type>" (get pc 'type) "</type>"
+                     (repeat "<dot/>" (get pc 'dots)) acc tmod (if (> (length notations) 0) (concat "<notations>" notations "</notations>") "") "</note>")
+    return out
+}
+# (notation-report m)      what the quantization did, a line per part: notes, voices, the divisions used, how far the
+#                          onsets moved (mean and worst, in ms) and how many moved by more than a 32nd of a beat
+function notation-report (m) {
+    var ms (/ 60000 (get m 'bpm))                                               # one beat in ms
+    print "notation:" (get m 'bars) "bars of" (head (get m 'meter)) "/" (last (get m 'meter)) "at" (get m 'bpm) "bpm; divisions" (get m 'divisions)
+    each (get m 'parts) (function (part) {
+        var notes (get part 'notes)
+        if (> (length notes) 0) {
+            var used (group-by (filter (get part 'chosen) (function (n) (> n 1))) str)
+            var disp (map notes (function (n) (abs (get n 'disp))))
+            var divisions (join (map used (function (g) (concat (head g) "x" (str (length (last g)))))) " ")
+            var dropped (count notes (function (n) (opt n 'dropped 0)))
+            var moved (concat (fixed (* ms (mean (vec disp))) 1) " ms mean, " (fixed (* ms (max-of disp)) 1) " ms max; " (str (count disp (function (d) (> d (/ 1 32))))) " beyond a 32nd" (if (> dropped 0) (concat "; " (str dropped) " left out (on the tick of another)") ""))
+            print "  " (pad-right (get part 'name) 18 " ") (length notes) "notes," (length (get part 'voices)) (if (== (length (get part 'voices)) 1) "voice;" "voices;") "divisions" divisions "; moved" moved
+        }
+    })
+}
+# (score-quantize! s params)   the score's onsets and durations moved to the grid score-notate chooses (to hear the
+#                          quantization: the roll then shows it); => the notation record
+function score-quantize! (s params) {
+    var m (score-notate s params)
+    var sec (/ 60 (* (get m 'bpm) (get m 'tpb)))                                # one tick in seconds
+    each (get m 'parts) (function (part) (each (get part 'notes) (function (n) {
+        var e (find-first (get s 'events) (function (x) (== (get x 'id) (get n 'id))))
+        if (not (equal? (type e) "nil")) { put! e 'at (* sec (get n 'start))
+                                           put! e 'dur (* sec (- (get n 'end) (get n 'start))) }
+    })))
+    score-clear-cache! s
+    return m
+}

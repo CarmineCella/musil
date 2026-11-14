@@ -92,6 +92,17 @@ target-envelopes: the granulator's parameters from the curves: (density dynamics
 target-peaks    : the pitches the notes may take, at 1 s: (C4 C6 C5 C7 A#6 E7)
 orchestrate-morphological: 1 notes with cents, e.g. Vc C4 f 15 cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation
 
+--- notation ---
+score-meter!    : (3 4) with score-tempo! 120 bpm: the bar and the beat of the notation
+score-notate    : 2 bars, 2 parts; the Vn's beats divided (1 2 3 1 1 1 1) (of 'divisions (1 2 3 4 5 6 8 16) the one moving the notes least, 'tolerance 0.0625 beat accepted for a simpler one)
+                 the F a quarter sharp, 20 ms late: 720 ticks of 240 per beat, moved -0.04 beats; 1 voice for the cello chord
+score-musicxml: 9 notes in 2 parts, 2 bars -> musil_reference.musicxml
+score-musicxml  : 2 parts written: instrument, pitch (quarter-sharp F), dynamics, the technique tag (pizz-lv) as it is; notation-report says what moved
+notation: 2 bars of 3 / 4 at 120 bpm; divisions (1 2 3 4 5 6 8 16)
+   Violin             7 notes, 1 voice; divisions 2x1 3x1 ; moved 2.9 ms mean, 20 ms max; 1 beyond a 32nd
+   Violoncello        2 notes, 1 voice; divisions  ; moved 0 ms mean, 0 ms max; 0 beyond a 32nd
+score-quantize! : the score's times moved to the grid, to hear it ( (1 2 3 1 1 1 1) )
+
 --- queries, db-gen, playing ---
 db-query (lists): 16 string sounds, mf or ff
 db-grep         : 2 violin C4 and C#4 (a regular expression on the file name)

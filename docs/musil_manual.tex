@@ -1120,6 +1120,25 @@ and returns one source per instrument; \texttt{examples/nmf.mu} does both on a f
 mix (drums, bass, chords, melody, with each stem alone to score against; made, like every
 synthetic demo sound, by \texttt{make\_audio\_demos.mu}).
 
+\textbf{Music information retrieval.} The classic analyses of a recording, each a feature
+over frames, a picture and a decision read from it. \musil{chromagram x sr n hop} folds
+the magnitude spectrogram onto the twelve pitch classes (a 12 x frames matrix, every frame
+scaled to its maximum); \musil{chroma-mean} is the piece's pitch-class profile and
+\musil{key-scores} rates it against the Krumhansl-Kessler profiles of the 24 keys
+(\musil{key-estimate} the best). \musil{tempo-estimate flux fps} reads the autocorrelation
+of the onset strength at the lags of 30--300 bpm under a log-normal prior on the tempo a
+listener taps (centred on 100 bpm, 0.6 octaves wide: the eighths or the half-bar are often
+as periodic as the beat, and the prior decides the octave; \musil{tempo-estimate-with}
+takes another prior); \musil{tempogram} is the same locally, a bpm x time matrix;
+\musil{beat-track} finds the beats by Ellis's dynamic programming (strong, and near the
+period), \musil{beats x sr n hop} does the three steps, \musil{clicks} makes a click
+track to check them by ear. \musil{mel-spectrogram} and \musil{mfcc-gram} describe the
+timbre of every frame; \musil{beat-sync} averages any feature matrix between the beats.
+\musil{self-similarity F} is Foote's matrix, every frame (or beat) against every other by
+cosine similarity, \musil{foote-novelty S width} its correlation with a checkerboard kernel
+along the diagonal and \musil{novelty-peaks} the boundaries of the sections.
+\texttt{examples/classic\_mir.mu} runs all of it on a song.
+
 \textbf{Spatial.} Conventions as in AmbiX: azimuth in degrees, 0 in front, positive to
 the left; elevation up; a multichannel signal is a list of channel vectors, which
 \musil{write-wav} and \musil{play} take. \musil{pan-azimuth} is stereo from a direction;
@@ -1256,7 +1275,8 @@ they render offline too; \musil{tkick}, \musil{rumble}, \musil{that}, \musil{toh
 function may call your own helper functions (\musil{sig} makes a constant as long as a
 signal, so \musil{(osc sr (sig gate 190) table)} is a fixed pitch offline and streamed):
 the compiler inlines them. \texttt{examples/live\_house.mu}, \texttt{live\_techno.mu} and \texttt{live\_trance.mu} are
-tracks meant to be edited while they play.
+tracks meant to be edited while they play; \texttt{live\_emptyset.mu} defines its own instruments in the file
+(saturated sub-bass impacts, struck iron in combs, a wall of clipped noise) to show that a style is a few functions.
 
 \textbf{Controls and OSC.} \musil{(control 'cutoff 100 5000 800)} declares a named value
 with a range, \musil{(toggle 'on 1)} an on/off one; \musil{bind-control} makes synth
@@ -1366,6 +1386,31 @@ the database by its file name under any of the database's folders, or by instrum
 pitch, dynamics and style when that file is not there; an unpitched sound becomes a file
 event. So an orchestration made by a script can be kept, reloaded, displayed and played
 later, and a connection exported by Orchidea can be played and shown here.
+
+\textbf{Notation.} A score's times are seconds; a part is written in beats and bars, so
+\musil{score-musicxml s path params} quantizes before it writes. The tempo is the score's
+(\musil{score-tempo!}) and the meter \musil{score-meter!} (4/4 by default; the beat is the
+denominator's note). \musil{score-notate} does the quantization and returns the notation
+as data: for every part --- one per player where the notes say who played them, as the
+orchestrators' do (\emph{Violin 1}, \emph{Violin 2}, a doubling as \emph{Flute / Piccolo}
+with the instrument written where it changes), else one per instrument, in orchestral
+order, then one-line staves for files, buffers, synths and calls --- and every beat it
+chooses one division of the beat among
+\musil{'divisions} (by default 1 2 3 4 5 6 8 16: binary values to 64ths, triplets, quintuplets,
+sextuplets) --- the one that moves the onsets and ends in that beat least, each division
+carrying a small cost so that a displacement about \musil{'tolerance} (a 16th of a beat by
+default) is accepted to keep the simpler one; \musil{'tolerance 0} takes the finest grid
+that fits. The notes then go into voices (a note with the start and end of another joins
+it as a chord; in one player's part a note still sounding at the next is cut there), are
+split at the bars and into written values --- the largest that start
+where they may, a value off the beat never crossing it, rests by the beat (or a half or
+whole bar), tuplet notes under a bracket in a beat divided in three, five or six --- and
+tied. Every note carries its instrument, its pitch with quarter tones as accidentals, its
+dynamics and the database's technique tag written as it is (\texttt{ord}, \texttt{pizz-lv},
+\texttt{trem}...) where it changes; a file or a synth is an unpitched note with its label.
+\musil{notation-report} says what the quantization did (the divisions used, how far the
+onsets moved), and \musil{score-quantize!} moves the score's own times to the grid, to hear
+it and see it in the roll. The file is MusicXML 4.0 (Dorico, Sibelius, Finale, MuseScore).
 
 \textbf{Elements.} Pitches are names (\musil{"C4"}, \musil{"F\#3"}) or MIDI numbers, nil a
 rest; a \musil{rhythm} is a list of durations in seconds, negative for a pause
@@ -1736,12 +1781,15 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{live\_synth.mu}, \texttt{live\_offline.mu} & instruments as functions, played and changed live; the same rendered offline with parameter curves \\
 \texttt{live\_loops.mu}, \texttt{live\_controls.mu}, \texttt{live\_session.mu} & patterns redefined while they run; controls and OSC; a file to open in the IDE and play with \\
 \texttt{live\_house.mu}, \texttt{live\_techno.mu}, \texttt{live\_trance.mu} & tracks from the kits, the step notation and loops, to live-code in the IDE \\
+\texttt{live\_emptyset.mu} & a style from its own instruments (impacts, iron, a wall of noise), Euclidean rhythms and silence as form \\
+\texttt{notation.mu} & a written line, an Orchidea chord and a granular cloud quantized and exported as MusicXML, with and without tuplets; the report; the grid heard \\
 \texttt{onsets.mu}, \texttt{transients.mu} & onset detection by spectral flux; harmonic/percussive separation (HPSS) on a file made for it \\
 \texttt{spatial.mu}, \texttt{flyby.mu}, \texttt{flyby\_controls.mu}, \texttt{live\_spatial.mu} & sounds placed and moved in 3D: binaural files for headphones (a helicopter in front, overhead, behind, around), B-format and speaker rings; the helicopter on sliders, live \\
 \texttt{nmf.mu}, \texttt{make\_audio\_demos.mu} & source separation of a four-stem mix by NMF, unsupervised and supervised; how every synthetic demo sound was made \\
+\texttt{classic\_mir.mu} & the classic MIR analyses of a song (Tom's Diner): tempo and tempogram, beats with a click track, chromagram and key, self-similarity matrices on harmony and timbre, novelty and the sections \\
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
-\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{static\_orchidea.mu}, \texttt{dynamic\_orchidea.mu}, \texttt{orchfest.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return); Orchidea on a bell (static) and on a piano phrase cut at its chords (dynamic), the solutions chosen in the roll; the three orchestrators one after the other on the same bell; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
+\texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{static\_orchidea.mu}, \texttt{dynamic\_orchidea.mu}, \texttt{orchfest.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return), its parts written as MusicXML; Orchidea on a bell (static) and on a piano phrase cut at its chords (dynamic), the solutions chosen in the roll; the three orchestrators one after the other on the same bell; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
 \texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}

@@ -196,6 +196,25 @@ print "bpf 0 ((4 1) (4 0)):" (bpf 0 (list (list 4 1) (list 4 0))) "(an attack an
 print "envelope-follow  :" (envelope-follow (vec 1 1 -1 -1 0 0) 2)
 print "envelope-from-values:" (envelope-from-values (vec 0 1 0) 2)
 
+# --- 9. Music information retrieval ----------------------------------------------
+print ""
+print "--- music information retrieval ---"
+var msr 22050
+var amaj (+ (sine msr 220 3) (sine msr 277.18 3) (sine msr 329.63 3))
+var Cg (chromagram amaj msr 4096 1024)
+print "chromagram      :" (length Cg) "pitch classes x" (length (head Cg)) "frames; the profile" (map (vec->list (chroma-mean Cg)) (function (v) (fixed v 2))) "(C first)"
+print "key-estimate    :" (key-name (key-estimate (chroma-mean Cg))) "(Krumhansl-Kessler profiles; key-scores ranks all 24)"
+var train (clicks (* 0.5 (range 16)) msr 8)
+var tflux (onset-strength train 1024 256)
+print "tempo-estimate  :" (tempo-estimate tflux (/ msr 256)) "bpm from a click every half second (the autocorrelation of the onset strength, a prior on the tapped tempo)"
+var bb (beats train msr 1024 256)
+print "beats           :" (head bb) "bpm," (length (last bb)) "beats, the first at" (fixed (head (last bb)) 3) "s, every" (fixed (mean (diff (last bb))) 3) "s (beat-track: Ellis's dynamic programming)"
+print "tempogram       :" (length (tempogram tflux (/ msr 256) 128)) "rows (bpm 30-300) x" (length tflux) "frames; mel-spectrogram, mfcc-gram: the timbre per frame"
+var two (mix (list (list 0 (+ (sine msr 220 3) (sine msr 330 3))) (list (* 3 msr) (* 0.5 (noise (* 3 msr))))))
+var Sm (self-similarity (drop (mfcc-gram two msr 2048 512 40 13) 1))
+var nv (foote-novelty Sm 32)
+print "self-similarity :" (length Sm) "x" (length Sm) "(Foote); foote-novelty peaks at" (map (vec->list (novelty-peaks nv (/ msr 512) 2 31)) (function (t) (fixed t 1))) "s: where the texture changes"
+
 print ""
 print "================================================================"
 print "  end of signals reference"

@@ -167,6 +167,23 @@ seed 3
 var mo (orchestrate-morphological db orch tg (record (list 'solutions 1)))
 print "orchestrate-morphological:" (length (best-connection mo)) "notes with cents, e.g." (get (last (head (best-connection mo))) 'label) (get (last (head (best-connection mo))) 'cents) "cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation"
 
+# --- 5e. Notation: quantization and MusicXML ------------------------------------------------------------
+print ""
+print "--- notation ---"
+var sq (score "notation" 44100)
+score-tempo! sq 120
+score-meter! sq 3 4
+add! sq 0 (notes db 'Vn 'mf 'ord (list "C4" "D4" "E4" "F4" "G4" "E4") (list 0.5 0.25 0.25 (/ 0.5 3) (/ 0.5 3) (/ 0.5 3)))
+event sq 1.52 1.48 (note-cents! (note db 'Vn "F4" 'p 'ord) 50)
+event sq 2 0.5 (chord db 'Vc 'mf 'pizz-lv (list "C3" "G3"))
+var nq (score-notate sq (record (list)))
+print "score-meter!    :" (score-meter sq) "with score-tempo!" (score-bpm sq) "bpm: the bar and the beat of the notation"
+print "score-notate    :" (get nq 'bars) "bars," (length (get nq 'parts)) "parts; the Vn's beats divided" (get (head (get nq 'parts)) 'chosen) "(of 'divisions" (get nq 'divisions) "the one moving the notes least, 'tolerance" (get notation-defaults 'tolerance) "beat accepted for a simpler one)"
+print "                 the F a quarter sharp, 20 ms late:" (get (getidx (get (head (get nq 'parts)) 'notes) 6) 'start) "ticks of" (get nq 'tpb) "per beat, moved" (fixed (get (getidx (get (head (get nq 'parts)) 'notes) 6) 'disp) 3) "beats;" (length (get (getidx (get nq 'parts) 1) 'voices)) "voice for the cello chord"
+print "score-musicxml  :" (length (get (score-musicxml sq "/tmp/musil_reference.musicxml" (record (list))) 'parts)) "parts written: instrument, pitch (quarter-sharp F), dynamics, the technique tag (pizz-lv) as it is; notation-report says what moved"
+notation-report nq
+print "score-quantize! : the score's times moved to the grid, to hear it (" (get (getidx (get (score-quantize! sq (record (list))) 'parts) 0) 'chosen) ")"
+
 # --- 6. More queries, making a database, playing ------------------------------------------------------
 print ""
 print "--- queries, db-gen, playing ---"

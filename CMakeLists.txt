@@ -224,9 +224,11 @@ if(MUSIL_TESTS)
   set(NEEDS_live_house "${D}/skip-in-tests")       # a minute of music: run it, don't test it
   set(NEEDS_live_techno "${D}/skip-in-tests")
   set(NEEDS_live_trance "${D}/skip-in-tests")
+  set(NEEDS_live_emptyset "${D}/skip-in-tests")   # two minutes of music: run it, don't test it
   set(NEEDS_live_spatial "${D}/skip-in-tests")
   set(NEEDS_spatial "${D}/Vox.wav")
   set(NEEDS_nmf "${D}/stems_demo.wav")
+  set(NEEDS_classic_mir "${D}/toms_diner.wav")
   set(NEEDS_flyby "${D}/skip-in-tests")            # 15 s of binaural rendering: run it, don't test it
   set(NEEDS_flyby_controls "${D}/skip-in-tests")
   set(NEEDS_loaddb "${D}/microsol/microsol.spectrum.db")
@@ -247,6 +249,7 @@ if(MUSIL_TESTS)
   set(NEEDS_static_orchidea "${D}/archeos-bell.wav;${D}/microsol/microsol.spectrum.db")
   set(NEEDS_dynamic_orchidea "${D}/skip-in-tests")   # a minute or two of search: run it, don't test it
   set(NEEDS_orchfest "${D}/archeos-bell.wav;${D}/microsol/microsol.spectrum.db")
+  set(NEEDS_notation "${D}/archeos-bell.wav;${D}/cage.wav;${D}/microsol/microsol.spectrum.db")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
   if(NOT MUSIL_FLTK)

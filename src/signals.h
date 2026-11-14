@@ -649,6 +649,180 @@ inline vptr sig_hrir(vlist& a, Interp& i) {
     return v_list({ v_arr(std::move(L)), v_arr(std::move(R)) });
 }
 
+
+// --- music information retrieval: chroma, self-similarity, tempo, beats --------------------------
+// the magnitude spectrogram shared by the analyses below: a periodic Hann window of n, hop, the signal
+// padded with n/2 zeros on both sides so a frame is centred on its hop; => frames x (n/2 + 1)
+inline std::vector<std::vector<double>> mag_spectrogram(const varr& x, size_t n, size_t hop) {
+    std::vector<double> xp(x.size() + n, 0.0); for (size_t k = 0; k < x.size(); k++) xp[n / 2 + k] = x[k];
+    size_t bins = n / 2 + 1, frames = (xp.size() - n) / hop + 1;
+    std::vector<double> w(n); for (size_t k = 0; k < n; k++) w[k] = 0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * k / n);
+    std::vector<std::vector<double>> mag(frames, std::vector<double>(bins)); std::vector<double> spec(2 * n);
+    for (size_t f = 0; f < frames; f++) {
+        for (size_t k = 0; k < n; k++) { size_t idx = f * hop + k; spec[2 * k] = idx < xp.size() ? xp[idx] * w[k] : 0; spec[2 * k + 1] = 0; }
+        fft_inplace(spec.data(), n, -1);
+        for (size_t b = 0; b < bins; b++) mag[f][b] = std::hypot(spec[2 * b], spec[2 * b + 1]);
+    }
+    return mag;
+}
+// (chromagram x sr n hop) => a 12 x frames matrix (rows C C# D ... B): the magnitude spectrogram (Hann n, hop)
+//   folded onto pitch classes between 55 Hz and 4 kHz, each bin to the pitch class of its frequency (A4 = 440),
+//   every frame scaled to a maximum of 1 (a silent frame stays 0); a frame every hop samples, the first at 0
+inline vptr sig_chromagram(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); double sr = i.scalar(a[1]); size_t n = (size_t)i.index(a[2]), hop = (size_t)i.index(a[3]);
+    if (n < 16 || (n & (n - 1))) i.bad("n must be a power of 2 >= 16");
+    if (hop < 1 || hop > n) i.bad("hop must be in 1..n");
+    auto mag = mag_spectrogram(x, n, hop); size_t frames = mag.size(), bins = n / 2 + 1;
+    std::vector<int> pc(bins, -1);
+    for (size_t b = 1; b < bins; b++) { double f = b * sr / n; if (f < 55 || f > 4000) continue; int m = (int)std::lround(69 + 12 * std::log2(f / 440.0)); pc[b] = ((m % 12) + 12) % 12; }
+    std::vector<varr> rows(12, varr(0.0, frames));
+    for (size_t f = 0; f < frames; f++) {
+        double c[12] = {0}; for (size_t b = 1; b < bins; b++) if (pc[b] >= 0) c[pc[b]] += mag[f][b];
+        double mx = 0; for (int k = 0; k < 12; k++) mx = std::max(mx, c[k]);
+        if (mx > 0) for (int k = 0; k < 12; k++) rows[k][f] = c[k] / mx;
+    }
+    vlist out; for (int k = 0; k < 12; k++) out.push_back(v_arr(std::move(rows[k])));
+    return v_list(std::move(out));
+}
+// (self-similarity F) => the frames x frames matrix of the cosine similarity between the columns of a feature
+//   matrix F (rows are features, columns frames: a chromagram, a spectrogram); 1 on the diagonal, 0 for frames
+//   with nothing in common (Foote 1999: the structure of a piece as a picture, repeats as stripes off the diagonal)
+inline vptr sig_self_similarity(vlist& a, Interp& i) {
+    if (a[0]->t != Value::LIST || a[0]->l.empty()) i.bad("a matrix (a list of row vectors)");
+    size_t rows = a[0]->l.size(), frames = i.num(a[0]->l[0]).size();
+    std::vector<const varr*> R(rows); for (size_t r = 0; r < rows; r++) { R[r] = &i.num(a[0]->l[r]); if (R[r]->size() != frames) i.bad("rows of different lengths"); }
+    std::vector<double> norm(frames, 0.0);
+    for (size_t f = 0; f < frames; f++) { double s = 0; for (size_t r = 0; r < rows; r++) s += (*R[r])[f] * (*R[r])[f]; norm[f] = std::sqrt(s); }
+    std::vector<varr> S(frames, varr(0.0, frames));
+    for (size_t p = 0; p < frames; p++) for (size_t q = p; q < frames; q++) {
+        double s = 0; for (size_t r = 0; r < rows; r++) s += (*R[r])[p] * (*R[r])[q];
+        double d = norm[p] * norm[q]; double v = d > 0 ? s / d : 0; S[p][q] = v; S[q][p] = v;
+    }
+    vlist out; for (size_t p = 0; p < frames; p++) out.push_back(v_arr(std::move(S[p])));
+    return v_list(std::move(out));
+}
+// (foote-novelty S width) => a vector, one value per frame: the self-similarity matrix correlated along its
+//   diagonal with a checkerboard kernel of width x width (Gaussian-tapered; width even, ~16-64 frames): high
+//   where what comes before is unlike what comes after, the boundaries of the sections (Foote 2000)
+inline vptr sig_foote_novelty(vlist& a, Interp& i) {
+    if (a[0]->t != Value::LIST || a[0]->l.empty()) i.bad("a matrix (a list of row vectors)");
+    size_t frames = a[0]->l.size(); int width = (int)i.scalar(a[1]); if (width < 2) i.bad("width must be >= 2"); if (width % 2) width++;
+    std::vector<const varr*> S(frames); for (size_t r = 0; r < frames; r++) { S[r] = &i.num(a[0]->l[r]); if (S[r]->size() != frames) i.bad("not square"); }
+    int h = width / 2; std::vector<double> g(width); double sigma = h / 2.0;
+    for (int k = 0; k < width; k++) { double d = k - h + 0.5; g[k] = std::exp(-0.5 * d * d / (sigma * sigma)); }
+    varr nov(0.0, frames);
+    for (size_t f = 0; f < frames; f++) {
+        double s = 0;
+        for (int u = -h; u < h; u++) for (int v = -h; v < h; v++) {
+            long p = (long)f + u, q = (long)f + v; if (p < 0 || q < 0 || p >= (long)frames || q >= (long)frames) continue;
+            double sign = ((u < 0) == (v < 0)) ? 1.0 : -1.0;
+            s += sign * g[u + h] * g[v + h] * (*S[p])[q];
+        }
+        nov[f] = std::max(0.0, s);
+    }
+    return v_arr(std::move(nov));
+}
+// (tempogram flux fps window) => a matrix bpm x frames: at every frame the autocorrelation of the onset strength
+//   (a vector, fps values a second, its local mean taken off) over a Hann window of window frames around it, read at
+//   the lags of the tempi 30..300 bpm (one row per bpm; a lag between two frames interpolated); every column scaled
+//   to a maximum of 1
+inline vptr sig_tempogram(vlist& a, Interp& i) {
+    const varr& o = i.num(a[0]); double fps = i.scalar(a[1]); int win = (int)i.index(a[2]);
+    if (win < 8) i.bad("window must be >= 8"); if (win % 2) win++;
+    size_t frames = o.size(); int h = win / 2;
+    std::vector<double> w(win); for (int k = 0; k < win; k++) w[k] = 0.5 - 0.5 * std::cos(2 * 3.14159265358979323846 * k / win);
+    std::vector<varr> rows(271, varr(0.0, frames));
+    std::vector<double> seg(win), ac(h);
+    for (size_t f = 0; f < frames; f++) {
+        double m = 0; int cnt = 0; for (int k = 0; k < win; k++) { long idx = (long)f - h + k; if (idx >= 0 && idx < (long)frames) { m += o[idx]; cnt++; } } m = cnt ? m / cnt : 0;
+        for (int k = 0; k < win; k++) { long idx = (long)f - h + k; seg[k] = (idx >= 0 && idx < (long)frames) ? (o[idx] - m) * w[k] : 0; }   // centred: the strength's mean is not a tempo
+        for (int lag = 0; lag < h; lag++) { double s = 0; for (int k = 0; k + lag < win; k++) s += seg[k] * seg[k + lag]; ac[lag] = std::max(0.0, s); }
+        double mx = 0;
+        for (int bpm = 30; bpm <= 300; bpm++) {
+            double lag = fps * 60.0 / bpm; int l0 = (int)lag; double t = lag - l0; double v = 0;
+            if (l0 + 1 < h) v = ac[l0] * (1 - t) + ac[l0 + 1] * t; else if (l0 < h) v = ac[l0];
+            rows[bpm - 30][f] = v; mx = std::max(mx, v);
+        }
+        if (mx > 0) for (int b = 0; b < 271; b++) rows[b][f] /= mx;
+    }
+    vlist out; for (int b = 0; b < 271; b++) out.push_back(v_arr(std::move(rows[b])));
+    return v_list(std::move(out));
+}
+// (beat-track flux fps bpm tightness) => the frames of the beats (a vector): dynamic programming over the onset
+//   strength (fps values a second) for the sequence of beats that is strong and keeps near the period of bpm
+//   (tightness, ~100: how much a deviation from the period costs, on a log scale; Ellis 2007)
+inline vptr sig_beat_track(vlist& a, Interp& i) {
+    const varr& o = i.num(a[0]); double fps = i.scalar(a[1]), bpm = i.scalar(a[2]), tight = i.scalar(a[3]);
+    size_t n = o.size(); if (n < 2 || bpm <= 0) return v_arr(varr(0.0, 0));
+    double period = fps * 60.0 / bpm; int lo = std::max(1, (int)std::lround(period / 2)), hi = (int)std::lround(period * 2);
+    std::vector<double> score(n, 0.0); std::vector<long> from(n, -1);
+    double mx = 0; for (size_t k = 0; k < n; k++) mx = std::max(mx, o[k]); double scale = mx > 0 ? 1.0 / mx : 1.0;
+    for (size_t t = 0; t < n; t++) {
+        double best = 0; long arg = -1;
+        for (int lag = lo; lag <= hi && lag <= (long)t; lag++) {
+            double d = std::log((double)lag / period); double c = score[t - lag] - tight * d * d;
+            if (c > best || arg < 0) { best = c; arg = (long)t - lag; }
+        }
+        score[t] = o[t] * scale + (arg >= 0 ? best : 0); from[t] = arg;
+    }
+    // the last beat: the best score in the final period, then back along the links
+    size_t last = n - 1; double bs = -1e300; for (size_t t = n > (size_t)hi ? n - hi : 0; t < n; t++) if (score[t] > bs) { bs = score[t]; last = t; }
+    std::vector<double> beats; for (long t = (long)last; t >= 0; t = from[t]) { beats.push_back((double)t); if (from[t] < 0) break; }
+    std::reverse(beats.begin(), beats.end());
+    varr out(0.0, beats.size()); for (size_t k = 0; k < beats.size(); k++) out[k] = beats[k];
+    return v_arr(std::move(out));
+}
+
+
+// (mel-spectrogram x sr n hop nmel) => an nmel x frames matrix: the log energy (dB, 0 for silence) of the magnitude
+//   spectrogram (Hann n, hop, a frame every hop samples) through nmel triangular filters evenly spaced on the mel
+//   scale from 0 to sr/2: a spectrogram at the ear's resolution, the timbre of every frame
+inline std::vector<std::vector<double>> mel_filters(double sr, size_t n, int nmel) {
+    auto mel = [](double f) { return 2595.0 * std::log10(1 + f / 700.0); };
+    auto hz = [](double m) { return 700.0 * (std::pow(10.0, m / 2595.0) - 1); };
+    size_t bins = n / 2 + 1; double lo = 0, hi = mel(sr / 2);
+    std::vector<double> edges(nmel + 2); for (int k = 0; k < nmel + 2; k++) edges[k] = hz(lo + (hi - lo) * k / (nmel + 1));
+    std::vector<std::vector<double>> F(nmel, std::vector<double>(bins, 0.0));
+    for (int m = 0; m < nmel; m++) for (size_t b = 0; b < bins; b++) {
+        double f = b * sr / n, l = edges[m], c = edges[m + 1], r = edges[m + 2];
+        if (f > l && f < c) F[m][b] = (f - l) / (c - l); else if (f >= c && f < r) F[m][b] = (r - f) / (r - c);
+    }
+    return F;
+}
+inline std::vector<varr> log_mel(const varr& x, double sr, size_t n, size_t hop, int nmel) {
+    auto mag = mag_spectrogram(x, n, hop); size_t frames = mag.size(), bins = n / 2 + 1;
+    auto F = mel_filters(sr, n, nmel);
+    std::vector<varr> rows(nmel, varr(0.0, frames));
+    for (size_t f = 0; f < frames; f++) for (int m = 0; m < nmel; m++) {
+        double e = 0; for (size_t b = 0; b < bins; b++) e += F[m][b] * mag[f][b] * mag[f][b];
+        rows[m][f] = 10 * std::log10(1 + e);
+    }
+    return rows;
+}
+inline vptr sig_mel_spectrogram(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); double sr = i.scalar(a[1]); size_t n = (size_t)i.index(a[2]), hop = (size_t)i.index(a[3]); int nmel = (int)i.index(a[4]);
+    if (n < 16 || (n & (n - 1))) i.bad("n must be a power of 2 >= 16"); if (hop < 1 || hop > n) i.bad("hop must be in 1..n"); if (nmel < 2) i.bad("nmel must be >= 2");
+    auto rows = log_mel(x, sr, n, hop, nmel);
+    vlist out; for (auto& r : rows) out.push_back(v_arr(std::move(r)));
+    return v_list(std::move(out));
+}
+// (mfcc-gram x sr n hop nmel ncoeff) => an ncoeff x frames matrix: the mel-frequency cepstral coefficients of every
+//   frame (the DCT-II of the log mel spectrogram, nmel filters, the first ncoeff coefficients: a smooth description of
+//   the spectral envelope, the timbre; coefficient 0 is the overall level)
+inline vptr sig_mfcc_gram(vlist& a, Interp& i) {
+    const varr& x = i.num(a[0]); double sr = i.scalar(a[1]); size_t n = (size_t)i.index(a[2]), hop = (size_t)i.index(a[3]); int nmel = (int)i.index(a[4]), nc = (int)i.index(a[5]);
+    if (n < 16 || (n & (n - 1))) i.bad("n must be a power of 2 >= 16"); if (hop < 1 || hop > n) i.bad("hop must be in 1..n");
+    if (nmel < 2 || nc < 1 || nc > nmel) i.bad("need 2 <= ncoeff <= nmel");
+    auto mel = log_mel(x, sr, n, hop, nmel); size_t frames = mel[0].size();
+    std::vector<varr> rows(nc, varr(0.0, frames));
+    for (size_t f = 0; f < frames; f++) for (int c = 0; c < nc; c++) {
+        double s = 0; for (int m = 0; m < nmel; m++) s += mel[m][f] * std::cos(3.14159265358979323846 * c * (m + 0.5) / nmel);
+        rows[c][f] = s * std::sqrt(2.0 / nmel) * (c == 0 ? std::sqrt(0.5) : 1.0);
+    }
+    vlist out; for (auto& r : rows) out.push_back(v_arr(std::move(r)));
+    return v_list(std::move(out));
+}
+
 inline void add_signals(Interp& i) {
     i.def("fft", sig_fft, 1, 1); i.def("ifft", sig_ifft, 1, 1);
     i.def("osc", sig_osc, 3, 3); i.def("iir", sig_iir, 3, 3); i.def("delay", sig_delay, 2, 2);
@@ -658,6 +832,9 @@ inline void add_signals(Interp& i) {
     i.def("add-at!", sig_add_at_inplace, 3, 3); i.def("comb", sig_comb, 3, 3); i.def("allpass", sig_allpass, 3, 3);
     i.def("pvoc", sig_pvoc, 2, 2);
     i.def("adsr", sig_adsr, 6, 6); i.def("lag", sig_lag, 3, 3); i.def("hpss", sig_hpss, 4, 4);
+    i.def("chromagram", sig_chromagram, 4, 4); i.def("self-similarity", sig_self_similarity, 1, 1); i.def("foote-novelty", sig_foote_novelty, 2, 2);
+    i.def("tempogram", sig_tempogram, 3, 3); i.def("beat-track", sig_beat_track, 4, 4);
+    i.def("mel-spectrogram", sig_mel_spectrogram, 5, 5); i.def("mfcc-gram", sig_mfcc_gram, 6, 6);
     i.def("conv-fast", sig_conv_fast, 2, 2); i.def("ambi-gains", sig_ambi_gains, 3, 3); i.def("ambi-rotate", sig_ambi_rotate, 2, 2); i.def("hrir", sig_hrir, 3, 3); i.def("hrir-model", sig_hrir_model, 3, 3);
     i.def("hrtf-load", sig_hrtf_load, 1, 1); i.def("hrtf-unload", sig_hrtf_unload, 0, 0); i.def("hrtf-loaded", sig_hrtf_loaded, 0, 0);
 }

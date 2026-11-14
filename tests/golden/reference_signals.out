@@ -127,6 +127,14 @@ bpf 0 ((4 1) (4 0)): (0 0.25 0.5 0.75 1 0.75 0.5 0.25) (an attack and a decay; e
 envelope-follow  : (1 1 0)
 envelope-from-values: (0 0.5 1 0.5)
 
+--- music information retrieval ---
+chromagram      : 12 pitch classes x 65 frames; the profile (0.11 0.83 0.11 0.02 1 0.02 0.01 0.01 0.03 0.98 0.02 0.01) (C first)
+key-estimate    : A major (Krumhansl-Kessler profiles; key-scores ranks all 24)
+tempo-estimate  : 120 bpm from a click every half second (the autocorrelation of the onset strength, a prior on the tapped tempo)
+beats           : 120 bpm, 16 beats, the first at 0.023 s, every 0.498 s (beat-track: Ellis's dynamic programming)
+tempogram       : 271 rows (bpm 30-300) x 686 frames; mel-spectrogram, mfcc-gram: the timbre per frame
+self-similarity : 259 x 259 (Foote); foote-novelty peaks at (3) s: where the texture changes
+
 ================================================================
   end of signals reference
 ================================================================

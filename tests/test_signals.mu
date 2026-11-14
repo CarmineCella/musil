@@ -383,4 +383,71 @@ check (contains? (error-of (function () (bpf 0 (list (list 0 1))))) ">= 1") "bpf
 check (equal? (envelope-follow (vec 1 1 -1 -1 0 0) 2) (vec 1 1 0)) "envelope-follow"
 check (equal? (envelope-from-values (vec 0 1 0) 2) (vec 0 0.5 1 0.5)) "envelope-from-values"
 
+# --- music information retrieval: chroma, key, tempo, beats, structure ---
+var msr 22050
+var amaj (+ (sine msr 220 4) (sine msr 277.18 4) (sine msr 329.63 4))          # A major: A3 C#4 E4
+var Cg (chromagram amaj msr 4096 1024)
+check (== (length Cg) 12) "chromagram: twelve rows"
+check (== (length (head Cg)) (+ 1 (floor (/ (length amaj) 1024)))) "chromagram: a frame every hop, the first at 0"
+var prof (chroma-mean Cg)
+check (all? (list 9 1 4) (function (k) (> (getidx prof k) 0.8))) "chromagram: A, C# and E the strong pitch classes of an A major chord"
+check (all? (list 0 2 3 5 6 7 8 10 11) (function (k) (< (getidx prof k) 0.2))) "chromagram: the others weak"
+check (near? (max prof) 1 1e-9) "chromagram: frames scaled to a maximum of 1"
+check (> (getidx prof 1) (getidx prof 0)) "chromagram: C# above C"
+check (equal? (take (key-estimate prof) 2) (list "A" 'major)) "key-estimate: A major"
+check (== (length (key-scores prof)) 24) "key-scores: the 24 keys"
+check (>= (last (head (key-scores prof))) (last (getidx (key-scores prof) 1))) "key-scores: best first"
+var amin (+ (sine msr 220 4) (sine msr 261.63 4) (sine msr 329.63 4))          # A minor: A3 C4 E4
+check (equal? (take (key-estimate (chroma-mean (chromagram amin msr 4096 1024))) 2) (list "A" 'minor)) "key-estimate: A minor"
+check (equal? (key-name (list "D" 'minor 0.5)) "D minor") "key-name"
+check (equal? (rotate-vec (vec 1 2 3) 1) (vec 3 1 2)) "rotate-vec"
+check (near? (correlation (vec 1 2 3) (vec 2 4 6)) 1 1e-9) "correlation: 1 for a scaled copy"
+check (== (correlation (vec 1 1 1) (vec 1 2 3)) 0) "correlation: 0 for a constant"
+check (== (length (chroma-mean Cg)) 12) "chroma-mean"
+# a click train at 120 bpm: tempo, beats
+var mfps (/ msr 256)
+var train (clicks (* 0.5 (range 20)) msr 10)                                     # a click every half second
+check (== (length train) (* 10 msr)) "clicks: the length asked for"
+check (> (max train) 0.5) "clicks: audible"
+var tflux (onset-strength train 1024 256)
+check (near? (tempo-estimate tflux mfps) 120 1) "tempo-estimate: 120 bpm from a click train"
+check (near? (tempo-estimate-with tflux mfps 60 0.3) 60 1) "tempo-estimate-with: a prior on the slow side takes the half (a click train is periodic there too)"
+var bt (beat-track tflux mfps 120 100)
+check (> (length bt) 15) "beat-track: the beats found"
+var bts (/ (+ (* bt 256) 512) msr)                                               # a frame's time: the middle of its window
+check (< (max (abs (- bts (* 0.5 (round (* 2 bts)))))) 0.03) "beat-track: on the clicks (within 30 ms)"
+check (near? (mean (diff bts)) 0.5 0.01) "beat-track: the period kept"
+var bb (beats train msr 1024 256)
+check (near? (head bb) 120 1) "beats: the bpm"
+check (near? (mean (diff (last bb))) 0.5 0.01) "beats: the period"
+check (< (max (abs (- (last bb) (* 0.5 (round (* 2 (last bb))))))) 0.03) "beats: on the clicks"
+var tg (tempogram tflux mfps 128)
+check (== (length tg) 271) "tempogram: a row per bpm from 30 to 300"
+check (== (length (head tg)) (length tflux)) "tempogram: a column per frame"
+var mid (floor (/ (length tflux) 2))
+check (near? (getidx (getidx tg 90) mid) 1 1e-9) "tempogram: 120 bpm the maximum in the middle of the train"
+check (< (getidx (getidx tg 50) mid) 0.7) "tempogram: 80 bpm weaker"
+# structure: two different textures
+var two (mix (list (list 0 (+ (sine msr 220 4) (sine msr 330 4))) (list (* 4 msr) (* 0.5 (noise (* 4 msr))))))
+var mf (mfcc-gram two msr 2048 512 40 13)
+check (== (length mf) 13) "mfcc-gram: ncoeff rows"
+check (== (length (head mf)) (+ 1 (floor (/ (length two) 512)))) "mfcc-gram: a column per frame"
+var ms (mel-spectrogram two msr 2048 512 32)
+check (== (length ms) 32) "mel-spectrogram: nmel rows"
+check (> (getidx (getidx ms 2) 10) (getidx (getidx ms 30) 10)) "mel-spectrogram: a 220 Hz chord is low, not high"
+var Sm (self-similarity (drop mf 1))
+check (== (length Sm) (length (head mf))) "self-similarity: frames x frames"
+check (near? (getidx (head Sm) 0) 1 1e-9) "self-similarity: 1 on the diagonal"
+check (near? (getidx (getidx Sm 5) 10) (getidx (getidx Sm 10) 5) 1e-12) "self-similarity: symmetric"
+check (> (getidx (getidx Sm 10) 20) (getidx (getidx Sm 10) 300)) "self-similarity: a frame nearer its own texture than the other"
+var nv (foote-novelty Sm 32)
+check (== (length nv) (length Sm)) "foote-novelty: a value per frame"
+var half (floor (/ (length Sm) 2))
+check (near? (argmax nv) half 8) "foote-novelty: the peak at the change of texture"
+var bds (novelty-peaks nv (/ msr 512) 2 31)
+check (and (== (length bds) 1) (near? (head bds) 4 0.3)) "novelty-peaks: the one boundary, at 4 s"
+var bs (beat-sync (list (vec 1 2 3 4 5 6) (vec 0 0 0 1 1 1)) (vec 0 0.5) 4)    # fps 4: beats at frames 0 and 2
+check (equal? bs (list (vec 1.5 4.5) (vec 0 0.75))) "beat-sync: the columns averaged between beats"
+check (equal? (mat-log1p (list (vec 0 (- (exp 1) 1))) 1) (list (vec 0 1))) "mat-log1p"
+
 report "test_signals"

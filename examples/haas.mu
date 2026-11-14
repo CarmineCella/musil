@@ -13,7 +13,8 @@
 #                    notes after the draw), the beats slow and fast: a chord that shimmers instead of standing still
 #   the return       the cascades come back and slow down until each run is a few long notes and the waterfall
 #                    freezes; under it the last overtone chord, a fifth lower, fades out
-# One orchestra for the piece ('continue), the doublings seated; the score validated at the end.
+# One orchestra for the piece ('continue), the doublings seated; the score validated at the end, and written as
+# MusicXML (score-musicxml: 32nds at most, tuplets allowed; the roll's cents to the nearest quarter tone).
 # Meant for a full database: with the bundled MicroSOL (Ob, Hn, Vn, Vc, C4-G4) the bands are clipped to a fifth.
 # Usage: musil haas.mu [timescale] [seed]     (timescale 0.25: a preview; 1: five and a half minutes)
 load "music.mu"
@@ -123,6 +124,13 @@ lay 270 (section "last light" 270 60 orch (record (list
 
 score-print s
 validation-print (score-validate s orch)                          # every note has a player of its own, at a recorded pitch
+
+# --- the parts: MusicXML, to Dorico -----------------------------------------------------------------------------------
+score-tempo! s 60                                                 # a quarter a second, 4/4: the bars are the clock
+score-meter! s 4 4
+notation-report (score-musicxml s "/tmp/musil_haas.musicxml" (record (list 'divisions (list 1 2 3 4 5 6 8))))   # 32nds at most, triplets, quintuplets and sextuplets; the just-intonation cents become quarter tones
+print "wrote /tmp/musil_haas.musicxml (a part per player; a note's cents written to the nearest quarter tone, its technique as the database names it)"
+
 render s "/tmp/musil_haas.wav" "stereo"
 print "wrote /tmp/musil_haas.wav (in the hall);" (fixed (score-duration s) 0) "s"
 display s

@@ -207,6 +207,29 @@ cmake --build build --target uninstall
    'connection 'path; morph_orchestration over the whole phrase at 'density-scale 2. bootstrap.mu named a
    builtin that never existed here (`cons`: `append`/`push` are the list constructors) and was skipped by the
    tests; fixed and made a test (its REPL is off under MUSIL_NOSHOW).
+   live_emptyset.mu (Sept 30): a live example in Emptyset's style whose instruments are defined in the file
+   (slab, crack, iron, drone, hiss, howl), with `hits`, `euclid-hits` and `blackout` as pattern helpers.
+   Agreed order to 1.0: score export (notation model, quantizer, MusicXML, MIDI out), MIDI in and the
+   Orchidea text check, Maple, the Nebula granulator in signals; research (TSU, NMF) after.
+   Notation (Sept 30): `score-meter!`, `score-notate` (per-part, per-beat choice of the division among
+   'divisions by least weighted squared displacement plus tolerance²·cost; ticks = lcm of the divisions, 16 at
+   least; voices with chords; split at bars, binary values by alignment, rests by the beat/half/whole bar, tuplet
+   pieces of 1, 2 or 4 units under n:m), `score-musicxml` (MusicXML 4.0: quarter tones as alter/accidental,
+   dynamics and the SOL tech tag as words where they change, one-line staves for non-notes, chords, ties,
+   tuplet brackets, voices with backup; validated with music21 and rendered with verovio), `notation-report`,
+   `score-quantize!`. Parts per player ('parts 'players, the default: notes carrying 'player grouped, numbered,
+   doublings named "Fl|Picc" with the instrument written where it changes; a player's overlapping notes cut, two
+   on one tick merged or dropped and reported); haas.mu exports its parts (32nds at most, tuplets).
+   Known limits: compound meters take the eighth as the beat (no dotted-quarter beat);
+   one meter and tempo per score; no nested tuplets; no key signature (fifths 0, sharps).
+   Next: MIDI out from the same notation record; MIDI in (midi-read exists) to a score; the Orchidea text check.
+   MIR (Oct 5, for a class): in signals.h `chromagram`, `self-similarity`, `foote-novelty`, `tempogram`,
+   `beat-track` (Ellis DP), `mel-spectrogram`, `mfcc-gram` (all on a shared centred Hann magnitude spectrogram);
+   in signals.mu `key-scores`/`key-estimate` (Krumhansl-Kessler), `tempo-estimate` (autocorrelation under a
+   log-normal prior centred on 100 bpm, 0.6 octaves; `tempo-estimate-with`), `beats`, `clicks`, `beat-sync`,
+   `novelty-peaks`. examples/classic_mir.mu on Tom's Diner (data/toms_diner.wav, mono): 99.5 bpm, A minor,
+   beat-synchronous SSMs on chroma and MFCC, the sections. Note: onset-strength's frames start at the frame's
+   first sample (not centred), so beat times add n/2.
    Next: sound types and Maple (a temporal pursuit reusing mp's loop); MIDI and MusicXML export after them. The decibel functions are `amp->db` / `db->amp` (the name `db` is free
    for databases). A `player` bundle (instrument + what it can play)
    replacing the repeated db/instr/dyn/tech arguments is planned with Orchidea.
