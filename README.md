@@ -1,3 +1,8 @@
+> **Musil is now the language of [Moritz](https://github.com/CarmineCella/Moritz).**
+> Its core and libraries continue there, with the patching environment, as the Moritz language
+> (`.moritz` files, `moritz --run`, `moritz --repl`). This repository is archived: 0.9.1 is the last
+> release of Musil as a separate program, and it stays available below.
+
 ![Musil logo](docs/musil_logo.png)
 
 **Musil** is a tiny and expressive language designed to be easy to use, easy to expand and easy to embed in host applications.
