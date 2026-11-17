@@ -16,11 +16,30 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
+#else
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #endif
 
 namespace musil {
 
 // --- processes and environment ---
+// (platform) => "macos", "linux" or "windows"
+inline vptr sys_platform(vlist&, Interp&) {
+#if defined(_WIN32)
+    return v_str("windows");
+#elif defined(__APPLE__)
+    return v_str("macos");
+#else
+    return v_str("linux");
+#endif
+}
 // (exec "command") => the command's standard output as a string
 inline vptr sys_exec(vlist& a, Interp& i) {
     i.blocking("exec");
@@ -139,40 +158,55 @@ inline vptr sys_write_wav(vlist& a, Interp& i) {
     return v_nil();
 }
 
-// --- UDP and OSC (POSIX) ---
-#ifndef _WIN32
+// --- UDP and OSC ---
+#ifdef _WIN32
+using socket_t = SOCKET;
+inline bool udp_ready() { static bool ok = [] { WSADATA d; return WSAStartup(MAKEWORD(2, 2), &d) == 0; }(); return ok; }
+inline void udp_close(socket_t s) { closesocket(s); }
+inline bool udp_bad(socket_t s) { return s == INVALID_SOCKET; }
+inline void udp_timeout(socket_t s, double seconds) { DWORD ms = (DWORD)(seconds * 1000); setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char*)&ms, sizeof(ms)); }
+using addr_len_t = int;
+#else
+using socket_t = int;
+inline bool udp_ready() { return true; }
+inline void udp_close(socket_t s) { ::close(s); }
+inline bool udp_bad(socket_t s) { return s < 0; }
+inline void udp_timeout(socket_t s, double timeout) {   // tv_sec/tv_usec have platform-specific types: assign, don't brace-initialise
+    timeval tv{};
+    tv.tv_sec  = static_cast<decltype(tv.tv_sec)>(timeout);
+    tv.tv_usec = static_cast<decltype(tv.tv_usec)>((timeout - static_cast<double>(tv.tv_sec)) * 1e6);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+}
+using addr_len_t = socklen_t;
+#endif
 // (udp-send host port payload [osc?]) => 1 on success, 0 on failure. With osc?=1 the payload is
 // sent as a minimal OSC message (address only, padded, empty type tag).
 inline vptr sys_udp_send(vlist& a, Interp& i) {
     std::string host = i.str(a[0]); int port = (int)i.scalar(a[1]);
     std::string payload = str_of(a[2]); bool osc = a.size() > 3 && truthy(a[3]);
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (sock < 0) return v_bool(false);
+    if (!udp_ready()) return v_bool(false);
+    socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (udp_bad(sock)) return v_bool(false);
     sockaddr_in srv{}; srv.sin_family = AF_INET; srv.sin_port = htons((uint16_t)port); srv.sin_addr.s_addr = inet_addr(host.c_str());
     std::vector<char> buf(payload.begin(), payload.end());
     if (osc) { size_t n = payload.size(), pad = ((n + 4) & ~size_t(3)) - n; buf.resize(n + pad + 4, '\0'); buf[n + pad] = ','; }
-    long r = sendto(sock, buf.data(), buf.size(), 0, (sockaddr*)&srv, sizeof(srv));
-    ::close(sock); return v_bool(r >= 0);
+    long r = sendto(sock, buf.data(), (int)buf.size(), 0, (sockaddr*)&srv, sizeof(srv));
+    udp_close(sock); return v_bool(r >= 0);
 }
 // (udp-receive host port [timeout-seconds]) => the next datagram as a string, or nil on timeout/failure
 inline vptr sys_udp_receive(vlist& a, Interp& i) {
     std::string host = i.str(a[0]); int port = (int)i.scalar(a[1]);
     double timeout = a.size() > 2 ? i.scalar(a[2]) : -1;
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (sock < 0) return v_nil();
-    if (timeout >= 0) {   // tv_sec/tv_usec have platform-specific types: assign, don't brace-initialise
-        timeval tv{};
-        tv.tv_sec  = static_cast<decltype(tv.tv_sec)>(timeout);
-        tv.tv_usec = static_cast<decltype(tv.tv_usec)>((timeout - static_cast<double>(tv.tv_sec)) * 1e6);
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    }
+    if (!udp_ready()) return v_nil();
+    socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); if (udp_bad(sock)) return v_nil();
+    if (timeout >= 0) udp_timeout(sock, timeout);
     sockaddr_in srv{}; srv.sin_family = AF_INET; srv.sin_port = htons((uint16_t)port); srv.sin_addr.s_addr = inet_addr(host.c_str());
-    if (::bind(sock, (sockaddr*)&srv, sizeof(srv)) < 0) { ::close(sock); return v_nil(); }
-    char msg[65536]; sockaddr_in cli{}; socklen_t cl = sizeof(cli);
+    if (::bind(sock, (sockaddr*)&srv, sizeof(srv)) < 0) { udp_close(sock); return v_nil(); }
+    static thread_local char msg[65536]; sockaddr_in cli{}; addr_len_t cl = sizeof(cli);
     long n = recvfrom(sock, msg, sizeof(msg), 0, (sockaddr*)&cli, &cl);
-    ::close(sock);
+    udp_close(sock);
     if (n < 0) return v_nil();
     return v_str(std::string(msg, (size_t)n));
 }
-#endif
 
 
 // --- the evaluation port: a local TCP socket that evaluates the text it receives -------------------
@@ -255,9 +289,7 @@ inline void add_system(Interp& i) {
     i.def("cwd", sys_cwd, 0, 0); i.def("ls", sys_ls, 0, 1); i.def("mkdir", sys_mkdir, 1, 1); i.def("remove", sys_remove, 1, 1); i.def("stat", sys_stat, 1, 1);
     i.def("read-csv", sys_read_csv, 1, 1);
     i.def("read-wav", sys_read_wav, 1, 1); i.def("write-wav", sys_write_wav, 3, 4);
-#ifndef _WIN32
-    i.def("udp-send", sys_udp_send, 3, 4); i.def("udp-receive", sys_udp_receive, 2, 3);
-#endif
+    i.def("platform", sys_platform, 0, 0); i.def("udp-send", sys_udp_send, 3, 4); i.def("udp-receive", sys_udp_receive, 2, 3);
 }
 
 } // namespace musil

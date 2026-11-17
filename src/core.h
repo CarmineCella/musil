@@ -40,7 +40,11 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #endif
-#ifndef _WIN32
+#ifdef _WIN32
+// the stack of the calling thread (kernel32, Windows 8 and later), declared here so that core.h does
+// not bring in <windows.h> and its macros
+extern "C" __declspec(dllimport) void __stdcall GetCurrentThreadStackLimits(unsigned long long* low, unsigned long long* high);
+#else
 #include <sys/resource.h>
 #include <sys/select.h>
 #include <unistd.h>
@@ -1038,7 +1042,11 @@ inline vptr fn_vars(vlist&, Interp& i) { std::vector<std::string> names; for (au
 inline Interp::Interp() {
     rng.seed((uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count());
     size_t limit = 1u << 20;   // 1 MB: the Windows default
-#ifndef _WIN32
+#ifdef _WIN32
+    unsigned long long lo = 0, hi = 0; GetCurrentThreadStackLimits(&lo, &hi);
+    if (hi > lo) limit = (size_t)(hi - lo);
+    if (limit > (64u << 20)) limit = 64u << 20;
+#else
     struct rlimit rl;
     if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY) limit = (size_t)rl.rlim_cur;
     else limit = 8u << 20;

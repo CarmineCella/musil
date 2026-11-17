@@ -96,8 +96,8 @@ elseif(UNIX)
 elseif(WIN32)
   target_link_libraries(musil_base INTERFACE ws2_32 ole32)
 endif()
-if(MINGW)   # one .exe that runs without the MinGW runtime DLLs
-  target_link_options(musil_base INTERFACE -static -static-libgcc -static-libstdc++)
+if(MINGW)   # one .exe that runs without the MinGW runtime DLLs, with an 8 MB stack as on macOS and Linux
+  target_link_options(musil_base INTERFACE -static -static-libgcc -static-libstdc++ -Wl,--stack,8388608)
 endif()
 if(MUSIL_FLTK)
   target_compile_definitions(musil PRIVATE MUSIL_HAS_FLTK)
@@ -207,6 +207,9 @@ if(MUSIL_TESTS)
   if(MUSIL_FLTK)
     list(APPEND REFS reference_plot)
   endif()
+  if(WIN32)   # OSC input (live.h) is not available on Windows yet
+    list(REMOVE_ITEM REFS reference_live)
+  endif()
   foreach(ref ${REFS})
     add_test(NAME golden-${ref}
              COMMAND ${CMAKE_COMMAND}
@@ -267,6 +270,10 @@ if(MUSIL_TESTS)
   set(NEEDS_notation "${D}/archeos-bell.wav;${D}/cage.wav;${D}/microsol/microsol.spectrum.db")
   set(NEEDS_dbgen "${D}/microsol/microsol.spectrum.db")
   set(NEEDS_make_audio_demos "${D}/skip-in-tests") # slow (renders every demo sound); writes to /tmp
+  if(WIN32)   # OSC input (live.h) is not available on Windows yet
+    set(NEEDS_live_controls "${D}/no-osc-input")
+    set(NEEDS_reference_live "${D}/no-osc-input")
+  endif()
   if(NOT MUSIL_FLTK)
     set(NEEDS_plots "${D}/no-fltk")
     set(NEEDS_iris_plot "${D}/no-fltk")

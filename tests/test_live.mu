@@ -306,35 +306,39 @@ unbind-control 'cutoff
 clear-controls
 check (equal? (controls-list) (list)) "clear-controls"
 
-; --- OSC ---
-control 'level 0 1 0.5
-osc-listen 47131
-osc-map "/level" 'level
-check (== (osc-send "127.0.0.1" 47131 "/level" 0.25) 1) "osc-send"
-sleep 0.1
-check (near? (control-value 'level) 0.25 1e-6) "osc-map: an incoming message sets the control"
-osc-send "127.0.0.1" 47131 "/level" 3
-sleep 0.1
-check (== (control-value 'level) 1) "osc-map: clamped"
-check (contains? (error-of (function () (osc-map "/x" 'nope))) "no control") "osc-map: unknown control"
-var msg (osc-encode "/synth/freq" 440 "hello")
-check (== (mod (length msg) 4) 0) "osc-encode: padded to 4 bytes"
-check (equal? (osc-decode msg) (list "/synth/freq" 440 "hello")) "osc-decode: round trip through the language"
-check (equal? (type (osc-decode "nonsense")) "nil") "osc-decode: not OSC is nil"
-osc-stop
-clear-controls
-free-all
+; OSC input and the evaluation port are not available on Windows yet
+if (not (equal? (platform) "windows")) {
+    ; --- OSC ---
+    control 'level 0 1 0.5
+    osc-listen 47131
+    osc-map "/level" 'level
+    check (== (osc-send "127.0.0.1" 47131 "/level" 0.25) 1) "osc-send"
+    sleep 0.1
+    check (near? (control-value 'level) 0.25 1e-6) "osc-map: an incoming message sets the control"
+    osc-send "127.0.0.1" 47131 "/level" 3
+    sleep 0.1
+    check (== (control-value 'level) 1) "osc-map: clamped"
+    check (contains? (error-of (function () (osc-map "/x" 'nope))) "no control") "osc-map: unknown control"
+    var msg (osc-encode "/synth/freq" 440 "hello")
+    check (== (mod (length msg) 4) 0) "osc-encode: padded to 4 bytes"
+    check (equal? (osc-decode msg) (list "/synth/freq" 440 "hello")) "osc-decode: round trip through the language"
+    check (equal? (type (osc-decode "nonsense")) "nil") "osc-decode: not OSC is nil"
+    osc-stop
+    clear-controls
+    free-all
 
-; --- the evaluation port ---
-serve 47770
-check (== (serving) 47770) "serve, serving"
-; the client runs in the background: the port is served from this thread's idle time (sleep idles)
-exec "(printf 'var from-editor 41\\n(+ from-editor 1)\\n\\004' | nc 127.0.0.1 47770 > /tmp/musil_port_reply.txt 2>/dev/null &)"
-sleep 0.5
-check (equal? (trim (read "/tmp/musil_port_reply.txt")) "42") "the port evaluates what it receives and replies with the value"
-check (== from-editor 41) "...in the global environment"
-serve-stop
-check (== (serving) 0) "serve-stop"
+    ; --- the evaluation port ---
+    serve 47770
+    check (== (serving) 47770) "serve, serving"
+    ; the client runs in the background: the port is served from this thread's idle time (sleep idles)
+    exec "(printf 'var from-editor 41\\n(+ from-editor 1)\\n\\004' | nc 127.0.0.1 47770 > /tmp/musil_port_reply.txt 2>/dev/null &)"
+    sleep 0.5
+    check (equal? (trim (read "/tmp/musil_port_reply.txt")) "42") "the port evaluates what it receives and replies with the value"
+    check (== from-editor 41) "...in the global environment"
+    serve-stop
+    check (== (serving) 0) "serve-stop"
+
+}
 
 ; --- stopping and closing ---
 master-gain 0.5

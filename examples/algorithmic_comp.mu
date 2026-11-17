@@ -8,7 +8,7 @@
 load "music.mu"
 seed (if (> (length args) 0) (num (getidx args 0)) 9)
 ;var db (db-load "data/microsol/microsol.spectrum.db")           # the bundled MicroSOL: Ob, Hn, Vn, Vc, C4-G4
-var db (db-load "../datasets/FullSOL2020.spectrum.db")           ; the full TinySOL, after ./fetch_tinysol.sh (or any *SOL set)
+var db (db-load-first (list "../datasets/FullSOL2020.spectrum.db" "data/microsol/microsol.spectrum.db"))   ; the full TinySOL after ./fetch_tinysol.sh, else the bundled MicroSOL
 var sr 44100
 var s (score "algorithmic" sr)
 score-tempo! s 108                                             ; times below are in beats (add-beats!) at 108
