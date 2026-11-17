@@ -67,7 +67,7 @@ jobs:
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMUSIL_READLINE=OFF && cmake --build build
       - name: Test
         run: |
-          mkdir -p /c/tmp            # the examples write their sounds to /tmp
+          mkdir -p /c/tmp /d/tmp     # /tmp is on the drive of the working directory
           ctest --test-dir build --output-on-failure
       - name: Package
         run: ./deploy_windows.sh
