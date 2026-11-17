@@ -517,31 +517,49 @@ function peak-density (times secs window hop) {
     return (vec (map (vec->list steps) (function (k) { var t (* k hop)
                                                       return (/ (length (filter ts (function (o) (< (abs (- o t)) (/ window 2))))) window) })))
 }
-; (polyphony-estimate spectra)   how many voices seem to sound in each frame: the spectral peaks standing above twice
-;                          the frame's mean (a lower bound, capped at 16); => a vector, one per frame
+; (polyphony-estimate spectra)   how many voices seem to sound in each frame: the spectral peaks above 15% of the
+;                          frame's strongest, about three strong partials a voice (1..16); 0 for a frame below -60 dB
+;                          (spectra of block/2 bins, as frame-spectra gives, a full-scale sine peaking near block/4).
+;                          A rough estimate, not a transcription; smooth it with median-filter; => a vector, one per frame
 function polyphony-estimate (spectra) (vec (map spectra (function (m) {
-    if (== (max m) 0) { return 0 }
+    if (<= (max m) (* 1e-3 (/ (length m) 2))) { return 0 }               ; below -60 dB: silence
     var peaks (filter (vec->list (local-maxima m)) (function (k) (> (getidx m k) (* 0.15 (max m)))))
     return (max 1 (min 16 (round (/ (length peaks) 3))))               ; about three strong partials per voice
 })))
 ; (register-curve spectra sr block)   where the sound sits: for each frame the centroid in MIDI pitch (the powers
 ;                          weighting the pitch of every bin above 30 Hz, so an octave is an octave), the spread around
 ;                          it in octaves, and the lowest strong partial in MIDI pitch (a tone's fundamental, more or
-;                          less: where the register begins); => (list centroids spreads lows)
+;                          less: where the register begins). A frame below -60 dB (its peak under 1/1000 of a
+;                          full-scale sine's, block/4) keeps the values of the frame before (60, 1 and 48 at the
+;                          start), so quiet noise does not make the curves jump; smooth them with median-filter;
+;                          => (list centroids spreads lows)
 function register-curve (spectra sr block) {
     var n (length (head spectra))
     var freqs (* (range n) (/ sr block))
     var keep (> freqs 30)
     var pitches (* keep (+ 69 (* 12 (log2 (/ (max freqs 30) 440)))))
-    var cs (map spectra (function (m) { var w (* (* m m) keep)
-                                        return (if (<= (sum w) 1e-12) 60 (/ (dot w pitches) (sum w))) }))
-    var ss (map (zip spectra cs) (function (p) { var w (* (* (head p) (head p)) keep)
-                                                 return (if (<= (sum w) 1e-12) 1 (/ (sqrt (/ (dot w (* (- pitches (last p)) (- pitches (last p)))) (sum w))) 12)) }))
-    var lows (map spectra (function (m) {
-        if (== (max m) 0) { return 48 }
-        var strong (filter (vec->list (local-maxima m)) (function (k) (and (> (getidx freqs k) 30) (> (getidx m k) (* 0.15 (max m))))))
-        return (if (== (length strong) 0) 48 (getidx pitches (min-of strong)))
-    }))
+    var floor (* 1e-3 (/ block 4))
+    var c 60
+    var s 1
+    var low 48
+    var cs (list)
+    var ss (list)
+    var lows (list)
+    each spectra (function (m) {
+        var mx (max m)
+        if (> mx floor) {
+            var w (* (* m m) keep)
+            if (> (sum w) 1e-12) {
+                set c (/ (dot w pitches) (sum w))
+                set s (/ (sqrt (/ (dot w (* (- pitches c) (- pitches c))) (sum w))) 12)
+            }
+            var strong (filter (vec->list (local-maxima m)) (function (k) (and (> (getidx freqs k) 30) (> (getidx m k) (* 0.15 mx)))))
+            if (> (length strong) 0) { set low (getidx pitches (min-of strong)) }
+        }
+        push cs c
+        push ss s
+        push lows low
+    })
     return (list (vec cs) (vec ss) (vec lows))
 }
 ; (loudness-curve x sr hop)   the level of every hop in dB, roughly as the ear weighs it (the extreme bass and treble
@@ -644,23 +662,21 @@ function princarg-deg (a) (- a (* 360 (round (/ a 360))))
 function ambi-encode (x order az el) (map (vec->list (ambi-gains order az el)) (function (g) (* g x)))
 ; (ambi-add a b)           two B-format signals of the same order summed
 function ambi-add (a b) (map (zip a b) (function (p) (+ (head p) (last p))))
-; (ambi-decode B speakers)   B-format to a list of speakers, each (list az el) or a bare azimuth, by sampling
-;                          the sound field at every speaker direction (the basic decoder), with max-rE weights
-;                          per order for a smoother field off-centre
+; (ambi-decode B speakers)   B-format to a list of speakers, each (list az el) or a bare azimuth, through the
+;                          matrix of ambi-decoder: for speakers all at ear height the exact horizontal decoder of a
+;                          ring (at least 2N+1 speakers, evenly spaced) with 2D max-rE weights, whose energy vector
+;                          reaches 0.71 at order 1 and 0.87 at order 2; with elevations, sampling of the sphere with
+;                          the SN3D correction (2n+1) and 3D max-rE weights
 function ambi-decode (B speakers) {
     var order (- (round (sqrt (length B))) 1)
-    var w (max-re-weights order)
-    var sps (if (equal? (type speakers) "vec") (vec->list speakers) speakers)
-    return (map sps (function (sp) {
-        var az (if (equal? (type sp) "list") (head sp) sp)
-        var el (if (equal? (type sp) "list") (last sp) 0)
-        var g (* (ambi-gains order az el) w)
+    return (map (ambi-decoder order speakers) (function (g) {
         var acc (* 0 (head B))
         each (zip (vec->list g) B) (function (p) (set acc (+ acc (* (head p) (last p)))))
-        return (/ acc (length sps))
+        return acc
     }))
 }
-; (max-re-weights order)   the per-channel max-rE weights of an order (Zotter & Frank): concentrates the energy vector
+; (max-re-weights order)   the per-channel 2D max-rE weights of an order (Zotter & Frank), cos(n pi / (2N + 2)) for
+;                          the channels of order n: they concentrate the energy vector of a ring decoder (ambi-decoder)
 function max-re-weights (order) {
     var out (list)
     for (var n 0) (<= n order) (var n (+ n 1)) {
@@ -680,12 +696,15 @@ function channel (sig k) (if (equal? (type sig) "list") (getidx sig k) sig)
 ; (stereo-add a b) (stereo-scale a g)   stereo signals summed, scaled (written with channel, so they stream)
 function stereo-add (a b) (list (+ (channel a 0) (channel b 0)) (+ (channel a 1) (channel b 1)))
 function stereo-scale (a g) (list (* g (channel a 0)) (* g (channel a 1)))
-; (binaural-decode B sr)   B-format for headphones: decoded to eight virtual speakers around the listener
-;                          and two above, each rendered binaurally with the spherical head, summed;
-;                          => (list left right). One expression, so it streams in a synth too.
-var binaural-speakers (list (list 0 0) (list 45 0) (list 90 0) (list 135 0) (list 180 0) (list -135 0) (list -90 0) (list -45 0) (list 90 45) (list -90 45))
+; (binaural-decode B sr)   B-format for headphones: decoded to 17 virtual speakers spread over the sphere (8 at ear
+;                          height, 4 above, 4 below, 1 overhead, the sphere-sampling decoder of ambi-decoder), each
+;                          rendered with the head responses of its direction (hrir), summed; at order 1 a front
+;                          source has the broadband level of the front head response itself (low frequencies come out
+;                          louder, high ones softer, as with any decoding to virtual speakers); => (list left right). One expression, so it streams in a synth too.
+var binaural-speakers (list (list 0 0) (list 45 0) (list 90 0) (list 135 0) (list 180 0) (list -135 0) (list -90 0) (list -45 0)
+                            (list 45 40) (list 135 40) (list -135 40) (list -45 40) (list 0 -30) (list 90 -30) (list 180 -30) (list -90 -30) (list 0 90))
 function bin-feed (feeds k az el sr) (list (conv (channel feeds k) (head (hrir az el sr))) (conv (channel feeds k) (last (hrir az el sr))))
-function binaural-feeds (f sr) (stereo-scale (stereo-add (stereo-add (stereo-add (stereo-add (bin-feed f 0 0 0 sr) (bin-feed f 1 45 0 sr)) (stereo-add (bin-feed f 2 90 0 sr) (bin-feed f 3 135 0 sr))) (stereo-add (stereo-add (bin-feed f 4 180 0 sr) (bin-feed f 5 -135 0 sr)) (stereo-add (bin-feed f 6 -90 0 sr) (bin-feed f 7 -45 0 sr)))) (stereo-add (bin-feed f 8 90 45 sr) (bin-feed f 9 -90 45 sr))) 1.35)
+function binaural-feeds (f sr) (stereo-scale (stereo-add (stereo-add (stereo-add (stereo-add (stereo-add (bin-feed f 0 0 0 sr) (bin-feed f 1 45 0 sr)) (stereo-add (bin-feed f 2 90 0 sr) (bin-feed f 3 135 0 sr))) (stereo-add (stereo-add (bin-feed f 4 180 0 sr) (bin-feed f 5 -135 0 sr)) (stereo-add (bin-feed f 6 -90 0 sr) (bin-feed f 7 -45 0 sr)))) (stereo-add (stereo-add (bin-feed f 8 45 40 sr) (bin-feed f 9 135 40 sr)) (stereo-add (bin-feed f 10 -135 40 sr) (bin-feed f 11 -45 40 sr)))) (stereo-add (stereo-add (stereo-add (bin-feed f 12 0 -30 sr) (bin-feed f 13 90 -30 sr)) (stereo-add (bin-feed f 14 180 -30 sr) (bin-feed f 15 -90 -30 sr))) (bin-feed f 16 0 90 sr))) (binaural-level sr binaural-speakers))
 function binaural-decode (B sr) (binaural-feeds (ambi-decode B binaural-speakers) sr)
 ; (normalize-peak-stereo s)   a stereo (or any multichannel) signal scaled so its loudest sample is 1
 function normalize-peak-stereo (s) {

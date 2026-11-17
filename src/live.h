@@ -888,16 +888,10 @@ struct synth_compiler {
         else if (h == "ambi-rotate") n = new ambi_rotate_node();
         else if (h == "binaural") n = new binaural_node(&I, consts[0]->num[0]);
         else if (h == "ambi-decode") {
-            // the decoding matrix as ambi-decode in signals.mu computes it: max-rE weighted sampling at the speakers
+            // the decoding matrix of ambi-decode in signals.mu (ambi_decoder in signals.h)
             vptr spk = consts[0]; if (spk->t != Value::LIST && spk->t != Value::NUM) fail("ambi-decode: speakers is a list of (list az el) or azimuths");
-            std::vector<std::pair<double, double>> dirs;
-            if (spk->t == Value::NUM) for (double v : spk->num) dirs.push_back({ v, 0 });
-            else for (auto& e : spk->l) { if (e->t == Value::LIST && e->l.size() >= 2) dirs.push_back({ e->l[0]->num[0], e->l[1]->num[0] }); else dirs.push_back({ e->num[0], 0 }); }
             int bch = out.nodes[sigs[0]]->channels; int order = (int)std::lround(std::sqrt((double)bch)) - 1;
-            std::vector<std::vector<double>> M;
-            for (auto& d : dirs) { auto gg = sh_gains(order, d.first, d.second); std::vector<double> row(gg.size());
-                for (int l = 0; l <= order; l++) { double wl = std::cos(l * 3.14159265358979323846 / (2 * order + 2)); for (int m = -l; m <= l; m++) row[(size_t)(l * l + l + m)] = gg[(size_t)(l * l + l + m)] * wl / dirs.size(); }
-                M.push_back(row); }
+            std::vector<std::vector<double>> M = ambi_decoder(order, speaker_dirs(spk, I));
             n = new matrix_node(M);
         }
         else if (h == "lowpass" || h == "highpass" || h == "bandpass" || h == "notch" || h == "peak-eq" || h == "lowshelf" || h == "highshelf") n = new biquad_node(h, sr);

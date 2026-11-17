@@ -282,6 +282,13 @@ var rcm (register-curve spm sr 2048)
 check (== (length rcm) 3) "register-curve: centroids, spreads, lows"
 check (near? (getidx (last rcm) 5) 57 1) "register-curve: the lowest partial of A3 is A3"
 check (< (getidx (head rcm) 5) (getidx (head rcm) (- (length (head rcm)) 5))) "register-curve: the centroid rises with the octave"
+var quiet (vec (* 0.5 (sine sr 440 0.5)) (* 1e-5 (noise sr)))                    ; a tone, then noise far below -60 dB
+var qsp (frame-spectra quiet 1024 256 512)
+var qrc (register-curve qsp sr 1024)
+var qc (head qrc)
+check (and (== (getidx qc -1) (getidx qc -20)) (near? (getidx qc -1) 69 1.5)) "register-curve: below -60 dB the frames keep the values of the tone before"
+check (== (last (polyphony-estimate qsp)) 0) "polyphony-estimate: 0 below -60 dB"
+check (== (length (median-filter (head qrc) 5)) (length (head qrc))) "register-curve: smoothed with median-filter"
 var lc (loudness-curve m1 sr 512)
 check (< (getidx lc 40) (getidx lc 5)) "loudness-curve: silence is quieter"
 var ctm (coherence-time spm 512 sr 0.75)
@@ -323,6 +330,19 @@ check (contains? (error-of (function () (ambi-rotate (list sx sx sx) 10))) "(ord
 check (equal? (speaker-ring 4) (vec 0 90 180 -90)) "speaker-ring"
 var dec (vec (map (ambi-decode (ambi-encode sx 1 45 0) (speaker-ring 4)) rms))
 check (and (near? (getidx dec 0) (getidx dec 1) 1e-6) (> (getidx dec 0) (* 2 (getidx dec 2)))) "ambi-decode: a source at 45 feeds the front and left speakers equally, the others less"
+; the energy vector of a source at a speaker, (sum g^2 u) / (sum g^2): its theoretical values with max-rE on a ring
+function energy-vector (o ring) {
+    var gs (vec (map (ambi-decoder o ring) (function (row) (dot row (ambi-gains o 0 0)))))
+    var e (* gs gs)
+    var ex (sum (* e (cos (* ring (/ pi 180)))))
+    var ey (sum (* e (sin (* ring (/ pi 180)))))
+    return (/ (sqrt (+ (* ex ex) (* ey ey))) (sum e))
+}
+check (near? (energy-vector 1 (speaker-ring 4)) 0.7071 1e-3) "ambi-decoder: a ring at order 1 has the energy vector of max-rE (0.71)"
+check (near? (energy-vector 2 (speaker-ring 6)) 0.8660 1e-3) "ambi-decoder: order 2 on six speakers, 0.87"
+check (== (getidx (head (ambi-decoder 1 (speaker-ring 4))) 2) 0) "ambi-decoder: a ring does not hear the height channel"
+check (!= (getidx (getidx (ambi-decoder 1 (list (list 0 0) (list 90 40) (list 0 -30))) 1) 2) 0) "ambi-decoder: speakers with elevations sample the sphere"
+check (== (length binaural-speakers) 17) "binaural-decode: seventeen virtual speakers"
 var pn (vec (map (pan-n sx (speaker-ring 8) 100) rms))
 check (and (> (getidx pn 2) (getidx pn 3)) (== (getidx pn 0) 0) (== (getidx pn 5) 0)) "pan-n: between the two nearest speakers only"
 check (near? (vec (map (pan-azimuth sx 90) rms)) (vec (rms sx) 0) 1e-6) "pan-azimuth: 90 is the left"
@@ -350,8 +370,10 @@ check (contains? (error-of (function () (hrtf-load "nope.csv"))) "cannot open") 
 var click (vec (noise 400) (zeros 2000))
 var bl (vec (map (binaural click 90 0 sr) rms))
 check (> (getidx bl 0) (* 2 (getidx bl 1))) "binaural: a left click is much louder in the left ear"
-var bf (vec (map (binaural-decode (ambi-encode sx 1 0 0) sr) rms))
-check (and (near? (getidx bf 0) (getidx bf 1) 1e-6) (near? (getidx bf 0) (rms sx) 0.05)) "binaural-decode: a front source is equal and at its level"
+var bnz (* 0.3 (noise sr))
+var bf (vec (map (binaural-decode (ambi-encode bnz 1 0 0) sr) rms))
+var bd (vec (map (binaural bnz 0 0 sr) rms))
+check (and (near? (getidx bf 0) (getidx bf 1) 1e-6) (near? (/ (getidx bf 0) (getidx bd 0)) 1 0.05)) "binaural-decode: a front source is equal in both ears, at the level of the front head response"
 var br (vec (map (binaural-decode (ambi-encode click 1 -90 0) sr) rms))
 check (> (getidx br 1) (* 1.5 (getidx br 0))) "binaural-decode: a right source is louder at the right ear"
 check (== (length (moving-source sx 1 (vec 0 90 180) (vec 0 0 0) 800)) 4) "moving-source: B-format"
@@ -394,6 +416,12 @@ check (all? (list 9 1 4) (function (k) (> (getidx prof k) 0.8))) "chromagram: A,
 check (all? (list 0 2 3 5 6 7 8 10 11) (function (k) (< (getidx prof k) 0.2))) "chromagram: the others weak"
 check (near? (max prof) 1 1e-9) "chromagram: frames scaled to a maximum of 1"
 check (> (getidx prof 1) (getidx prof 0)) "chromagram: C# above C"
+var ptone (chroma-mean (chromagram (sine msr 440 1) msr 4096 1024))
+check (and (near? (getidx ptone 9) 1 1e-9) (< (max-of (map (filter (vec->list (range 12)) (function (k) (!= k 9))) (function (k) (getidx ptone k)))) 0.05)) "chromagram: a pure tone on its class only (the peaks, not the window's lobe)"
+var harm (mix (map (vec->list (range 1 8)) (function (k) (list 0 (* (/ 0.5 k) (sine msr (* 110 k) 1))))))
+var hprof (chroma-mean (chromagram harm msr 4096 1024))
+check (and (near? (getidx hprof 9) 1 1e-9) (< (getidx hprof 4) 0.1) (< (getidx hprof 1) 0.1)) "chromagram: the 3rd and 5th partials of a tone count little (no fifth, no third)"
+check (== (max (chroma-mean (chromagram (zeros 8192) msr 4096 1024))) 0) "chromagram: silence stays 0"
 check (equal? (take (key-estimate prof) 2) (list "A" 'major)) "key-estimate: A major"
 check (== (length (key-scores prof)) 24) "key-scores: the 24 keys"
 check (>= (last (head (key-scores prof))) (last (getidx (key-scores prof) 1))) "key-scores: best first"
@@ -425,8 +453,13 @@ var tg (tempogram tflux mfps 128)
 check (== (length tg) 271) "tempogram: a row per bpm from 30 to 300"
 check (== (length (head tg)) (length tflux)) "tempogram: a column per frame"
 var mid (floor (/ (length tflux) 2))
-check (near? (getidx (getidx tg 90) mid) 1 1e-9) "tempogram: 120 bpm the maximum in the middle of the train"
-check (< (getidx (getidx tg 50) mid) 0.7) "tempogram: 80 bpm weaker"
+var tcol (vec (map tg (function (r) (getidx r mid))))
+check (near? (argmax tcol) 90 1) "tempogram: 120 bpm the maximum in the middle of the train"
+check (and (> (getidx tcol 90) 0.3) (<= (max tcol) 1.000001)) "tempogram: divided by the energy (lag 0), at most 1"
+check (< (getidx tcol 50) (* 0.7 (getidx tcol 90))) "tempogram: 80 bpm weaker"
+var tg4 (tempogram tflux mfps 128 (/ mfps 4))
+check (== (length (head tg4)) (ceil (/ (length tflux) (round (/ mfps 4))))) "tempogram: a column every step frames"
+check (== (max (vec (map (tempogram (zeros 400) mfps 128) max))) 0) "tempogram: no pulse stays dark"
 ; structure: two different textures
 var two (mix (list (list 0 (+ (sine msr 220 4) (sine msr 330 4))) (list (* 4 msr) (* 0.5 (noise (* 4 msr))))))
 var mf (mfcc-gram two msr 2048 512 40 13)
@@ -435,6 +468,9 @@ check (== (length (head mf)) (+ 1 (floor (/ (length two) 512)))) "mfcc-gram: a c
 var ms (mel-spectrogram two msr 2048 512 32)
 check (== (length ms) 32) "mel-spectrogram: nmel rows"
 check (> (getidx (getidx ms 2) 10) (getidx (getidx ms 30) 10)) "mel-spectrogram: a 220 Hz chord is low, not high"
+var mfs (mel-spectrogram (sine msr 1000 1) msr 2048 512 40)
+check (near? (max (vec (map mfs (function (r) (getidx r 10))))) 0 3) "mel-spectrogram: a full-scale sine is about 0 dB"
+check (== (max (vec (map (mel-spectrogram (zeros 4096) msr 2048 512 40) max))) -100) "mel-spectrogram: silence at -100 dB"
 var Sm (self-similarity (drop mf 1))
 check (== (length Sm) (length (head mf))) "self-similarity: frames x frames"
 check (near? (getidx (head Sm) 0) 1 1e-9) "self-similarity: 1 on the diagonal"
@@ -444,6 +480,8 @@ var nv (foote-novelty Sm 32)
 check (== (length nv) (length Sm)) "foote-novelty: a value per frame"
 var half (floor (/ (length Sm) 2))
 check (near? (argmax nv) half 8) "foote-novelty: the peak at the change of texture"
+check (and (== (head nv) 0) (== (last nv) 0)) "foote-novelty: 0 at the ends, where less than half the kernel fits"
+check (<= (max nv) 2) "foote-novelty: a difference of two mean similarities (at most 2)"
 var bds (novelty-peaks nv (/ msr 512) 2 31)
 check (and (== (length bds) 1) (near? (head bds) 4 0.3)) "novelty-peaks: the one boundary, at 4 s"
 var bs (beat-sync (list (vec 1 2 3 4 5 6) (vec 0 0 0 1 1 1)) (vec 0 0.5) 4)    ; fps 4: beats at frames 0 and 2

@@ -109,11 +109,11 @@ ambi-gains 1 30 0: (1 0.5 0 0.866) (W Y Z X, SN3D)
 ambi-encode      : 9 channels at second order
 ambi-rotate      : a left source turned by -90 is in front: 1
 speaker-ring 4   : (0 90 180 -90)
-ambi-decode      : levels of a source at 45 on that ring (0.267 0.267 0.089 0.089)
+ambi-decode      : levels of a source at 45 on that ring (0.356 0.356 0 0)
 pan-n            : levels on a ring of 8, source at 100 (0 0 0.684 0.195 0 0 0 0)
 hrir 90 0        : two ears, 23 samples; the far ear later and quieter; 710 measured KEMAR directions loaded (hrtf-unload: the spherical model)
 binaural         : a left click, ear levels (0.293 0.14)
-binaural-decode  : B-format for headphones; a front source (0.658 0.658)
+binaural-decode  : B-format for headphones; a front source (1.15 1.15)
 moving-source, ambi-render, channel, stereo-add, normalize-peak-stereo: see spatial.mu
 
 --- resampling and channels ---
@@ -128,7 +128,7 @@ envelope-follow  : (1 1 0)
 envelope-from-values: (0 0.5 1 0.5)
 
 --- music information retrieval ---
-chromagram      : 12 pitch classes x 65 frames; the profile (0.11 0.83 0.11 0.02 1 0.02 0.01 0.01 0.03 0.98 0.02 0.01) (C first)
+chromagram      : 12 pitch classes x 65 frames; the profile (0 0.87 0 0 0.98 0 0 0 0 1 0 0) (C first)
 key-estimate    : A major (Krumhansl-Kessler profiles; key-scores ranks all 24)
 tempo-estimate  : 120 bpm from a click every half second (the autocorrelation of the onset strength, a prior on the tapped tempo)
 beats           : 120 bpm, 16 beats, the first at 0.023 s, every 0.498 s (beat-track: Ellis's dynamic programming)
