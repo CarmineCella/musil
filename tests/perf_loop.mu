@@ -1,4 +1,4 @@
-# performance test: sum of the first 500,000 integers, three ways
+; performance test: sum of the first 500,000 integers, three ways
 
 load "std.mu"
 var t0 (clock)

@@ -1,9 +1,9 @@
-# musil — library reference: std (std.h + std.mu)
-#
-# The general-purpose standard library. std.h is the C++ half (registered by
-# the interpreter), std.mu the Musil half (loaded here). Everything the core
-# already has is in reference.mu; this file shows only what std adds.
-# Run with: musil reference_std.mu     (std.mu must be in MUSIL_PATH or ~/.musil)
+; musil — library reference: std (std.h + std.mu)
+;
+; The general-purpose standard library. std.h is the C++ half (registered by
+; the interpreter), std.mu the Musil half (loaded here). Everything the core
+; already has is in reference.mu; this file shows only what std adds.
+; Run with: musil reference_std.mu     (std.mu must be in MUSIL_PATH or ~/.musil)
 
 load "std.mu"
 print ""
@@ -11,7 +11,7 @@ print "================================================================"
 print "  musil: library reference (std)"
 print "================================================================"
 
-# --- 1. Vector constructors and statistics ------------------------
+; --- 1. Vector constructors and statistics ------------------------
 print ""
 print "--- vectors ---"
 
@@ -40,7 +40,7 @@ print "quantile 0.25   :" (quantile (range 11) 0.25)
 print "histogram 3 bins:" (histogram v 3) "(counts, then the bin edges)"
 print "interp1         :" (interp1 (vec 0 1 2) (vec 0 10 0) (vec -1 0.5 1.5 3)) "(clamped outside the table)"
 
-# --- 2. Scalar math (elementwise on vectors too) ------------------
+; --- 2. Scalar math (elementwise on vectors too) ------------------
 print ""
 print "--- scalar math ---"
 
@@ -55,7 +55,7 @@ print "map-range 5 0 10 0 100:" (map-range 5 0 10 0 100)
 print "deg->rad 180     :" (deg->rad 180)
 print "rad->deg pi      :" (rad->deg pi)
 
-# --- 3. Sequences: lists, vectors and strings alike ---------------
+; --- 3. Sequences: lists, vectors and strings alike ---------------
 print ""
 print "--- sequences ---"
 
@@ -75,7 +75,7 @@ print "unique          :" (unique (list 1 2 1 3 2))
 print "sort-list       :" (sort-list (list "pear" "apple" "fig")) (sort-list (list 3 1 2))
 print "min-of, max-of  :" (min-of (list 3 1 2)) (max-of (list 3 1 2))
 
-# --- 4. Strings -----------------------------------------------------
+; --- 4. Strings -----------------------------------------------------
 print ""
 print "--- strings ---"
 
@@ -95,7 +95,7 @@ print "fmt-fixed pi 4  :" (fmt-fixed pi 4) "(a string with exactly 4 decimals)"
 print "fmt-fixed 2 3   :" (fmt-fixed 2 3)
 print "fmt-pct 0.752 1 :" (fmt-pct 0.752 1)
 
-# --- 5. Higher-order: map, filter, reduce, each -------------------
+; --- 5. Higher-order: map, filter, reduce, each -------------------
 print ""
 print "--- higher-order (polymorphic on list and vec) ---"
 
@@ -113,7 +113,7 @@ print "identity, compose:" (identity 7) ((compose sq (function (x) (+ x 1))) 3)
 function add (a b) (+ a b)
 print "map with a partial:" (map (vec 1 2 3) (add 100))
 
-# --- 5b. Records (association lists) and lists by a key ----------------------------------------
+; --- 5b. Records (association lists) and lists by a key ----------------------------------------
 print ""
 print "--- records ---"
 var ev (record (list 'freq 440 'dur 0.5))
@@ -128,7 +128,7 @@ print "find-first      :" (find-first (list 1 4 9) (function (x) (> x 3))) " rej
 print "min-by, max-by  :" (min-by (list "aaa" "b" "cc") length) (max-by (list "aaa" "b" "cc") length) " sum-by:" (sum-by (list 1 2 3) (function (x) (* x x)))
 print "partition       :" (partition (list 1 2 3 4) odd?) " remove-at:" (remove-at (list 1 2 3) 1) " insert-at:" (insert-at (list 1 3) 1 2)
 
-# --- 6. Files and console ------------------------------------------
+; --- 6. Files and console ------------------------------------------
 print ""
 print "--- files ---"
 
@@ -139,9 +139,9 @@ print "exists?         :" (exists? path)
 print "read            :"
 print (read path)
 print "write non-string:" (do (write path (vec 1 2 3)) (read path))
-# (input "prompt") reads a line from the console; not shown here
+; (input "prompt") reads a line from the console; not shown here
 
-# --- 7. Testing ------------------------------------------------------
+; --- 7. Testing ------------------------------------------------------
 print ""
 print "--- testing ---"
 

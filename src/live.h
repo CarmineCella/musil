@@ -1,7 +1,7 @@
 // live.h — real-time sound, C++ half: the audio device, the command queue, the clock and
 // the sampler voices. The Musil half is live.mu.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // Design
 //   The interpreter never runs on the audio thread. It posts commands (play this buffer at

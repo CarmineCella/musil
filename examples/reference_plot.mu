@@ -1,14 +1,14 @@
-# musil — library reference: plot (plot.h + plot.mu)
-#
-# A figure is (list title layers options). plot.mu builds it; the host renders it:
-# (show fig) opens the figure in a window of its own and returns (several can be open,
-# from the command line and from the IDE alike); (save-png fig path [w h]) writes a file.
-# Keys in a window: + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports,
-# Esc or q closes; the mouse drags to pan or orbit, the wheel zooms. The
-# one-call helpers plot, scatter, bars, image, surface build and show in one go;
-# subplots puts several figures in a grid. plot.mu loads signals.mu (and so scientific
-# and std).
-# Run with: musil reference_plot.mu     (set MUSIL_NOSHOW=1 to skip the windows)
+; musil — library reference: plot (plot.h + plot.mu)
+;
+; A figure is (list title layers options). plot.mu builds it; the host renders it:
+; (show fig) opens the figure in a window of its own and returns (several can be open,
+; from the command line and from the IDE alike); (save-png fig path [w h]) writes a file.
+; Keys in a window: + - zoom, W A S D pan, arrows orbit a surface, 0 or r reset, e exports,
+; Esc or q closes; the mouse drags to pan or orbit, the wheel zooms. The
+; one-call helpers plot, scatter, bars, image, surface build and show in one go;
+; subplots puts several figures in a grid. plot.mu loads signals.mu (and so scientific
+; and std).
+; Run with: musil reference_plot.mu     (set MUSIL_NOSHOW=1 to skip the windows)
 
 load "system.mu"
 load "plot.mu"
@@ -18,7 +18,7 @@ print "  musil: library reference (plot)"
 print "================================================================"
 var sr 8000
 
-# --- 1. Building a figure by hand --------------------------------------------------
+; --- 1. Building a figure by hand --------------------------------------------------
 print ""
 print "--- building ---"
 var fig (figure "two sines")
@@ -36,7 +36,7 @@ print "save-png: /tmp/musil_ref_lines.png" (file-size "/tmp/musil_ref_lines.png"
 save-png fig "/tmp/musil_ref_small.png" 400 250
 print "save-png with a size:" (> (file-size "/tmp/musil_ref_small.png") 0)
 
-# --- 2. Layer kinds ----------------------------------------------------------------
+; --- 2. Layer kinds ----------------------------------------------------------------
 print ""
 print "--- layer kinds ---"
 print "line, scatter, bars : x y label (x may be nil for 0, 1, 2, ...)"
@@ -48,7 +48,7 @@ save-png (add-image (figure "image") M) "/tmp/musil_ref_image.png"
 save-png (add-surface (figure "surface") M) "/tmp/musil_ref_surface.png"
 print "wrote bars, image, surface:" (map (list "/tmp/musil_ref_bars.png" "/tmp/musil_ref_image.png" "/tmp/musil_ref_surface.png") exists?)
 
-# --- 3. Subplots ----------------------------------------------------------------------
+; --- 3. Subplots ----------------------------------------------------------------------
 print ""
 print "--- subplots ---"
 var grid (subplots "four views" (list (add-line (figure "line") nil (sin (/ (range 60) 6)) "") (add-bars (figure "bars") nil (vec 2 5 3) "")
@@ -57,7 +57,7 @@ print "subplots        :" (length (fig-layers grid)) "figures in a" (getidx (hea
 save-png grid "/tmp/musil_ref_grid.png" 1000 700
 print "wrote the grid  :" (exists? "/tmp/musil_ref_grid.png")
 
-# --- 4. One-call helpers -------------------------------------------------------------
+; --- 4. One-call helpers -------------------------------------------------------------
 print ""
 print "--- one-call helpers (they show; here MUSIL_NOSHOW may be set) ---"
 plot (sin (/ (range 50) 5))
@@ -69,7 +69,7 @@ image M
 surface M
 print "plot plot-xy plot-lines scatter bars image surface: shown"
 
-# --- 5. Ready-made figures for sound and data ------------------------------------------
+; --- 5. Ready-made figures for sound and data ------------------------------------------
 print ""
 print "--- ready-made ---"
 var tone (* (sine sr 440 0.5) (exp (* -3 (/ (range 4000) sr))))
@@ -85,7 +85,7 @@ save-png (waveform tone sr) "/tmp/musil_ref_wave.png"
 save-png sg "/tmp/musil_ref_spec.png"
 print "wrote waveform and spectrogram:" (exists? "/tmp/musil_ref_wave.png") (exists? "/tmp/musil_ref_spec.png")
 
-# --- 6. Errors -------------------------------------------------------------------------
+; --- 6. Errors -------------------------------------------------------------------------
 print ""
 print "--- errors ---"
 print "empty figure    :" (try (save-png (figure "e") "/tmp/x.png") catch e e)

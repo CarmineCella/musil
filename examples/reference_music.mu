@@ -1,8 +1,8 @@
-# reference_music: every function of the music library, once
+; reference_music: every function of the music library, once
 load "music.mu"
 seed 1
 
-# --- 1. A score and its events -----------------------------------------------------------------
+; --- 1. A score and its events -----------------------------------------------------------------
 print "--- the score ---"
 var s (score "demo" 8000)
 print "score           :" (get s 'name) "at" (score-sr s) "Hz," (length (score-events s)) "events"
@@ -29,7 +29,7 @@ print "event-gain! ... : gain" (get e1 'gain) "; moved to" (get e4 'at) "for" (g
 print "score-duration  :" (score-duration s) "s; event-end of the last:" (event-end e6)
 score-print s
 
-# --- 2. Rendering ------------------------------------------------------------------------------
+; --- 2. Rendering ------------------------------------------------------------------------------
 print ""
 print "--- rendering ---"
 var r (render-event e1 8000)
@@ -42,7 +42,7 @@ print "score-render    :" (length mix) "channels," (length (head mix)) "samples"
 render s "/tmp/musil_reference_score.wav" "stereo"
 print "render          : written to /tmp/musil_reference_score.wav"
 
-# --- 3. The roll -------------------------------------------------------------------------------
+; --- 3. The roll -------------------------------------------------------------------------------
 print ""
 print "--- the roll ---"
 print "score-rows      :" (map (score-rows s) head)
@@ -51,7 +51,7 @@ print "score-roll      : a figure with" (length (getidx (head (getidx roll 1)) 2
 print "event-lanes     :" (event-lanes (list (record (list 'at 0 'dur 2)) (record (list 'at 1 'dur 1)) (record (list 'at 3 'dur 1)))) "(overlapping events get lanes)"
 print "display         : (display s) shows the roll: staves, note heads and duration lines; Play from the cursor, a double-click plays an event"
 
-# --- 4. Transformations ------------------------------------------------------------------------
+; --- 4. Transformations ------------------------------------------------------------------------
 print ""
 print "--- transformations ---"
 score-shift! s 1
@@ -65,7 +65,7 @@ score-remove! s e6
 print "score-remove!   :" (length (score-events s)) "events left"
 print "score-merge     :" (length (score-events (score-merge s s))) "events in the merged score"
 
-# --- 5. A database and notes ---------------------------------------------------------------------
+; --- 5. A database and notes ---------------------------------------------------------------------
 print ""
 print "--- database ---"
 var db (db-load "data/microsol/microsol.spectrum.db")
@@ -90,7 +90,7 @@ event s2 1 1 (note db 'Vc 'C4 'ff 'ord)
 event s2 1 1 (note db 'Ob "E4" 'mf 'ord)
 print "score-rows      : notes by instrument, orchestral order:" (map (score-rows s2) head)
 
-# --- 5b. Musical elements: rhythms, chords, lines, textures ------------------------------------------------
+; --- 5b. Musical elements: rhythms, chords, lines, textures ------------------------------------------------
 print ""
 print "--- elements ---"
 seed 2
@@ -113,7 +113,7 @@ print "fragment->score :" (get inner 'name) "with" (length (score-events inner))
 var e-in (event sf 2 0 inner)
 print "a score inside  : kind" (get e-in 'kind) "for" (fixed (get e-in 'dur) 2) "s (0 = its whole length); rendered" (length (head (score-render sf "stereo"))) "samples; a score cannot contain itself"
 
-# --- 5c. MIDI files, envelopes, the orchestra, the granulator -------------------------------------------------
+; --- 5c. MIDI files, envelopes, the orchestra, the granulator -------------------------------------------------
 print ""
 print "--- midi, granular orchestration ---"
 var mid (midi-read "data/test.mid")
@@ -139,7 +139,7 @@ var val (score-validate vs shared)
 print "continue, start : two granulators on one orchestra, overlapping, book the same people once; score-validate:" (if (get val 'ok) "playable" "NOT playable") "(a player of its own for every note, at a recorded pitch); peak" (get val 'peak) "; validation-print prints it; orchestra-rest! clears the state"
 print "db-index!       :" (length (keys (db-index! db))) "instruments indexed once (what note draws from); db-candidates, db-range-available, db-techniques-of" (db-techniques-of db 'Vn)
 
-# --- 5c'. Mimetic orchestration (Orchidea) --------------------------------------------------------------------
+; --- 5c'. Mimetic orchestration (Orchidea) --------------------------------------------------------------------
 print ""
 print "--- mimetic orchestration (Orchidea) ---"
 var mx (head (score-render (fragment->score "t" 44100 (notes db 'Ob 'mf 'ord (list "C4" "E4") (rhythm (list 1 1)))) "mono"))
@@ -153,7 +153,7 @@ connect! mscore 0 mres (get mres 'choices)
 print "the memory      : 'sustain (a player whose pitch the target keeps holds its sound on), 'hold, 'hysteresis (timbre), 'dovetail (pitches, on any player), 'connection 'path (the least melodic movement); mimetic-report:" (length (get mres 'report)) "segment (cost, players used and holding on, pitches the orchestra lacks); 'decision 'genetic puts this search inside the morphological orchestrator's clock"
 print "connect!        : the score remembers the orchestration; score-solutions:" (length (score-solutions mscore)) "orchestration; score-choose! puts another solution of a segment in place (the roll's menu, roll-choose); solution-print lists them"
 
-# --- 5d. Morphological orchestration -------------------------------------------------------------------
+; --- 5d. Morphological orchestration -------------------------------------------------------------------
 print ""
 print "--- morphological ---"
 var tsc (score "target" 44100)
@@ -167,7 +167,7 @@ seed 3
 var mo (orchestrate-morphological db orch tg (record (list 'solutions 1)))
 print "orchestrate-morphological:" (length (best-connection mo)) "notes with cents, e.g." (get (last (head (best-connection mo))) 'label) (get (last (head (best-connection mo))) 'cents) "cents; a matching pursuit at every event (target-notes), each note as long as the target keeps its sound (atom-persistence), no segmentation"
 
-# --- 5e. Notation: quantization and MusicXML ------------------------------------------------------------
+; --- 5e. Notation: quantization and MusicXML ------------------------------------------------------------
 print ""
 print "--- notation ---"
 var sq (score "notation" 44100)
@@ -184,7 +184,7 @@ print "score-musicxml  :" (length (get (score-musicxml sq "/tmp/musil_reference.
 notation-report nq
 print "score-quantize! : the score's times moved to the grid, to hear it (" (get (getidx (get (score-quantize! sq (record (list))) 'parts) 0) 'chosen) ")"
 
-# --- 6. More queries, making a database, playing ------------------------------------------------------
+; --- 6. More queries, making a database, playing ------------------------------------------------------
 print ""
 print "--- queries, db-gen, playing ---"
 print "db-query (lists):" (length (db-query db (list 'Vn 'Vc) nil (list 'mf 'ff) nil)) "string sounds, mf or ff"

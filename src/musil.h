@@ -1,6 +1,6 @@
 // musil.h — umbrella header: the core plus every bundled library.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 
 #pragma once

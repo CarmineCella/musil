@@ -3,7 +3,7 @@
 // in windows of their own (plot.h, controls.h); editors elsewhere can send code to the
 // evaluation port. Adapted from the FLTK IDE of Musil 1.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // Threading
 //   FLTK owns the main thread. The interpreter lives on a worker thread that takes commands
@@ -230,14 +230,14 @@ static void build_styles() {                          // one font for everything
     }
 }
 static const std::set<std::string> keywords = { "var", "set", "function", "return", "if", "while", "for", "break", "continue", "try", "catch", "do", "quote", "expr", "eval", "apply", "load", "help", "and", "or", "not" };
-static bool ident_char(char c) { return std::isalnum((unsigned char)c) || c == '-' || c == '?' || c == '!' || c == '>' || c == '<' || c == '=' || c == '_' || c == '*' || c == '+' || c == '/'; }
+static bool ident_char(char c) { return std::isalnum((unsigned char)c) || c == '-' || c == '?' || c == '!' || c == '>' || c == '<' || c == '=' || c == '_' || c == '*' || c == '+' || c == '/' || c == '#'; }
 static void style_parse(const char* text, char* style, int length) {
     int i = 0; bool in_comment = false, in_string = false;
     while (i < length) {
         char c = text[i];
         if (in_comment) { style[i] = 'B'; if (c == '\n') in_comment = false; i++; continue; }
         if (in_string) { style[i] = 'C'; if (c == '\\' && i + 1 < length) { style[i + 1] = 'C'; i += 2; continue; } if (c == '"') in_string = false; i++; continue; }
-        if (c == '#') { in_comment = true; style[i] = 'B'; i++; continue; }
+        if (c == ';') { in_comment = true; style[i] = 'B'; i++; continue; }
         if (c == '"') { in_string = true; style[i] = 'C'; i++; continue; }
         if (c == '(' || c == ')' || c == '{' || c == '}') { style[i] = 'E'; i++; continue; }
         if (c == '\'' && i + 1 < length && ident_char(text[i + 1])) {
@@ -335,9 +335,9 @@ static void comment_cb(Fl_Widget*, void*) {
     int start = text_buf->line_start(a), end = text_buf->line_end(b);
     char* t = text_buf->text_range(start, end); std::string s = t; free(t);
     std::vector<std::string> lines; size_t p = 0; while (true) { size_t nl = s.find('\n', p); lines.push_back(s.substr(p, nl == std::string::npos ? std::string::npos : nl - p)); if (nl == std::string::npos) break; p = nl + 1; }
-    bool all = true; for (auto& l : lines) { size_t i = l.find_first_not_of(" \t"); if (i != std::string::npos && l[i] != '#') all = false; }
+    bool all = true; for (auto& l : lines) { size_t i = l.find_first_not_of(" \t"); if (i != std::string::npos && l[i] != ';') all = false; }
     std::string out;
-    for (size_t k = 0; k < lines.size(); k++) { std::string l = lines[k]; size_t i = l.find_first_not_of(" \t"); if (all) { if (i != std::string::npos && l[i] == '#') l.erase(i, i + 1 < l.size() && l[i + 1] == ' ' ? 2 : 1); } else l = "# " + l; out += l + (k + 1 < lines.size() ? "\n" : ""); }
+    for (size_t k = 0; k < lines.size(); k++) { std::string l = lines[k]; size_t i = l.find_first_not_of(" \t"); if (all) { if (i != std::string::npos && l[i] == ';') l.erase(i, i + 1 < l.size() && l[i + 1] == ' ' ? 2 : 1); } else l = "; " + l; out += l + (k + 1 < lines.size() ? "\n" : ""); }
     text_buf->replace(start, end, out.c_str());
 }
 static void manual_cb(Fl_Widget*, void*) {

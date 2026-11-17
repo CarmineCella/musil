@@ -1,4 +1,4 @@
-# test_load.mu — load resolution: relative to the loading file, once per file, cycles safe.
+; test_load.mu — load resolution: relative to the loading file, once per file, cycles safe.
 var loads (list)
 load "load/a.mu"
 assert (equal? loads (list "a" "b" "c")) "each file runs exactly once, in load order:" loads

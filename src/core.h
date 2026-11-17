@@ -1,12 +1,12 @@
 // core.h — the Musil language: reader, evaluator, core builtins.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 //   - Top level: each line is a command (auto-listified). No enclosing parens.
 //   - (form ...) is a Lisp list. Newlines inside parens are whitespace.
 //   - {form ...} is a (do form ...) block of newline-separated sub-lists.
-//   - "..." string. 'x is (quote x). # comment. \ at line end continues.
-//   - ; separates commands on one line: { var a 1; var b 2 }
+//   - "..." string. 'x is (quote x). ; starts a comment, as in Lisp and in Moritz's patches.
+//     # is an ordinary character: 'C#4 and #1 are symbols. \ at line end continues.
 //
 // Numbers are valarray<double>; size-1 vectors broadcast.
 // Values are shared_ptr — sharing by default; copy is explicit.
@@ -17,6 +17,7 @@
 
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -58,6 +59,17 @@ using varr = std::valarray<double>;
 using sptr = std::shared_ptr<std::string>;
 using op_t = vptr (*)(vlist&, Interp&);
 
+// How many values and environments are alive, in every interpreter of the process: (live-objects) reads
+// them, and the memory test checks that what a program makes is freed when it is no longer used.
+inline std::atomic<long>& live_values() { static std::atomic<long> n{0}; return n; }
+inline std::atomic<long>& live_envs()   { static std::atomic<long> n{0}; return n; }
+template <std::atomic<long>& (*N)()> struct live_counter {
+    live_counter() { N().fetch_add(1, std::memory_order_relaxed); }
+    live_counter(const live_counter&) { N().fetch_add(1, std::memory_order_relaxed); }
+    live_counter& operator=(const live_counter&) { return *this; }
+    ~live_counter() { N().fetch_sub(1, std::memory_order_relaxed); }
+};
+
 // AST
 struct Value {
     enum tag { NIL, NUM, STR, SYM, LIST, FN, OPAQUE } t = NIL;
@@ -66,8 +78,35 @@ struct Value {
     op_t op = nullptr; int amin = 0, amax = -1;   // builtin: arity (amax < 0 = unbounded)
     std::vector<std::string> params;
     vptr body; eptr closure;
+    std::weak_ptr<Env> wclosure;                  // a function bound in the environment it closes over holds it weakly (Env::bind)
     std::shared_ptr<void> opaque; std::string opaque_tag;
+    live_counter<live_values> counted;
+    Value() = default;
+    Value(const Value&) = default;
+    Value& operator=(const Value&) = default;
+    ~Value();
 };
+// Freeing a list never recurses and never allocates: a nested list held only by the list being freed
+// hands over its elements and waits in a chain (linked through body, which lists do not use) until
+// they are freed. So a list nested a million times deep frees in constant stack, and freeing cannot
+// fail for lack of memory.
+inline Value::~Value() {
+    if (l.empty()) return;
+    vlist cur; cur.swap(l);
+    vptr chain;
+    for (;;) {
+        while (!cur.empty()) {
+            vptr c = std::move(cur.back()); cur.pop_back();
+            if (c && c.use_count() == 1 && !c->l.empty() && !c->body) {
+                std::swap(cur, c->l);                   // c keeps what is left of ours; we go on with its elements
+                c->body = std::move(chain); chain = std::move(c);
+            }
+        }
+        if (!chain) break;
+        vptr n = std::move(chain); chain = std::move(n->body);
+        std::swap(cur, n->l);                           // n is empty now: freeing it does not recurse
+    }
+}
 inline const char* type_name(const vptr& v) {
     static const char* names[] = { "nil", "number", "string", "symbol", "list", "function", "opaque" };
     return v ? names[v->t] : "nil";
@@ -87,21 +126,41 @@ inline vptr v_op(op_t f, std::string name, int amin, int amax) {
 inline vptr v_opaque(std::string tag, std::shared_ptr<void> p) { 
     auto v = v_nil(); v->t = Value::OPAQUE; v->opaque_tag = std::move(tag); v->opaque = std::move(p); return v; 
 }
+// A function bound by name in the very environment it closes over (a local function, a var holding a
+// lambda made there) would keep that environment alive forever: the environment holds the function and
+// the function holds the environment. So such a binding holds the environment weakly, and reading the
+// name gives back an ordinary function that holds it (a copy: it can be returned and outlive the scope).
+// The global environment is exempt: it lives as long as the interpreter, which clears it at the end.
 struct Env {
     std::unordered_map<std::string, vptr> vars;
     eptr parent;
+    bool global = false;
+    live_counter<live_envs> counted;
     Env(eptr p = nullptr) : parent(std::move(p)) {}
+    static vptr strong(const vptr& v) {
+        if (!v || v->t != Value::FN || v->closure || v->op) return v;
+        eptr c = v->wclosure.lock();
+        if (!c) return v;
+        auto s = std::make_shared<Value>(*v); s->closure = std::move(c); s->wclosure.reset();
+        return s;
+    }
+    vptr held(vptr v) const {
+        if (global || !v || v->t != Value::FN || v->op || v->closure.get() != this) return v;
+        auto w = std::make_shared<Value>(*v); w->wclosure = v->closure; w->closure.reset();
+        return w;
+    }
+    void bind(const std::string& k, vptr v) { vars[k] = held(std::move(v)); }
     vptr find(const std::string& k) {
         for (Env* w = this; w; w = w->parent.get()) {
             auto it = w->vars.find(k);
-            if (it != w->vars.end()) return it->second;
+            if (it != w->vars.end()) return strong(it->second);
         }
         return nullptr;
     }
     bool assign(const std::string& k, vptr v) {
         for (Env* w = this; w; w = w->parent.get()) {
             auto it = w->vars.find(k);
-            if (it != w->vars.end()) { it->second = std::move(v); return true; }
+            if (it != w->vars.end()) { it->second = w->held(std::move(v)); return true; }
         }
         return false;
     }
@@ -134,7 +193,7 @@ inline void put_double(std::ostream& os, double d) {
     if (std::isfinite(d) && std::fabs(d) < 1e15 && d == std::floor(d)) os << (long long)d;
     else os << std::setprecision(15) << d;
 }
-inline int& str_of_depth() { static int d = 0; return d; }
+inline int& str_of_depth() { static thread_local int d = 0; return d; }
 inline std::string str_of(const vptr& v) {
     if (!v) return "nil";
     struct guard { guard() { str_of_depth()++; } ~guard() { str_of_depth()--; } } g;
@@ -211,11 +270,11 @@ struct Parser {
             char c = peek();
             if (c == ' ' || c == '\t' || c == '\r') { pos++; continue; }
             if (c == '\\' && pos+1 < src.size() && src[pos+1] == '\n') { pos += 2; line++; continue; }
-            if (c == '#') { while (!eof() && peek() != '\n') pos++; continue; }
+            if (c == ';') { while (!eof() && peek() != '\n') pos++; continue; }
             break;
         }
     }
-    void skip_all() { while (true) { skip_h(); if (eof()) break; if (peek() == ';') { pos++; continue; } if (peek() != '\n') break; pos++; line++; } }
+    void skip_all() { while (true) { skip_h(); if (eof()) break; if (peek() != '\n') break; pos++; line++; } }
     vptr read() {
         skip_h();
         if (eof()) err(line, "unexpected end of input");
@@ -234,7 +293,6 @@ struct Parser {
                 if (eof()) err(ln, "missing }");
                 if (peek() == '}') { pos++; break; }
                 if (peek() == '\n') { pos++; line++; continue; }
-                if (peek() == ';') { pos++; continue; }
                 vptr lf = read_line('}');
                 if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
             }
@@ -255,7 +313,7 @@ struct Parser {
         std::string w;
         while (!eof()) {
             char k = peek();
-            if (k==' '||k=='\t'||k=='\n'||k=='\r'||k=='('||k==')'||k=='{'||k=='}'||k=='"'||k=='#'||k=='\'') break;
+            if (k==' '||k=='\t'||k=='\n'||k=='\r'||k=='('||k==')'||k=='{'||k=='}'||k=='"'||k==';'||k=='\'') break;
             w += src[pos++];
         }
         if (w.empty()) err(line, "empty word");
@@ -267,7 +325,7 @@ struct Parser {
     bool continues_here() {
         size_t p = pos;                                   // just after a newline: indentation, then something that is not a blank line or a comment
         while (p < src.size() && (src[p] == ' ' || src[p] == '\t')) p++;
-        return p > pos && p < src.size() && src[p] != '\n' && src[p] != '\r' && src[p] != '#' && src[p] != '}' && src[p] != ')';
+        return p > pos && p < src.size() && src[p] != '\n' && src[p] != '\r' && src[p] != ';' && src[p] != '}' && src[p] != ')';
     }
     vptr read_line(char term = 0) {
         skip_h();
@@ -292,7 +350,6 @@ struct Parser {
             skip_h();
             if (eof()) break;
             if (peek() == '\n') { pos++; line++; continue; }
-            if (peek() == ';') { pos++; continue; }
             vptr lf = read_line(0);
             if (lf->t != Value::LIST || !lf->l.empty()) out.push_back(lf);
         }
@@ -323,6 +380,9 @@ struct Interp {
     std::mt19937_64 rng;
     std::ostream* out = &std::cout;
     const char* who = "";                   // name of the builtin being executed (for error messages)
+    bool allow_blocking = true;             // false: builtins that wait (sleep, input, exec) refuse to run;
+                                            // a host whose code must answer at once (a box in a patch) sets it
+    void blocking(const char* name) { if (!allow_blocking) err(std::string(name) + ": not allowed here: this code must not wait"); }
 
     Interp();
     ~Interp();
@@ -624,7 +684,7 @@ try {
             if (l.size() != 3) err("var: expected (var name value)");
             if (l[1]->t != Value::SYM) err("var: name must be a symbol, got " + str_of(l[1]));
             vptr v = eval(l[2], e);
-            e->vars[l[1]->s] = v;
+            e->bind(l[1]->s, v);
             cleanup(); return v;
         }
         if (op == fn_set) {   // assign to the nearest existing binding, however far out; error if there is none
@@ -644,7 +704,7 @@ try {
                 if (p->t != Value::SYM) err("function: parameter must be a symbol, got " + str_of(p));
                 fn->params.push_back(p->s);
             }
-            if (named) { e->vars[l[1]->s] = fn; fn->s = l[1]->s; }   // a named function remembers its name (str prints it)
+            if (named) { fn->s = l[1]->s; e->bind(l[1]->s, fn); }   // a named function remembers its name (str prints it)
             cleanup(); return fn;
         }
         if (op == fn_return) {
@@ -831,7 +891,31 @@ inline vptr fn_max(vlist& a, Interp& i) {
 inline vptr fn_list(vlist& a, Interp&) { return v_list(a); }
 // (append L x ...) a new list with x ... added at the end
 inline vptr fn_append(vlist& a, Interp& i) { vlist r = i.list(a[0]); for (size_t k=1; k<a.size(); k++) r.push_back(a[k]); return v_list(std::move(r)); }
-inline vptr fn_push(vlist& a, Interp& i) { i.list(a[0]).push_back(a[1]); return a[0]; }
+// A list does not contain itself: putting a list into one of its own elements makes a loop that is
+// never freed (until the interpreter ends) and that printing must cut short. push, setidx and put!
+// refuse the loops they can see cheaply: the inserted value itself, and its first nodes down to a
+// fixed budget, without allocating. A loop hidden deeper in a large structure is not looked for:
+// checking it would cost as much as the structure at every insertion.
+inline bool reaches(const vptr& from, const Value* target) {
+    if (!from || from->t != Value::LIST) return false;
+    constexpr int budget = 256;
+    const Value* todo[budget]; int n = 0, seen = 0;
+    todo[n++] = from.get();
+    while (n > 0 && seen < budget) {
+        const Value* v = todo[--n]; ++seen;
+        if (v == target) return true;
+        for (auto& c : v->l) {
+            if (!c || c->t != Value::LIST) continue;
+            if (c.get() == target) return true;
+            if (n < budget) todo[n++] = c.get();
+        }
+    }
+    return false;
+}
+inline void check_insert(Interp& i, const char* who, const vptr& into, const vptr& x) {
+    if (reaches(x, into.get())) i.err(std::string(who) + ": a list cannot contain itself");
+}
+inline vptr fn_push(vlist& a, Interp& i) { i.list(a[0]); check_insert(i, "push", a[0], a[1]); a[0]->l.push_back(a[1]); return a[0]; }
 // (pop L) remove and return the last element of a list, in place
 inline vptr fn_pop(vlist& a, Interp& i) { vlist& l = i.list(a[0]); if (l.empty()) i.err("pop: empty list"); vptr r = l.back(); l.pop_back(); return r; }
 // (length x) (head x) (tail x) (empty? x) on a list, a vector or a string
@@ -867,7 +951,7 @@ inline vptr fn_getidx(vlist& a, Interp& i) {
 inline vptr fn_setidx(vlist& a, Interp& i) {
     auto& v=a[0];
     if (v->t==Value::NUM)  { v->num[checked_index(i, a[1], v->num.size())] = i.scalar(a[2]); return v; }
-    if (v->t==Value::LIST) { v->l[checked_index(i, a[1], v->l.size())] = a[2]; return v; }
+    if (v->t==Value::LIST) { size_t k = checked_index(i, a[1], v->l.size()); check_insert(i, "setidx", v, a[2]); v->l[k] = a[2]; return v; }
     i.err(std::string("setidx: expected list or number, got ") + type_name(v)); }
 // (vec x ...) a vector from numbers, vectors and lists of numbers, concatenated; a scalar is a vector of size 1
 // (sum v) sum of the elements (0 for an empty vector)
@@ -921,10 +1005,13 @@ inline vptr fn_num(vlist& a, Interp& i) {
 inline vptr fn_copy(vlist& a, Interp& i) {
     auto& s=a[0]; auto v=v_nil();
     v->t=s->t; v->num=s->num; v->s=s->s; v->l=s->l;
-    v->op=s->op; v->params=s->params; v->body=s->body; v->closure=s->closure;
+    v->op=s->op; v->params=s->params; v->body=s->body; v->closure=s->closure; v->wclosure=s->wclosure;
     v->opaque=s->opaque; v->opaque_tag=s->opaque_tag;
     return v;
 }
+// (live-objects) => (values environments): how many are alive in the whole process (tests use it to
+//   check that what a program makes is freed)
+inline vptr fn_live_objects(vlist&, Interp&) { return v_list({ v_num((double)live_values().load()), v_num((double)live_envs().load()) }); }
 inline vptr fn_error(vlist& a, Interp& i) { std::string m; for (auto& x : a) m+=str_of(x); i.err(m.empty() ? "error" : m); }
 inline vptr fn_clock(vlist&, Interp&) { return v_num(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 inline vptr fn_load(vlist& a, Interp& i) { i.load(i.str(a[0])); return v_nil(); }
@@ -958,7 +1045,7 @@ inline Interp::Interp() {
     if (limit > (64u << 20)) limit = 64u << 20;
 #endif
     stack_budget = limit / 4 * 3;
-    global = make_env();
+    global = make_env(); global->global = true;
 #ifdef _WIN32
     const char sep = ';'; const char* home = std::getenv("USERPROFILE");
 #else
@@ -996,7 +1083,7 @@ inline Interp::Interp() {
     a("getidx", fn_getidx, 2, 2); a("setidx", fn_setidx, 3, 3); a("vec", fn_vec, 0, N); a("sum", fn_sum, 1, 1);
     // Meta and I/O
     a("print", fn_print, 0, N); a("type", fn_type, 1, 1); a("str", fn_str, 1, 1); a("sym", fn_sym, 1, 1); a("num", fn_num, 1, 1);
-    a("copy", fn_copy, 1, 1); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
+    a("copy", fn_copy, 1, 1); a("live-objects", fn_live_objects, 0, 0); a("error", fn_error, 0, N); a("clock", fn_clock, 0, 0); a("load", fn_load, 1, 1);
     a("defined?", fn_definedp, 1, 1); a("vars", fn_vars, 0, 0); a("exit", fn_exit, 0, 1);
     a("help", fn_help, 1, 1); a("parse", fn_parse, 1, 1);
 }
@@ -1094,7 +1181,7 @@ inline void Interp::repl() {
             char c = line[i];
             if (in_str) { if (c == '\\' && i+1 < line.size()) { i++; continue; } if (c == '"') in_str = false; continue; }
             if (c == '"') in_str = true;
-            else if (c == '#') break;
+            else if (c == ';') break;
             else if (c == '(' || c == '{') depth++;
             else if (c == ')' || c == '}') depth--;
         }

@@ -2,7 +2,7 @@
 // directories, file metadata, CSV and WAV files, UDP/OSC. The Musil half
 // is system.mu. Ported from Musil 1.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 
 #pragma once
 #include "core.h"
@@ -23,6 +23,7 @@ namespace musil {
 // --- processes and environment ---
 // (exec "command") => the command's standard output as a string
 inline vptr sys_exec(vlist& a, Interp& i) {
+    i.blocking("exec");
     const std::string& cmd = i.str(a[0]);
     FILE* p = popen(cmd.c_str(), "r"); if (!p) i.bad("cannot run " + cmd);
     std::string out; char buf[256]; while (fgets(buf, sizeof(buf), p)) out += buf;
@@ -49,6 +50,7 @@ inline vptr sys_interactive(vlist&, Interp&) {
 //   done from a window's button, once per step
 inline vptr sys_breathe(vlist&, Interp& i) { if (i.yield_fn) i.yield_fn(); i.idle(); return v_nil(); }
 inline vptr sys_sleep(vlist& a, Interp& i) {   // in slices, so a stop request and background work (live loops) get through
+    i.blocking("sleep");
     double secs = i.scalar(a[0]); auto end = std::chrono::steady_clock::now() + std::chrono::duration<double>(secs);
     while (true) {
         auto now = std::chrono::steady_clock::now(); if (now >= end) break;

@@ -1,12 +1,12 @@
-# musil — library reference: signals (signals.h + signals.mu)
-#
-# Offline signal processing on vectors. A signal is a vector of samples; a
-# complex spectrum is (list re im); a polar one is (list mag phase); a stereo
-# buffer is (list left right), as read-wav returns it. signals.mu loads
-# scientific.mu (and so std.mu). The FFT, the oscillator, the IIR filter,
-# delay, resampling, autocorrelation and channel (de)interleaving are C++;
-# everything else is vector arithmetic in Musil.
-# Run with: musil reference_signals.mu
+; musil — library reference: signals (signals.h + signals.mu)
+;
+; Offline signal processing on vectors. A signal is a vector of samples; a
+; complex spectrum is (list re im); a polar one is (list mag phase); a stereo
+; buffer is (list left right), as read-wav returns it. signals.mu loads
+; scientific.mu (and so std.mu). The FFT, the oscillator, the IIR filter,
+; delay, resampling, autocorrelation and channel (de)interleaving are C++;
+; everything else is vector arithmetic in Musil.
+; Run with: musil reference_signals.mu
 
 load "signals.mu"
 print ""
@@ -15,7 +15,7 @@ print "  musil: library reference (signals)"
 print "================================================================"
 var sr 8000
 
-# --- 1. Generators ----------------------------------------------------------
+; --- 1. Generators ----------------------------------------------------------
 print ""
 print "--- generators ---"
 var s (sine sr 440 0.01)
@@ -34,7 +34,7 @@ print "normalize-peak   :" (normalize-peak (vec 1 -4 2))
 print "normalize-rms    :" (fixed (rms (normalize-rms s 0.1)) 3)
 print "db, undb         :" (amp->db 0.5) (db->amp -6)
 
-# --- 2. Windows and spectra --------------------------------------------------
+; --- 2. Windows and spectra --------------------------------------------------
 print ""
 print "--- windows and spectra ---"
 print "hann 8           :" (fixed (hann 8) 3) "(periodic: overlap-adds exactly at hop n/4)"
@@ -53,7 +53,7 @@ print "magnitude-spectrum: peak at" (getidx (spectrum-freqs 256 sr) (argmax ms))
 print "conv             :" (fixed (conv (vec 1 2 3) (vec 1 1)) 6)
 print "complex-mul      :" (complex-mul (list (vec 0) (vec 1)) (list (vec 0) (vec 1))) "(i times i)"
 
-# --- 3. Spectral envelope (cepstral) ------------------------------------------------
+; --- 3. Spectral envelope (cepstral) ------------------------------------------------
 print ""
 print "--- spectral envelope ---"
 var tone (osc sr (+ (zeros 1024) 200) (gen 512 (ones 12)))
@@ -62,7 +62,7 @@ print "spectral-envelope: peak bin of the spectrum" (argmax (take shaped 512)) "
 print "flatten-spectrum : harmonics 1-4 raw" (fixed (vec (map (list 26 51 77 102) (function (k) (getidx shaped k)))) 1) "flattened" (fixed (vec (map (list 26 51 77 102) (function (k) (getidx (flatten-spectrum shaped 20) k)))) 2)
 print "impose-envelope  : carrier reshaped by a source's envelope; cepstrum: the cepstrum itself"
 
-# --- 4. STFT --------------------------------------------------------------------
+; --- 4. STFT --------------------------------------------------------------------
 print ""
 print "--- stft ---"
 var sig (sine sr 200 0.1)
@@ -72,7 +72,7 @@ var y (istft frames 256 64)
 print "istft            :" (length y) "samples, error where frames overlap fully:" (fixed (max (abs (- (slice y 256 300) (slice sig 256 300)))) 12)
 print "stft-magnitudes  :" (length (head (stft-magnitudes frames))) "bins per frame"
 
-# --- 4. Features ----------------------------------------------------------------
+; --- 4. Features ----------------------------------------------------------------
 print ""
 print "--- features (amps: positive-frequency magnitudes, freqs: their frequencies) ---"
 var a (vec 1 0.5 0.25 0.1)
@@ -91,7 +91,7 @@ print "rms, zcr             :" (fixed (rms s) 4) (fixed (zcr s) 3)
 print "acf-f0               :" (fixed (acf-f0 sig sr) 1) "Hz;" (acf-f0 (noise 800) sr) "for noise"
 print "autocorr             :" (fixed (take (autocorr (sine sr 1000 0.004)) 5) 3)
 
-# --- 5. Filters -------------------------------------------------------------------
+; --- 5. Filters -------------------------------------------------------------------
 print ""
 print "--- filters ---"
 var lp (biquad "lowpass" sr 1000 0.707 0)
@@ -111,7 +111,7 @@ var rev (schroeder-reverb (impulse 100) sr 1)
 print "schroeder-reverb :" (length rev) "samples (input + rt60 seconds); level at 0.1 s and 0.9 s:" (fixed (amp->db (rms (slice rev 800 400))) 1) (fixed (amp->db (rms (slice rev 7200 400))) 1) "dB"
 print "delay 1.5        :" (delay (vec 1 2 3 4) 1.5)
 
-# --- 6. Phase vocoder ------------------------------------------------------------
+; --- 6. Phase vocoder ------------------------------------------------------------
 print ""
 print "--- phase vocoder ---"
 var tone (osc sr (+ (zeros 4000) 220) (gen 512 (vec 1 0.5 0.3)))
@@ -126,7 +126,7 @@ print "ramped           :" (length (pvoc tone (list (list "stretch" (list 1 3)) 
 print "pvoc-cross       : modes 1 (multiplicative), 2 (flattener), 3 (morph); denoise, robotize, whisperize"
 print "robotize, whisperize, denoise: lengths" (length (robotize tone)) (length (whisperize tone)) (length (denoise tone 0.05))
 
-# --- 6c. Separation and onsets ----------------------------------------------------------------
+; --- 6c. Separation and onsets ----------------------------------------------------------------
 print ""
 print "--- hpss and onsets ---"
 var mixed (+ (* 0.5 (sine sr 220 0.5)) (vec (zeros 2000) (* 0.8 (noise 100)) (zeros 1900)))
@@ -137,7 +137,7 @@ print "onsets           :" (onsets mixed sr 512 128 0.3) "(seconds; 0 first)"
 print "onsets-adaptive  :" (onsets-adaptive mixed sr 512 128 3 9) "(threshold on a moving median of the flux)"
 print "segments         :" (map (segments mixed sr (onsets mixed sr 512 128 0.3)) length) "(the pieces between onsets)"
 
-# --- 6c2. Separation by NMF -----------------------------------------------------------------
+; --- 6c2. Separation by NMF -----------------------------------------------------------------
 print ""
 print "--- nmf-separate ---"
 seed 3
@@ -146,7 +146,7 @@ var sep (nmf-separate two 512 128 2 40)
 print "nmf-separate     :" (length (head sep)) "sources of" (length (head (head sep))) "samples; W" (mat-shape (getidx sep 1)) "H" (mat-shape (getidx sep 2)) "; they add up to the input within" (fixed (max (abs (- (+ (head (head sep)) (last (head sep))) two))) 6)
 print "nmf-learn-parts, nmf-separate-with: supervised, parts learnt from each source alone (see nmf.mu)"
 
-# --- 6c2b. Morphology: descriptors as curves over time -------------------------------------------
+; --- 6c2b. Morphology: descriptors as curves over time -------------------------------------------
 print ""
 print "--- morphology ---"
 var mx (vec (* 0.5 (sine sr 220 1)) (* (noise sr) (exp (* -20 (/ (range sr) sr)))) (zeros sr) (* 0.3 (sine sr 880 1)))
@@ -159,13 +159,13 @@ print "polyphony-estimate:" (take (polyphony-estimate msp) 4) " register-curve: 
 print "loudness-curve   :" (fixed (take (loudness-curve mx sr 512) 3) 1) "dB; coherence-time:" (fixed (take (coherence-time msp 512 sr 0.75) 3) 2) "s"
 print "spectral-peaks   :" (fixed (head (spectral-peaks (getidx msp 5) sr 2048 2)) 1) "Hz (parabolic)"
 
-# --- 6c3. Convolution reverb -------------------------------------------------------------------
+; --- 6c3. Convolution reverb -------------------------------------------------------------------
 print ""
 print "--- converb, concerthall ---"
 print "converb          :" (length (head (converb (vec 1 (zeros 10)) (vec 0.5 0 0.25) 1 1))) "samples: dry + wet through any response (a vector, or one per channel)"
 print "concerthall      :" (length (concerthall (sine sr 440 0.1) sr 0.7 0.3)) "channels, the Concertgebouw's response shipped with the libraries; play-score uses it"
 
-# --- 6d. Spatial ----------------------------------------------------------------------------
+; --- 6d. Spatial ----------------------------------------------------------------------------
 print ""
 print "--- spatial (azimuth 0 in front, positive to the left; elevation up) ---"
 print "pan-azimuth 45   : stereo levels" (fixed (vec (map (pan-azimuth s 45) rms)) 3)
@@ -180,7 +180,7 @@ print "binaural         : a left click, ear levels" (fixed (vec (map (binaural (
 print "binaural-decode  : B-format for headphones; a front source" (fixed (vec (map (binaural-decode (ambi-encode s 1 0 0) sr) rms)) 3)
 print "moving-source, ambi-render, channel, stereo-add, normalize-peak-stereo: see spatial.mu"
 
-# --- 7. Resampling and channels --------------------------------------------------
+; --- 7. Resampling and channels --------------------------------------------------
 print ""
 print "--- resampling and channels ---"
 var slow (sine sr 100 0.02)
@@ -189,14 +189,14 @@ print "resample-to 4000 :" (length (resample-to slow sr 4000)) "samples"
 print "interleave       :" (interleave (list (vec 1 2) (vec 3 4)))
 print "deinterleave     :" (deinterleave (vec 1 3 2 4) 2)
 
-# --- 8. Envelopes ----------------------------------------------------------------
+; --- 8. Envelopes ----------------------------------------------------------------
 print ""
 print "--- envelopes ---"
 print "bpf 0 ((4 1) (4 0)):" (bpf 0 (list (list 4 1) (list 4 0))) "(an attack and a decay; each end starts the next segment)"
 print "envelope-follow  :" (envelope-follow (vec 1 1 -1 -1 0 0) 2)
 print "envelope-from-values:" (envelope-from-values (vec 0 1 0) 2)
 
-# --- 9. Music information retrieval ----------------------------------------------
+; --- 9. Music information retrieval ----------------------------------------------
 print ""
 print "--- music information retrieval ---"
 var msr 22050

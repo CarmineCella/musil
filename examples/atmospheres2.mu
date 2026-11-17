@@ -1,29 +1,29 @@
-# atmospheres2: Ligeti's "Atmosphères" simulated from a recording of it. Where atmospheres.mu transcribes the
-# register diagram and the waveform by eye, this one reads the curves of the recording itself (data/
-# atmospheres_curves.csv: one line a second with the loudness in dB, the lowest strong partial and the spectral
-# centroid in octaves, the spread in octaves, the flux peaks a second and the coherence time in seconds, measured
-# with the descriptors of signals) and turns them into the granulator's envelopes:
-#   register   from the lowest partial up to the centroid plus the spread (the band the sound fills)
-#   dynamics   from the loudness, -60 dB (ppp) to -20 dB (fff, the recording's loudest point)
-#   polyphony  from the loudness too: a quiet passage is a few players, a climax everyone
-#   density    from the flux peaks (a held cluster has none: a floor re-attacks it as the samples run out)
-#   duration   from the coherence time (how long the sound keeps its spectrum): long where it holds, short where it moves
-#   styles     ordinario; tremolo and flatterzunge where the flux is high; harmonics where the band is very high
-# One granulator over the whole piece, the orchestra all ossia players (the band decides the instrument, and a
-# player keeps the one it took for half a minute at least: 'seat). The analysis is not an orchestration of the
-# recording (that is morph_orchestration.mu): the notes fill the band chromatically ('method 'cluster), as in the
-# score they are clusters; only the shape is the recording's. The report and the validation at the end say how
-# busy the players were and that every note has a player of its own.
-# Usage: musil atmospheres2.mu [timescale] [seed] [recording.wav]   (a recording given: its curves are measured
-#        and written to data/atmospheres_curves.csv first; timescale 0.25 for a two-minute preview)
+; atmospheres2: Ligeti's "Atmosphères" simulated from a recording of it. Where atmospheres.mu transcribes the
+; register diagram and the waveform by eye, this one reads the curves of the recording itself (data/
+; atmospheres_curves.csv: one line a second with the loudness in dB, the lowest strong partial and the spectral
+; centroid in octaves, the spread in octaves, the flux peaks a second and the coherence time in seconds, measured
+; with the descriptors of signals) and turns them into the granulator's envelopes:
+;   register   from the lowest partial up to the centroid plus the spread (the band the sound fills)
+;   dynamics   from the loudness, -60 dB (ppp) to -20 dB (fff, the recording's loudest point)
+;   polyphony  from the loudness too: a quiet passage is a few players, a climax everyone
+;   density    from the flux peaks (a held cluster has none: a floor re-attacks it as the samples run out)
+;   duration   from the coherence time (how long the sound keeps its spectrum): long where it holds, short where it moves
+;   styles     ordinario; tremolo and flatterzunge where the flux is high; harmonics where the band is very high
+; One granulator over the whole piece, the orchestra all ossia players (the band decides the instrument, and a
+; player keeps the one it took for half a minute at least: 'seat). The analysis is not an orchestration of the
+; recording (that is morph_orchestration.mu): the notes fill the band chromatically ('method 'cluster), as in the
+; score they are clusters; only the shape is the recording's. The report and the validation at the end say how
+; busy the players were and that every note has a player of its own.
+; Usage: musil atmospheres2.mu [timescale] [seed] [recording.wav]   (a recording given: its curves are measured
+;        and written to data/atmospheres_curves.csv first; timescale 0.25 for a two-minute preview)
 load "music.mu"
 var k (if (> (length args) 0) (num (getidx args 0)) 1)
 seed (if (> (length args) 1) (num (getidx args 1)) 11)
-var db (db-load-first (list "../datasets/FullSOL2020.spectrum.db" "../datasets/TinySOL.spectrum.db" "data/microsol/microsol.spectrum.db"))   # FullSOL (every instrument and technique), else TinySOL after ./fetch_tinysol.sh, else the bundled MicroSOL (a sketch)
+var db (db-load-first (list "../datasets/FullSOL2020.spectrum.db" "../datasets/TinySOL.spectrum.db" "data/microsol/microsol.spectrum.db"))   ; FullSOL (every instrument and technique), else TinySOL after ./fetch_tinysol.sh, else the bundled MicroSOL (a sketch)
 var sr 44100
 var curves-path "data/atmospheres_curves.csv"
 
-# --- the analysis of a recording, when one is given: the curves, one line a second -------------------------------
+; --- the analysis of a recording, when one is given: the curves, one line a second -------------------------------
 function analyse-recording (path) {
     var w (read-wav path)
     var fsr (head w)
@@ -52,7 +52,7 @@ var curves (read-csv curves-path)
 var secs (+ 1 (head (last curves)))
 print "curves:" (length curves) "seconds of the recording"
 
-# --- the orchestra: ossia players, the band decides the instrument -------------------------------------------------
+; --- the orchestra: ossia players, the band decides the instrument -------------------------------------------------
 var here (db-instruments-available db)
 function have (L) (filter L (function (i) (contains? here (str i))))
 function ossia-of (L) (join (map (have L) str) "|")
@@ -67,8 +67,8 @@ var ord (list 'ord)
 var trem (styled (list 'trem 'flatt 'ord))
 var harm (styled (list 'art-harm 'nat-harm 'ord))
 
-# --- the curves as envelopes: a breakpoint every two seconds of the recording (scaled by the timescale) -----------
-# a row: (t dB low centroid spread density coherence)
+; --- the curves as envelopes: a breakpoint every two seconds of the recording (scaled by the timescale) -----------
+; a row: (t dB low centroid spread density coherence)
 function level-of (row) (max 0 (min 1 (/ (+ (getidx row 1) 60) 40)))
 function curve-env (f) {
     var kv (list)
@@ -78,12 +78,12 @@ function curve-env (f) {
                                   set j (+ j 2) }
     return (env kv)
 }
-var reach (orchestra-octaves db orch)                           # what this orchestra can play: the band is kept inside it
+var reach (orchestra-octaves db orch)                           ; what this orchestra can play: the band is kept inside it
 print "the orchestra reaches octaves" (fixed (head reach) 1) "to" (fixed (last reach) 1)
 var params (record (list
-    'method    'cluster                                            # every pitch of the band once before any is repeated: the clusters
-    'seat      (* k 30)                                            # an ossia player keeps the instrument it took for half a minute at least
-    'inertia   0.8                                                 # and its bowing, most of the time
+    'method    'cluster                                            ; every pitch of the band once before any is repeated: the clusters
+    'seat      (* k 30)                                            ; an ossia player keeps the instrument it took for half a minute at least
+    'inertia   0.8                                                 ; and its bowing, most of the time
     'register  (curve-env (function (r) { var hi (min (last reach) (max (+ (head reach) 0.5) (+ (getidx r 3) (getidx r 4))))
                                          var lo (max (head reach) (min (- hi 0.5) (- (getidx r 2) 0.25)))
                                          return (list lo hi) }))
@@ -98,17 +98,17 @@ var t0 (clock)
 var r (orchestrate-granular db orch (* k secs) params)
 var f (best-connection r)
 print (length f) "notes in" (fixed (- (clock) t0) 1) "s"
-var rep (get r 'report)                                          # (granulation-report r) prints every player's share too
+var rep (get r 'report)                                          ; (granulation-report r) prints every player's share too
 print "granulation:" (get rep 'due) "events due," (get rep 'notes) "notes;" (get rep 'skipped-busy) "skipped with every able player busy (saturation" (fixed (* 100 (get rep 'saturation)) 0) "%);" (get rep 'skipped-unplayable) "unplayable"
 var s (score "atmospheres (from the recording)" sr)
 connect! s 0 r (list 0)
-# the piano strings brushed at the end, ppppp: a filtered noise breathing in and out
+; the piano strings brushed at the end, ppppp: a filtered noise breathing in and out
 var brush-secs (* k 18)
 var brush (* 0.03 (lowpass (noise (floor (* brush-secs sr))) sr 700 0.7) (bpf 0 (list (list (floor (* 0.5 brush-secs sr)) 1) (list (floor (* 0.5 brush-secs sr)) 0))))
 event s (* k (- secs 22)) brush-secs brush
 score-print s
-validation-print (score-validate s orch)                          # every note has a player of its own, at a recorded pitch
+validation-print (score-validate s orch)                          ; every note has a player of its own, at a recorded pitch
 render s "/tmp/musil_atmospheres2.wav" "stereo"
 print "wrote /tmp/musil_atmospheres2.wav (in the hall)"
 display s
-# play it: press Play in the roll, or (play-score s 0.8) here
+; play it: press Play in the roll, or (play-score s 0.8) here

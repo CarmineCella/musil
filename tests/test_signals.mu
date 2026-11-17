@@ -1,7 +1,7 @@
-# test_signals.mu — self-checking test of the signals library (signals.h + signals.mu).
-#
-# Every check is a (check ...) from test.mu. A passing run prints only the final line.
-# Run with: musil tests/test_signals.mu
+; test_signals.mu — self-checking test of the signals library (signals.h + signals.mu).
+;
+; Every check is a (check ...) from test.mu. A passing run prints only the final line.
+; Run with: musil tests/test_signals.mu
 
 load "test.mu"
 load "signals.mu"
@@ -9,7 +9,7 @@ load "signals.mu"
 function near? (a b eps) (< (max (abs (- a b))) eps)
 var sr 8000
 
-# --- generators ---
+; --- generators ---
 var s440 (sine sr 440 0.1)
 check (== (length s440) 800) "sine: length"
 check (near? (rms s440) 0.7071 1e-3) "sine: rms"
@@ -33,7 +33,7 @@ check (== (amp->db 1) 0) "db"
 check (near? (db->amp -6.0206) 0.5 1e-4) "undb"
 check (near? (amp->db (db->amp -20)) -20 1e-12) "db round trip"
 
-# --- oscillator (C++) ---
+; --- oscillator (C++) ---
 var o (osc 8 (+ (zeros 8) 1) (vec 0 1 0 -1 0))
 check (equal? o (vec 0 0.5 1 0.5 0 -0.5 -1 -0.5)) "osc: linear interpolation through the table"
 check (near? (acf-f0 (osc sr (+ (zeros 1600) 330) (gen 512 (vec 1))) sr) 333.3 1) "osc: pitch"
@@ -42,7 +42,7 @@ check (== (length two) 100) "oscbank: length"
 check (contains? (error-of (function () (oscbank sr (list (ones 2)) (list) tbl))) "same length") "oscbank: arity"
 check (contains? (error-of (function () (osc 8 (vec 1) (vec 1)))) "at least 2") "osc: table too short"
 
-# --- windows and spectra ---
+; --- windows and spectra ---
 check (equal? (fixed (hann 4) 6) (vec 0 0.5 1 0.5)) "hann: periodic"
 check (near? (hamming 8) (vec 0.08 0.2147 0.54 0.8653 1 0.8653 0.54 0.2147) 1e-3) "hamming"
 check (near? (head (blackman 8)) 0 1e-12) "blackman: starts at zero"
@@ -73,7 +73,7 @@ check (== (length (conv (ones 100) (ones 50))) 149) "conv: length"
 var cm (complex-mul (list (vec 0) (vec 1)) (list (vec 0) (vec 1)))
 check (equal? (list (head cm) (last cm)) (list (vec -1) (vec 0))) "complex-mul: i * i = -1"
 
-# --- cepstral envelope ---
+; --- cepstral envelope ---
 var tone (osc sr (+ (zeros 1024) 200) (gen 512 (ones 12)))
 var shaped (magnitudes (fft (* (bandpass tone sr 900 3) (hann 1024))))
 var picks (function (m) (vec (map (list 26 51 77 102 128 154) (function (k) (getidx m k)))))
@@ -89,7 +89,7 @@ check (near? (impose-envelope shaped shaped 20) shaped 1e-9) "impose-envelope: a
 check (== (length (cepstrum (ones 8))) 8) "cepstrum: length"
 check (near? (cepstrum (ones 8)) (zeros 8) 1e-9) "cepstrum: flat spectrum has zero cepstrum"
 
-# --- stft ---
+; --- stft ---
 var sig (sine sr 200 0.1)
 var frames (stft sig 256 64)
 check (== (length frames) 9) "stft: frame count"
@@ -100,7 +100,7 @@ check (near? (slice y 256 300) (slice sig 256 300) 1e-12) "istft: exact reconstr
 check (equal? (istft (list) 256 64) (vec)) "istft: no frames"
 check (== (length (head (stft-magnitudes frames))) 128) "stft-magnitudes"
 
-# --- features ---
+; --- features ---
 var a (vec 0 1 0 0)
 var f (vec 0 100 200 300)
 check (== (spectral-centroid a f) 100) "spectral-centroid"
@@ -125,7 +125,7 @@ check (== (acf-f0 (zeros 100) sr) 0) "acf-f0: silence"
 check (== (length (autocorr (ones 10))) 5) "autocorr: n/2 lags"
 check (contains? (error-of (function () (autocorr (vec 1 2)))) "too short") "autocorr: short"
 
-# --- filters ---
+; --- filters ---
 var lp (biquad "lowpass" sr 1000 0.707 0)
 check (== (length (head lp)) 3) "biquad: b"
 check (== (length (last lp)) 3) "biquad: a"
@@ -162,7 +162,7 @@ check (equal? (delay (vec 1 2 3 4) 1) (vec 0 1 2 3)) "delay: integer"
 check (equal? (delay (vec 1 2 3 4) 1.5) (vec 0 0.5 1.5 2.5)) "delay: fractional (interpolates from silence too)"
 check (contains? (error-of (function () (delay (vec 1) -1))) ">= 0") "delay: negative"
 
-# --- phase vocoder ---
+; --- phase vocoder ---
 check (equal? (local-maxima (vec 0 1 0 2 3 2 0)) (vec 1 4)) "local-maxima"
 check (equal? (local-maxima (vec 1 2 3)) (vec)) "local-maxima: none interior"
 check (equal? (gather (vec 10 20 30) (vec 2 0 -1)) (vec 30 10 30)) "gather"
@@ -209,7 +209,7 @@ check (> (rms xs) 0) "pvoc-cross mode 2: something comes out"
 check (> (rms (pvoc-cross voiced tone 1 0.5 100)) 0) "pvoc-cross mode 1"
 check (near? (slice (pvoc-cross voiced tone 3 0 100) 4096 2000) (slice (pvoc voiced (list)) 4096 2000) 1e-9) "pvoc-cross mode 3 at 0 is the first sound"
 
-# --- hpss and onsets ---
+; --- hpss and onsets ---
 var tone2 (* 0.5 (sin (* tau 220 (/ (range 16000) sr))))
 var clicks2 (mix (map (list 0 4000 8000 12000) (function (p) (list p (* 0.8 (noise 200))))))
 var mixed2 (+ tone2 (vec clicks2 (zeros (- 16000 (length clicks2)))))
@@ -235,7 +235,7 @@ check (equal? (onsets-adaptive (zeros 4000) sr 512 128 3 9) (vec 0)) "onsets-ada
 check (== (length (segments mixed2 sr on)) 4) "segments: one per onset, from 0 to the end"
 check (== (sum (vec (map (segments mixed2 sr on) length))) 16000) "segments: tile the whole sound"
 
-# --- nmf separation ---
+; --- nmf separation ---
 seed 3
 var env1 (bpf 0 (list (list 4000 1) (list 4000 0) (list 4000 1) (list 4000 0)))
 var env2 (bpf 1 (list (list 8000 0) (list 8000 1)))
@@ -261,7 +261,7 @@ check (and (> (corr (head (head sup)) pa) 0.85) (> (corr (last (head sup)) pb) 0
 check (< (max (abs (- (+ (head (head sup)) (last (head sup))) (+ pa pb)))) 1e-6) "nmf-separate-with: the sources add up to the mix"
 check (== (nrows (last sup)) 4) "nmf-separate-with: the activations, one row per part"
 
-# --- morphology descriptors ---
+; --- morphology descriptors ---
 var m1 (vec (* 0.5 (sine sr 220 1)) (* (noise sr) (exp (* -20 (/ (range sr) sr)))) (zeros sr) (* 0.3 (sine sr 880 1)))
 var spm (frame-spectra m1 2048 512 1024)
 check (== (length (head spm)) 1024) "frame-spectra: ncoeff bins per frame"
@@ -290,7 +290,7 @@ check (< (getidx ctm 40) 0.2) "coherence-time: silence has none"
 var pk (spectral-peaks (getidx spm 5) sr 2048 3)
 check (near? (min (head pk)) 220 2) "spectral-peaks: the fundamental, refined by a parabola"
 
-# --- convolution reverb ---
+; --- convolution reverb ---
 var imp (vec 1 (zeros 100))
 var cv (converb imp (vec 0.5 0 0.25) 1 1)
 check (== (length cv) 1) "converb: a mono input and a mono response give one channel"
@@ -308,7 +308,7 @@ check (> (rms (take (head hall) 800)) 0.2) "concerthall: the dry part is there"
 check (near? (sqrt (sum (* (head (hall-ir 44100)) (head (hall-ir 44100))))) 1 0.02) "hall-ir: the response has unit energy at its own rate (the wet part keeps the level)"
 check (contains? (find-file "hall_concertgebouw.wav") "hall_concertgebouw") "the hall's response ships with the libraries"
 
-# --- spatial ---
+; --- spatial ---
 check (equal? (fixed (ambi-gains 1 0 0) 6) (vec 1 0 0 1)) "ambi-gains: front is (W 0 0 X)"
 check (equal? (fixed (ambi-gains 1 90 0) 6) (vec 1 1 0 0)) "ambi-gains: left is Y"
 check (equal? (fixed (ambi-gains 1 0 90) 6) (vec 1 0 1 0)) "ambi-gains: up is Z"
@@ -359,7 +359,7 @@ check (equal? (channel (list sx (* 2 sx)) 1) (* 2 sx)) "channel"
 check (equal? (channel sx 1) sx) "channel: a vector is its own channel"
 check (== (max (head (normalize-peak-stereo (list (* 3 sx) sx)))) 1) "normalize-peak-stereo"
 
-# --- resampling ---
+; --- resampling ---
 var slow (sine sr 100 0.02)
 check (== (length (resample slow 2)) 320) "resample: length"
 check (near? (drop (take (resample slow 2) 300) 40) (drop (take (sine (* 2 sr) 100 0.02) 300) 40) 1e-3) "resample x2 matches the sine at the higher rate"
@@ -369,13 +369,13 @@ check (near? (acf-f0 (resample (sine sr 1000 0.5) 0.5) 4000) 1000 1) "resample: 
 check (== (length (resample-to slow sr 4000)) 80) "resample-to"
 check (contains? (error-of (function () (resample slow 0))) "> 0") "resample: factor"
 
-# --- channels ---
+; --- channels ---
 check (equal? (interleave (list (vec 1 2) (vec 3 4))) (vec 1 3 2 4)) "interleave"
 check (equal? (deinterleave (vec 1 3 2 4) 2) (list (vec 1 2) (vec 3 4))) "deinterleave"
 check (contains? (error-of (function () (interleave (list (vec 1) (vec 1 2))))) "same length") "interleave: lengths"
 check (contains? (error-of (function () (deinterleave (vec 1 2 3) 2))) "multiple") "deinterleave: length"
 
-# --- envelopes ---
+; --- envelopes ---
 check (equal? (bpf 0 (list (list 4 1))) (vec 0 0.25 0.5 0.75)) "bpf: one segment, end excluded"
 check (equal? (bpf 0 (list (list 2 1) (list 2 0))) (vec 0 0.5 1 0.5)) "bpf: two segments"
 check (equal? (bpf 5 (list)) (vec)) "bpf: no segments"
@@ -383,9 +383,9 @@ check (contains? (error-of (function () (bpf 0 (list (list 0 1))))) ">= 1") "bpf
 check (equal? (envelope-follow (vec 1 1 -1 -1 0 0) 2) (vec 1 1 0)) "envelope-follow"
 check (equal? (envelope-from-values (vec 0 1 0) 2) (vec 0 0.5 1 0.5)) "envelope-from-values"
 
-# --- music information retrieval: chroma, key, tempo, beats, structure ---
+; --- music information retrieval: chroma, key, tempo, beats, structure ---
 var msr 22050
-var amaj (+ (sine msr 220 4) (sine msr 277.18 4) (sine msr 329.63 4))          # A major: A3 C#4 E4
+var amaj (+ (sine msr 220 4) (sine msr 277.18 4) (sine msr 329.63 4))          ; A major: A3 C#4 E4
 var Cg (chromagram amaj msr 4096 1024)
 check (== (length Cg) 12) "chromagram: twelve rows"
 check (== (length (head Cg)) (+ 1 (floor (/ (length amaj) 1024)))) "chromagram: a frame every hop, the first at 0"
@@ -397,16 +397,16 @@ check (> (getidx prof 1) (getidx prof 0)) "chromagram: C# above C"
 check (equal? (take (key-estimate prof) 2) (list "A" 'major)) "key-estimate: A major"
 check (== (length (key-scores prof)) 24) "key-scores: the 24 keys"
 check (>= (last (head (key-scores prof))) (last (getidx (key-scores prof) 1))) "key-scores: best first"
-var amin (+ (sine msr 220 4) (sine msr 261.63 4) (sine msr 329.63 4))          # A minor: A3 C4 E4
+var amin (+ (sine msr 220 4) (sine msr 261.63 4) (sine msr 329.63 4))          ; A minor: A3 C4 E4
 check (equal? (take (key-estimate (chroma-mean (chromagram amin msr 4096 1024))) 2) (list "A" 'minor)) "key-estimate: A minor"
 check (equal? (key-name (list "D" 'minor 0.5)) "D minor") "key-name"
 check (equal? (rotate-vec (vec 1 2 3) 1) (vec 3 1 2)) "rotate-vec"
 check (near? (correlation (vec 1 2 3) (vec 2 4 6)) 1 1e-9) "correlation: 1 for a scaled copy"
 check (== (correlation (vec 1 1 1) (vec 1 2 3)) 0) "correlation: 0 for a constant"
 check (== (length (chroma-mean Cg)) 12) "chroma-mean"
-# a click train at 120 bpm: tempo, beats
+; a click train at 120 bpm: tempo, beats
 var mfps (/ msr 256)
-var train (clicks (* 0.5 (range 20)) msr 10)                                     # a click every half second
+var train (clicks (* 0.5 (range 20)) msr 10)                                     ; a click every half second
 check (== (length train) (* 10 msr)) "clicks: the length asked for"
 check (> (max train) 0.5) "clicks: audible"
 var tflux (onset-strength train 1024 256)
@@ -414,7 +414,7 @@ check (near? (tempo-estimate tflux mfps) 120 1) "tempo-estimate: 120 bpm from a 
 check (near? (tempo-estimate-with tflux mfps 60 0.3) 60 1) "tempo-estimate-with: a prior on the slow side takes the half (a click train is periodic there too)"
 var bt (beat-track tflux mfps 120 100)
 check (> (length bt) 15) "beat-track: the beats found"
-var bts (/ (+ (* bt 256) 512) msr)                                               # a frame's time: the middle of its window
+var bts (/ (+ (* bt 256) 512) msr)                                               ; a frame's time: the middle of its window
 check (< (max (abs (- bts (* 0.5 (round (* 2 bts)))))) 0.03) "beat-track: on the clicks (within 30 ms)"
 check (near? (mean (diff bts)) 0.5 0.01) "beat-track: the period kept"
 var bb (beats train msr 1024 256)
@@ -427,7 +427,7 @@ check (== (length (head tg)) (length tflux)) "tempogram: a column per frame"
 var mid (floor (/ (length tflux) 2))
 check (near? (getidx (getidx tg 90) mid) 1 1e-9) "tempogram: 120 bpm the maximum in the middle of the train"
 check (< (getidx (getidx tg 50) mid) 0.7) "tempogram: 80 bpm weaker"
-# structure: two different textures
+; structure: two different textures
 var two (mix (list (list 0 (+ (sine msr 220 4) (sine msr 330 4))) (list (* 4 msr) (* 0.5 (noise (* 4 msr))))))
 var mf (mfcc-gram two msr 2048 512 40 13)
 check (== (length mf) 13) "mfcc-gram: ncoeff rows"
@@ -446,7 +446,7 @@ var half (floor (/ (length Sm) 2))
 check (near? (argmax nv) half 8) "foote-novelty: the peak at the change of texture"
 var bds (novelty-peaks nv (/ msr 512) 2 31)
 check (and (== (length bds) 1) (near? (head bds) 4 0.3)) "novelty-peaks: the one boundary, at 4 s"
-var bs (beat-sync (list (vec 1 2 3 4 5 6) (vec 0 0 0 1 1 1)) (vec 0 0.5) 4)    # fps 4: beats at frames 0 and 2
+var bs (beat-sync (list (vec 1 2 3 4 5 6) (vec 0 0 0 1 1 1)) (vec 0 0.5) 4)    ; fps 4: beats at frames 0 and 2
 check (equal? bs (list (vec 1.5 4.5) (vec 0 0.75))) "beat-sync: the columns averaged between beats"
 check (equal? (mat-log1p (list (vec 0 (- (exp 1) 1))) 1) (list (vec 0 1))) "mat-log1p"
 

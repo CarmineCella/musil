@@ -1,4 +1,4 @@
-# while loops, break, and the vector alternative
+; while loops, break, and the vector alternative
 
 load "std.mu"
 function sum-range (lo hi) {
@@ -11,7 +11,7 @@ function sum-range (lo hi) {
     return s
 }
 
-# count multiples of d in [1..n]
+; count multiples of d in [1..n]
 function count-div (n d) {
     var count 0
     var i d
@@ -40,13 +40,13 @@ while (<= row 5) {
     var row (+ row 1)
 }
 
-# the same table with vectors: one line per row, no inner loop
+; the same table with vectors: one line per row, no inner loop
 print "--- with vectors ---"
 each (range 1 6) (function (r) (print (* r (range 1 6))))
 
-# --- break: leaving a loop early ---
+; --- break: leaving a loop early ---
 
-# find first multiple of 7 above 50
+; find first multiple of 7 above 50
 var i 50
 while 1 {
     if (== (mod i 7) 0) {
@@ -56,7 +56,7 @@ while 1 {
     var i (+ i 1)
 }
 
-# break from nested structure: only breaks the inner while
+; break from nested structure: only breaks the inner while
 function find-pair (target) {
     var x 1
     while (<= x target) {
@@ -64,18 +64,18 @@ function find-pair (target) {
         while (<= y target) {
             if (== (+ x y) target) {
                 print "pair summing to" target ":" x "+" y
-                break   # exits inner while only
+                break   ; exits inner while only
             }
             var y (+ y 1)
         }
-        if (== (+ x x) target) { break }   # exit outer when done
+        if (== (+ x x) target) { break }   ; exit outer when done
         var x (+ x 1)
     }
 }
 find-pair 10
 find-pair 7
 
-# break in while with accumulator: count primes below 1000 by trial division
+; break in while with accumulator: count primes below 1000 by trial division
 var count 0
 var n 2
 while (< n 1000) {

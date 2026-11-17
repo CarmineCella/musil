@@ -1,7 +1,7 @@
 // signals.h — offline signal processing on vectors, C++ half. The Musil half
 // is signals.mu. Ported from Musil 1.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // A signal is a vector of samples. A complex spectrum is (list re im): two
 // vectors of the same length. A polar spectrum is (list mag phase). A stereo

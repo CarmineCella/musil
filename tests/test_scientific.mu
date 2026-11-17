@@ -1,7 +1,7 @@
-# test_scientific.mu — self-checking test of the scientific library (scientific.h + scientific.mu).
-#
-# Every check is a (check ...) from test.mu. A passing run prints only the final line.
-# Run with: musil tests/test_scientific.mu
+; test_scientific.mu — self-checking test of the scientific library (scientific.h + scientific.mu).
+;
+; Every check is a (check ...) from test.mu. A passing run prints only the final line.
+; Run with: musil tests/test_scientific.mu
 
 load "test.mu"
 load "scientific.mu"
@@ -13,7 +13,7 @@ var A (list (vec 1 2) (vec 3 4))
 var B (list (vec 5 6) (vec 7 8))
 var I2 (list (vec 1 0) (vec 0 1))
 
-# --- construction and shape ---
+; --- construction and shape ---
 check (equal? (list->mat (list (list 1 2) (list 3 4))) A) "list->mat"
 check (equal? (mat-zeros 2 3) (list (vec 0 0 0) (vec 0 0 0))) "mat-zeros"
 check (equal? (mat-ones 1 2) (list (vec 1 1))) "mat-ones"
@@ -36,7 +36,7 @@ var M3 (list (vec 1 2 3) (vec 4 5 6) (vec 7 8 9))
 check (equal? (get-rows M3 1 2) (list (vec 4 5 6) (vec 7 8 9))) "get-rows"
 check (equal? (get-cols M3 1 2) (list (vec 2 3) (vec 5 6) (vec 8 9))) "get-cols"
 
-# --- elementwise ---
+; --- elementwise ---
 check (equal? (mat-add A B) (list (vec 6 8) (vec 10 12))) "mat-add"
 check (equal? (mat-sub B A) (list (vec 4 4) (vec 4 4))) "mat-sub"
 check (equal? (hadamard A B) (list (vec 5 12) (vec 21 32))) "hadamard"
@@ -45,12 +45,12 @@ check (equal? (mat-shift A 1) (list (vec 2 3) (vec 4 5))) "mat-shift"
 check (equal? (mat-map A (function (x) (* x x))) (list (vec 1 4) (vec 9 16))) "mat-map"
 check (contains? (error-of (function () (mat-add A (list (vec 1 2 3) (vec 1 2 3))))) "size mismatch") "mat-add: shape mismatch"
 
-# --- stacking ---
+; --- stacking ---
 check (equal? (vstack A B) (list (vec 1 2) (vec 3 4) (vec 5 6) (vec 7 8))) "vstack"
 check (equal? (hstack A B) (list (vec 1 2 5 6) (vec 3 4 7 8))) "hstack"
 check (equal? (col-stack (list (vec 1 2 3) (vec 4 5 6))) (list (vec 1 4) (vec 2 5) (vec 3 6))) "col-stack"
 
-# --- products (scientific.h) ---
+; --- products (scientific.h) ---
 check (equal? (mat-mul A B) (list (vec 19 22) (vec 43 50))) "mat-mul"
 check (equal? (mat-mul A I2) A) "mat-mul: identity"
 check (equal? (mat-mul A B I2) (mat-mul A B)) "mat-mul: variadic"
@@ -67,7 +67,7 @@ check (contains? (error-of (function () (transpose (list)))) "empty") "empty mat
 check (contains? (error-of (function () (transpose (list "a")))) "expected number") "rows must be vectors"
 check (equal? (transpose (list 1 2)) (list (vec 1 2))) "a list of scalars is a column"
 
-# --- decompositions ---
+; --- decompositions ---
 check (== (det A) -2) "det 2x2"
 check (== (det M3) 0) "det: singular"
 check (== (det (eye 4)) 1) "det: identity"
@@ -83,7 +83,7 @@ check (near? (solve A (vec 5 11)) (vec 1 2) 1e-12) "solve"
 check (contains? (error-of (function () (solve M3 (vec 1 2 3)))) "singular") "solve: singular"
 check (contains? (error-of (function () (solve A (vec 1 2 3)))) "elements") "solve: b length"
 
-# --- statistics ---
+; --- statistics ---
 check (equal? (median-filter (vec 1 1 9 1 1 9 1 1) 3) (ones 8)) "median-filter removes spikes"
 check (contains? (error-of (function () (median-filter (vec 1 2) 0))) ">= 1") "median-filter: order"
 check (near? (linefit (vec 0 1 2 3) (vec 1 3 5 7)) (vec 2 1) 1e-12) "linefit"
@@ -111,7 +111,7 @@ check (mat-near? (cov D) (list (vec 1 2) (vec 2 4)) 1e-12) "cov"
 check (mat-near? (corr D) (list (vec 1 1) (vec 1 1)) 1e-12) "corr: perfectly correlated"
 check (contains? (error-of (function () (cov (list (vec 1 2))))) "at least 2") "cov: one observation"
 
-# --- eigen decomposition ---
+; --- eigen decomposition ---
 var e (eig-sym (list (vec 2 1) (vec 1 2)))
 check (near? (head e) (vec 3 1) 1e-12) "eig-sym: eigenvalues descending"
 check (near? (head (last e)) (vec 0.7071 0.7071) 1e-4) "eig-sym: first eigenvector"
@@ -120,8 +120,8 @@ check (near? (head (eig-sym (diag (vec 1 5 3)))) (vec 5 3 1) 1e-12) "eig-sym: di
 check (contains? (error-of (function () (eig-sym (list (vec 1 2) (vec 3 4))))) "not symmetric") "eig-sym: not symmetric"
 check (contains? (error-of (function () (eig-sym (list (vec 1 2 3))))) "square") "eig-sym: not square"
 
-# --- machine learning ---
-# points along the x axis: the first direction is (1 0) up to sign
+; --- machine learning ---
+; points along the x axis: the first direction is (1 0) up to sign
 var line (list (vec 1 0.1) (vec 2 -0.1) (vec 3 0.1) (vec 4 -0.1) (vec 5 0))
 var P (pca line)
 check (equal? (mat-shape P) (list 2 3)) "pca: d x (d+1)"
@@ -151,7 +151,7 @@ var s (shuffle (list 1 2 3 4 5 6 7 8))
 check (equal? (sort-list s) (list 1 2 3 4 5 6 7 8)) "shuffle keeps the elements"
 check (equal? (map (train-test-split (list 1 2 3 4 5) 0.6) length) (list 3 2)) "train-test-split"
 
-# --- regression ---
+; --- regression ---
 var X (list (vec 1 0) (vec 1 1) (vec 1 2) (vec 1 3))
 var y (vec 1 3 5 7)
 var b (linreg-fit X y)
@@ -160,7 +160,7 @@ check (near? (linreg-predict X b) y 1e-12) "linreg-predict"
 check (near? (linreg-residuals X y b) (zeros 4) 1e-12) "linreg-residuals"
 check (equal? (add-intercept (list (vec 5) (vec 6))) (list (vec 1 5) (vec 1 6))) "add-intercept"
 
-# --- nmf ---
+; --- nmf ---
 seed 5
 var Wt (list->mat (list (vec 1 0) (vec 1 0) (vec 0 1) (vec 0 1)))
 var Ht (list->mat (list (vec 1 2 3 0) (vec 0 1 0 2)))
@@ -179,7 +179,7 @@ var Hs (nmf-with-parts Vt Wt 100)
 check (equal? (mat-shape Hs) (list 2 4)) "nmf-with-parts: H for known parts"
 check (< (mat-max (mat-map (mat-sub (mat-mul Wt Hs) Vt) abs)) 0.05) "nmf-with-parts: reconstructs V with W fixed"
 
-# --- matching pursuit ---
+; --- matching pursuit ---
 var Dm (list->mat (list (list 1 0 0 0) (list 0 1 0 0) (list 0 0 1 0) (list 1 1 0 0)))
 var rm (mp (vec 2 3 0 0) Dm 3 0.01 (record (list 'nonneg 1)))
 check (equal? (get rm 'atoms) (list 3 1)) "mp: the most correlated atom first, then the residual's"
@@ -192,7 +192,7 @@ check (equal? (get (mp (vec 1 0 0 0) Dm 5 0.01 (list)) 'atoms) (list 0)) "mp: st
 check (== (length (get (mp (vec 0 0 0 0) Dm 3 0.01 (list)) 'atoms)) 0) "mp: nothing for silence"
 check (contains? (error-of (function () (mp (vec 1 2) Dm 1 0 (list)))) "length") "mp: atoms must match the signal"
 
-# --- display ---
+; --- display ---
 check (equal? (mat-round (list (vec 1.234 5.678)) 1) (list (vec 1.2 5.7))) "mat-round"
 check (equal? (mat-str A 1) "1.0  2.0\n3.0  4.0") "mat-str"
 check (equal? (mat-str (list (vec 1 -10)) 0) "  1  -10") "mat-str: alignment"

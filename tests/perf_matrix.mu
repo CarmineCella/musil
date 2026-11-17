@@ -1,4 +1,4 @@
-# perf_matrix.mu — a 300x300 matrix workout: product in C++, elementwise ops in Musil.
+; perf_matrix.mu — a 300x300 matrix workout: product in C++, elementwise ops in Musil.
 load "scientific.mu"
 seed 1
 var n 300

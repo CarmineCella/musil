@@ -1,7 +1,7 @@
-# matrices: scalars, vectors and matrices in Musil (scientific library)
-#
-# Scalars and vectors use + - * /, which broadcast. A matrix is a list of
-# row vectors, and gets its own functions: mat-add, mat-mul, transpose, ...
+; matrices: scalars, vectors and matrices in Musil (scientific library)
+;
+; Scalars and vectors use + - * /, which broadcast. A matrix is a list of
+; row vectors, and gets its own functions: mat-add, mat-mul, transpose, ...
 
 load "scientific.mu"
 

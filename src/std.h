@@ -2,7 +2,7 @@
 // The other half is std.mu, written in Musil; what can be expressed in the
 // language lives there. Only what needs C++ (speed on vectors, strings, files,
 // higher-order over both list and vector) is here.
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 
 #pragma once
@@ -91,7 +91,7 @@ inline vptr fn_opt(vlist& a, Interp& i) { long k = rec_find(i, a[0], a[1]); retu
 // (has? rec key) is the key present?
 inline vptr fn_has(vlist& a, Interp& i) { return v_bool(rec_find(i, a[0], a[1]) >= 0); }
 // (put! rec key value) set a key in place (replacing an existing pair, or adding one); returns the record
-inline vptr fn_put_bang(vlist& a, Interp& i) { long k = rec_find(i, a[0], a[1]); if (k >= 0) a[0]->l[(size_t)k]->l[1] = a[2]; else a[0]->l.push_back(v_list({ a[1], a[2] })); return a[0]; }
+inline vptr fn_put_bang(vlist& a, Interp& i) { check_insert(i, "put!", a[0], a[2]); long k = rec_find(i, a[0], a[1]); if (k >= 0) a[0]->l[(size_t)k]->l[1] = a[2]; else a[0]->l.push_back(v_list({ a[1], a[2] })); return a[0]; }
 // (split s sep) the pieces of s between occurrences of sep; (split s "") the characters
 inline vptr fn_split(vlist& a, Interp& i) {
     
@@ -155,7 +155,7 @@ inline vptr fn_directoryp(vlist& a, Interp& i) { std::error_code ec; return v_bo
 // (exists? path) does the file or directory exist?
 inline vptr fn_existsp(vlist& a, Interp& i) { return v_bool(fs::exists(i.read_path(i.str(a[0])))); }
 // (input [prompt]) a line read from the console, or nil at end of input
-inline vptr fn_input(vlist& a, Interp& i) { if (!a.empty()) { *i.out << i.str(a[0]) << std::flush; } std::string s; if (!std::getline(std::cin, s)) return v_nil(); return v_str(std::move(s)); }
+inline vptr fn_input(vlist& a, Interp& i) { i.blocking("input"); if (!a.empty()) { *i.out << i.str(a[0]) << std::flush; } std::string s; if (!std::getline(std::cin, s)) return v_nil(); return v_str(std::move(s)); }
 
 // higher-order
 // (map x f) f applied to every element: a list for a list; for a vector, a vector when every result is a number, a list otherwise

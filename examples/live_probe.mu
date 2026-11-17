@@ -1,5 +1,5 @@
-# live_probe: is the audio device fine? a scale of sines and the load/latency figures
-# Usage: musil live_probe.mu
+; live_probe: is the audio device fine? a scale of sines and the load/latency figures
+; Usage: musil live_probe.mu
 load "live.mu"
 
 print "devices:" (audio-devices)

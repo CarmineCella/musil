@@ -1,6 +1,6 @@
 // main.cpp — musil command-line interface.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 //   musil                              REPL
 //   musil a.mu b.mu ...                run files in order (one interpreter)

@@ -1,17 +1,17 @@
-# spatial: sounds placed and moved in 3D, for headphones (binaural) and for speakers (ambisonics)
-# Usage: musil spatial.mu [sound.wav]     (defaults to data/Vox.wav)
-#
-# Conventions (AmbiX): azimuth in degrees, 0 in front, positive to the left; elevation up.
-# ambi-encode puts a mono sound at a direction as B-format ((order+1)^2 channels); ambi-rotate
-# turns a whole field; ambi-decode feeds a ring of speakers; binaural-decode renders B-format
-# for headphones through the measured KEMAR HRTFs (loaded by default: front/back and height
-# are pinna cues, which only measured responses carry; hrtf-unload gives the spherical-head
-# model, left/right only); pan-azimuth is plain stereo. flyby.mu is the helicopter demo.
-#
-# Listening: the *_turn, _left, _above and _field files are for headphones, as they are.
-# The B-format file needs a decoder (in Reaper: the free IEM plug-in suite, BinauralDecoder
-# on a 16-channel track, order 3, SN3D); the ring-of-8 file needs eight speakers, or a DAW
-# routing each channel to a speaker. flyby.mu is the helicopter demo, with its own B-format.
+; spatial: sounds placed and moved in 3D, for headphones (binaural) and for speakers (ambisonics)
+; Usage: musil spatial.mu [sound.wav]     (defaults to data/Vox.wav)
+;
+; Conventions (AmbiX): azimuth in degrees, 0 in front, positive to the left; elevation up.
+; ambi-encode puts a mono sound at a direction as B-format ((order+1)^2 channels); ambi-rotate
+; turns a whole field; ambi-decode feeds a ring of speakers; binaural-decode renders B-format
+; for headphones through the measured KEMAR HRTFs (loaded by default: front/back and height
+; are pinna cues, which only measured responses carry; hrtf-unload gives the spherical-head
+; model, left/right only); pan-azimuth is plain stereo. flyby.mu is the helicopter demo.
+;
+; Listening: the *_turn, _left, _above and _field files are for headphones, as they are.
+; The B-format file needs a decoder (in Reaper: the free IEM plug-in suite, BinauralDecoder
+; on a 16-channel track, order 3, SN3D); the ring-of-8 file needs eight speakers, or a DAW
+; routing each channel to a speaker. flyby.mu is the helicopter demo, with its own B-format.
 load "system.mu"
 load "signals.mu"
 load "plot.mu"
@@ -22,42 +22,42 @@ var x (take (normalize-peak (head (getidx w 1))) (* 8 sr))
 var secs (/ (length x) sr)
 print (fixed secs 2) "s at" sr "Hz"
 
-# --- 1. one turn around the head, binaural: the azimuth goes 0 -> 360 (left first) over the sound ------
+; --- 1. one turn around the head, binaural: the azimuth goes 0 -> 360 (left first) over the sound ------
 var blocks 2048
 var nb (ceil (/ (length x) blocks))
 var azs (* 360 (/ (range nb) nb))
-var turning (moving-source x 1 azs (zeros nb) blocks)          # B-format of a source that turns
+var turning (moving-source x 1 azs (zeros nb) blocks)          ; B-format of a source that turns
 var bin (binaural-decode turning sr)
 write-wav "/tmp/musil_spatial_turn.wav" sr (normalize-peak-stereo bin)
 print "one turn around the head          -> /tmp/musil_spatial_turn.wav   (headphones)"
 
-# --- 2. a static source at the left, and one above: what elevation does ---------------------------
+; --- 2. a static source at the left, and one above: what elevation does ---------------------------
 write-wav "/tmp/musil_spatial_left.wav" sr (normalize-peak-stereo (binaural x 90 0 sr))
 write-wav "/tmp/musil_spatial_above.wav" sr (normalize-peak-stereo (binaural x 0 60 sr))
 print "at the left / above the head       -> /tmp/musil_spatial_left.wav, _above.wav"
 
-# --- 3. a moving field, third order: three sources on their own paths ------------------------------
-#        the voice circles at ear height (one turn), the drums cross from front-left to back-right over the
-#        head, a tone rises from below to above on the right; all encoded block by block, then summed
+; --- 3. a moving field, third order: three sources on their own paths ------------------------------
+;        the voice circles at ear height (one turn), the drums cross from front-left to back-right over the
+;        head, a tone rises from below to above on the right; all encoded block by block, then summed
 var d (read-wav "data/drums.wav")
 var drums (take (vec (resample-to (head (getidx d 1)) (head d) sr) (zeros (length x))) (length x))
 var tone (* 0.25 (sine sr 330 secs))
 var u (/ (range nb) nb)
-var voice-B (moving-source x 3 (* 360 u) (zeros nb) blocks)                                  # a full turn, left first
-var drums-B (moving-source (* 0.7 drums) 3 (- 60 (* 240 u)) (* 80 (sin (* pi u))) blocks)     # front-left, over, back-right
-var tone-B (moving-source tone 3 (+ (zeros nb) -90) (- (* 130 u) 40) blocks)                  # right, from below to above
+var voice-B (moving-source x 3 (* 360 u) (zeros nb) blocks)                                  ; a full turn, left first
+var drums-B (moving-source (* 0.7 drums) 3 (- 60 (* 240 u)) (* 80 (sin (* pi u))) blocks)     ; front-left, over, back-right
+var tone-B (moving-source tone 3 (+ (zeros nb) -90) (- (* 130 u) 40) blocks)                  ; right, from below to above
 var field (ambi-add (ambi-add voice-B drums-B) tone-B)
 write-wav "/tmp/musil_spatial_field.wav" sr (normalize-peak-stereo (binaural-decode field sr))
 print "a moving field of three (voice circling, drums overhead, tone rising) -> /tmp/musil_spatial_field.wav (binaural)"
 
-# --- 4. the same field for speakers: B-format as a file, and a ring of eight ------------------------------
-write-wav "/tmp/musil_spatial_bformat.wav" sr field        # 16 channels, ACN/SN3D (AmbiX): any ambisonic decoder can take it
+; --- 4. the same field for speakers: B-format as a file, and a ring of eight ------------------------------
+write-wav "/tmp/musil_spatial_bformat.wav" sr field        ; 16 channels, ACN/SN3D (AmbiX): any ambisonic decoder can take it
 write-wav "/tmp/musil_spatial_ring8.wav" sr (ambi-decode field (speaker-ring 8))
 write-wav "/tmp/musil_spatial_stereo.wav" sr (pan-azimuth x 45)
 print "the field as B-format (16 ch), a ring of 8, and a plain stereo pan -> /tmp/musil_spatial_bformat.wav, _ring8.wav, _stereo.wav"
 print "  (Reaper: a 16-channel track, IEM BinauralDecoder at order 3 / SN3D, headphones: the three sources move around you)"
 
-# --- 5. picture: the two ears' impulse responses for a source at the left, and the turn's channel levels ----
+; --- 5. picture: the two ears' impulse responses for a source at the left, and the turn's channel levels ----
 var h (hrir 90 0 sr)
 var fig (figure "spherical-head HRIR, source at the left")
 add-line fig (* 1000 (/ (range (length (head h))) sr)) (head h) "left ear"

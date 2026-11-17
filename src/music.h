@@ -1,7 +1,7 @@
 // music.h — music, C++ half: sample databases in the SOL/Orchidea layout, pitch names.
 // The Musil half (music.mu) holds the score: events in time, rendering, playback, the roll.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // A database is a folder of sound files and one feature file (a `.db`) at its root:
 //   first line:   <type> <block size> <hop> <number of coefficients>

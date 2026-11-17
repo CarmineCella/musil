@@ -1,7 +1,7 @@
 // scientific.h — linear algebra, statistics and machine learning, C++ half.
 // The Musil half is scientific.mu. Ported from Musil 1.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // A matrix is a list of row vectors: (list (vec 1 2) (vec 3 4)) is 2x2.
 // (getidx M i) is row i, (getidx (getidx M i) j) the element at i,j.

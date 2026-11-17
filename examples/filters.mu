@@ -1,5 +1,5 @@
-# filters: biquads on a real sound, judged by their effect on the spectral centroid
-# Usage: musil filters.mu [sound.wav]   (defaults to the bundled data/ files)
+; filters: biquads on a real sound, judged by their effect on the spectral centroid
+; Usage: musil filters.mu [sound.wav]   (defaults to the bundled data/ files)
 load "system.mu"
 load "signals.mu"
 
@@ -26,7 +26,7 @@ write-wav "/tmp/musil_bp.wav" sr bp
 var boosted (peak-eq x sr 2500 2 12)
 print "peak +12 dB @2500 centroid:" (centroid-of boosted) "Hz"
 
-# the coefficients themselves, and a filter's impulse response
+; the coefficients themselves, and a filter's impulse response
 var coeffs (biquad "lowpass" sr 300 0.707 0)
 print "lowpass b:" (fixed (head coeffs) 5) " a:" (fixed (last coeffs) 5)
 print "impulse response, first 8:" (fixed (take (apply-filter (impulse 64) coeffs) 8) 4)

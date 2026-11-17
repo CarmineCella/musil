@@ -1,7 +1,7 @@
 // wav_tools.h — WAV files in and out: 8, 16, 24 and 32-bit integer PCM, 32 and 64-bit IEEE float, any number of
 // channels and any sample rate, plain and WAVE_FORMAT_EXTENSIBLE headers, unknown chunks skipped.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 
 #ifndef WAV_TOOLS_H
 #define WAV_TOOLS_H

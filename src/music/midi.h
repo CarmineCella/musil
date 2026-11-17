@@ -1,6 +1,6 @@
 // midi.h — standard MIDI files read into notes with times in seconds.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // Formats 0 and 1; the tempo map (meta 0x51) of every track applies to all; note-on with velocity 0 is a
 // note-off; SMPTE divisions are refused. Each note is a record: track, channel, pitch (MIDI), velocity,

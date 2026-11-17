@@ -1,4 +1,4 @@
-# function declaration, calls, recursion
+; function declaration, calls, recursion
 
 load "std.mu"
 function square (n) (* n n)
@@ -14,7 +14,7 @@ function factorial (n) {
     return result
 }
 
-# iterative fibonacci
+; iterative fibonacci
 function fib (n) {
     var a 0
     var b 1
@@ -27,13 +27,13 @@ function fib (n) {
     return a
 }
 
-# the recursive version, tail-recursive so it runs in constant space
+; the recursive version, tail-recursive so it runs in constant space
 function fib-rec (n) {
     function go (k a b) (if (== k 0) a (go (- k 1) b (+ a b)))
     return (go n 0 1)
 }
 
-# gcd via repeated subtraction
+; gcd via repeated subtraction
 function gcd (a b) {
     while (!= a b) {
         while (> a b) { var a (- a b) }
@@ -42,7 +42,7 @@ function gcd (a b) {
     return a
 }
 
-# power by repeated multiplication (pow is a builtin; this is for the loop)
+; power by repeated multiplication (pow is a builtin; this is for the loop)
 function power (base e) {
     var result 1
     while (> e 0) {
@@ -62,7 +62,7 @@ print "gcd(100, 75)   =" (gcd 100 75)
 print "power(2, 10)   =" (power 2 10)
 print "power(3, 5)    =" (power 3 5)
 
-# functions are values: partial application and higher-order use
+; functions are values: partial application and higher-order use
 function times3 (x) (* x 3)
 print "map times3:" (map (range 5) times3)
 print "compose:  " ((compose square cube) 2)

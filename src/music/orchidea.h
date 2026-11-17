@@ -9,7 +9,7 @@
 // analysis uses Musil's feature code (the same that db-gen uses: average_spectrum, db_features_of) and Musil's
 // pitch names, C4 = 261.6 Hz, as the databases' file names have them.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 
 #pragma once
 #include <vector>

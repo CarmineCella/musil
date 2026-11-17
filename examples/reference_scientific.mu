@@ -1,11 +1,11 @@
-# musil — library reference: scientific (scientific.h + scientific.mu)
-#
-# Linear algebra, statistics and machine learning. A matrix is a list of row
-# vectors: (list (vec 1 2) (vec 3 4)). Vectors keep their own arithmetic
-# (+ - * / broadcast); matrices have mat-... functions. scientific.mu loads
-# std.mu itself. Element loops (mat-mul, transpose, inv, eig-sym, kmeans, knn)
-# are C++; everything else is Musil on top of vector operations.
-# Run with: musil reference_scientific.mu
+; musil — library reference: scientific (scientific.h + scientific.mu)
+;
+; Linear algebra, statistics and machine learning. A matrix is a list of row
+; vectors: (list (vec 1 2) (vec 3 4)). Vectors keep their own arithmetic
+; (+ - * / broadcast); matrices have mat-... functions. scientific.mu loads
+; std.mu itself. Element loops (mat-mul, transpose, inv, eig-sym, kmeans, knn)
+; are C++; everything else is Musil on top of vector operations.
+; Run with: musil reference_scientific.mu
 
 load "scientific.mu"
 print ""
@@ -13,7 +13,7 @@ print "================================================================"
 print "  musil: library reference (scientific)"
 print "================================================================"
 
-# --- 1. Building matrices --------------------------------------------------
+; --- 1. Building matrices --------------------------------------------------
 print ""
 print "--- construction ---"
 var A (list (vec 1 2) (vec 3 4))
@@ -28,7 +28,7 @@ seed 3
 print "mat-rand 2 2    :" (mat-shape (mat-rand 2 2)) "(values in [-1, 1])"
 print "col-stack       :" (col-stack (list (vec 1 2 3) (vec 4 5 6))) "(the vectors become columns)"
 
-# --- 2. Shape and access -----------------------------------------------------
+; --- 2. Shape and access -----------------------------------------------------
 print ""
 print "--- shape and access ---"
 var M (list (vec 1 2 3) (vec 4 5 6) (vec 7 8 10))
@@ -43,7 +43,7 @@ var C (mat-zeros 2 2)
 mat-set C 0 1 9
 print "mat-set in place:" C
 
-# --- 3. Elementwise arithmetic and stacking ----------------------------------
+; --- 3. Elementwise arithmetic and stacking ----------------------------------
 print ""
 print "--- elementwise and stacking ---"
 var B (list (vec 5 6) (vec 7 8))
@@ -56,7 +56,7 @@ print "mat-map A sqrt  :" (mat-map A sqrt)
 print "vstack A B      :" (vstack A B)
 print "hstack A B      :" (hstack A B)
 
-# --- 4. Products, transpose, decompositions (scientific.h) --------------------
+; --- 4. Products, transpose, decompositions (scientific.h) --------------------
 print ""
 print "--- products and decompositions ---"
 print "mat-mul A B     :" (mat-mul A B)
@@ -78,7 +78,7 @@ var S (list (vec 2 1) (vec 1 2))
 print "eig-sym         :" (eig-sym S) "(eigenvalues, then eigenvectors as rows)"
 print "A v = lambda v  :" (mat-vec S (head (last (eig-sym S)))) "=" (* 3 (head (last (eig-sym S))))
 
-# --- 5. Statistics -----------------------------------------------------------------
+; --- 5. Statistics -----------------------------------------------------------------
 print ""
 print "--- statistics ---"
 print "median-filter 3 :" (median-filter (vec 1 1 9 1 1 9 1 1) 3) "(spikes removed; median itself is in std)"
@@ -96,7 +96,7 @@ print "zscore          :" (mat-round (zscore M) 3)
 print "cov             :" (mat-round (cov M) 3)
 print "corr            :" (mat-round (corr M) 3)
 
-# --- 6. Regression -------------------------------------------------------------
+; --- 6. Regression -------------------------------------------------------------
 print ""
 print "--- regression ---"
 var X (add-intercept (col-stack (list (vec 0 1 2 3))))
@@ -107,7 +107,7 @@ print "linreg-fit      :" b "(intercept slope)"
 print "linreg-predict  :" (linreg-predict X b)
 print "residuals       :" (fixed (linreg-residuals X y b) 12)
 
-# --- 7. PCA -----------------------------------------------------------------------
+; --- 7. PCA -----------------------------------------------------------------------
 print ""
 print "--- pca ---"
 var cloud (list (vec 1 0.1) (vec 2 -0.1) (vec 3 0.1) (vec 4 -0.1) (vec 5 0))
@@ -118,7 +118,7 @@ print "pca-eigenvalues :" (fixed (pca-eigenvalues P) 4)
 print "pca-explained   :" (fixed (pca-explained P) 4)
 print "pca-scores 1    :" (mat-round (pca-scores cloud 1) 4)
 
-# --- 8. k-means -----------------------------------------------------------------
+; --- 8. k-means -----------------------------------------------------------------
 print ""
 print "--- kmeans ---"
 var pts (list (vec 0 0) (vec 0.1 0) (vec 0 0.1) (vec 10 10) (vec 10.1 10) (vec 10 10.1))
@@ -127,7 +127,7 @@ print "kmeans-labels   :" (kmeans-labels km)
 print "kmeans-centroids:" (mat-round (kmeans-centroids km) 3)
 print "cluster-sizes   :" (cluster-sizes (kmeans-labels km) 2)
 
-# --- 9. KNN classification ---------------------------------------------------------
+; --- 9. KNN classification ---------------------------------------------------------
 print ""
 print "--- knn ---"
 var training (list (list (vec 0 0) "a") (list (vec 0 1) "a") (list (vec 10 10) "b") (list (vec 10 11) "b"))
@@ -140,7 +140,7 @@ seed 1
 var split (train-test-split (shuffle training) 0.5)
 print "train-test-split:" (map split length) "(after shuffle)"
 
-# --- 9b. Non-negative matrix factorization -----------------------------------------------------
+; --- 9b. Non-negative matrix factorization -----------------------------------------------------
 print ""
 print "--- nmf ---"
 seed 5
@@ -150,7 +150,7 @@ print "nmf V 2 200      : W" (mat-shape (head fac)) "H" (mat-shape (last fac)) "
 print "nmf-error        :" (fixed (nmf-error Vn (head fac) (last fac)) 3) "(the KL divergence the updates decrease)"
 print "mat-min, mat-max :" (mat-min Vn) (mat-max Vn) " mat-div:" (mat-div (list (vec 2 4)) (list (vec 2 2)))
 
-# --- 9c. Matching pursuit ----------------------------------------------------------------------
+; --- 9c. Matching pursuit ----------------------------------------------------------------------
 print ""
 print "--- mp ---"
 var Dm (list->mat (list (list 1 0 0 0) (list 0 1 0 0) (list 0 0 1 0) (list 1 1 0 0)))
@@ -158,7 +158,7 @@ var rm (mp (vec 2 3 0 0) Dm 3 0.01 (record (list 'nonneg 1)))
 print "mp               : atoms" (get rm 'atoms) "weights" (get rm 'weights) "error" (fixed (get rm 'error) 3) "(greedy, non-negative)"
 print "mp orthogonal    : error" (fixed (get (mp (vec 2 3 0.5 0) Dm 3 0.001 (record (list 'orthogonal 1))) 'error) 6) "(weights refitted by least squares)"
 
-# --- 10. Display ---------------------------------------------------------------
+; --- 10. Display ---------------------------------------------------------------
 print ""
 print "--- display ---"
 print "mat-str M 2:"

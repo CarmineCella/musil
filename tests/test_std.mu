@@ -1,14 +1,14 @@
-# test_std.mu — systematic, self-checking test of the standard library (std.h + std.mu).
-#
-# Every check is a (check ...) from test.mu. A passing run prints only the final line.
-# Run with: musil tests/test_std.mu
+; test_std.mu — systematic, self-checking test of the standard library (std.h + std.mu).
+;
+; Every check is a (check ...) from test.mu. A passing run prints only the final line.
+; Run with: musil tests/test_std.mu
 
 load "test.mu"
 
 function square (x) (* x x)
 function inc (x) (+ x 1)
 
-# --- vectors (std.h: range, seed, rand, sort; std.mu: zeros, ones, linspace, mean, prod, dot, norm, cumsum, clip, fixed) ---
+; --- vectors (std.h: range, seed, rand, sort; std.mu: zeros, ones, linspace, mean, prod, dot, norm, cumsum, clip, fixed) ---
 check (equal? (range 4) (vec 0 1 2 3)) "range n"
 check (equal? (range 2 5) (vec 2 3 4)) "range a b"
 check (equal? (range 0 1 0.25) (vec 0 0.25 0.5 0.75)) "range a b step"
@@ -42,7 +42,7 @@ check (equal? (clip (vec -5 0.5 5) 0 1) (vec 0 0.5 1)) "clip"
 check (== (fixed 3.14159 2) 3.14) "fixed"
 check (equal? (fixed (vec 1.234 5.678) 1) (vec 1.2 5.7)) "fixed: elementwise"
 
-# --- from Musil 1's stdlib: constants, scalar math, statistics ---
+; --- from Musil 1's stdlib: constants, scalar math, statistics ---
 check (< (abs (- tau (* 2 pi))) 1e-12) "tau"
 check (< (abs (- (log euler) 1)) 1e-12) "euler"
 check (< (abs (- (* phi phi) (+ phi 1))) 1e-12) "phi: golden ratio identity"
@@ -65,7 +65,7 @@ check (equal? (normalize (vec 3 3)) (vec 0 0)) "normalize: constant vector"
 check (== (min-of (list 3 1 2)) 1) "min-of"
 check (== (max-of (list 3 1 2)) 3) "max-of"
 
-# --- more vector statistics (std.mu: diff, argmin, argmax, median, quantile, histogram, interp1) ---
+; --- more vector statistics (std.mu: diff, argmin, argmax, median, quantile, histogram, interp1) ---
 check (equal? (diff (vec 1 4 9 16)) (vec 3 5 7)) "diff"
 check (== (length (diff (vec 1))) 0) "diff: single element"
 check (== (argmin (vec 3 1 2)) 1) "argmin"
@@ -86,7 +86,7 @@ check (equal? (interp1 (vec 0 1) (vec 0 1) (vec -1 5)) (vec 0 1)) "interp1: clam
 check (equal? (interp1 (vec 0 1) (vec 3 4) (vec 0 1)) (vec 3 4)) "interp1: hits the knots"
 check (contains? (error-of (function () (interp1 (vec 0 1) (vec 1) (vec 0)))) "same length") "interp1: table sizes"
 
-# --- sequences (std.h: reverse, slice, find; std.mu: last, take, drop, contains?, each, any?, all?, count, concat-list, flatten, zip, unique, sort-list, repeat) ---
+; --- sequences (std.h: reverse, slice, find; std.mu: last, take, drop, contains?, each, any?, all?, count, concat-list, flatten, zip, unique, sort-list, repeat) ---
 var L (list 1 "two" 3)
 check (== (last L) 3) "last: list"
 check (== (last v) 3) "last: vec"
@@ -138,7 +138,7 @@ check (equal? (sort-list (list)) (list)) "sort-list: empty"
 check (equal? (repeat "ab" 3) "ababab") "repeat"
 check (equal? (repeat "x" 0) "") "repeat: zero"
 
-# --- strings (std.mu: starts-with?, ends-with?, replace, count-substr, pad-left, pad-right, fmt-fixed, fmt-pct) ---
+; --- strings (std.mu: starts-with?, ends-with?, replace, count-substr, pad-left, pad-right, fmt-fixed, fmt-pct) ---
 check (starts-with? "musil" "mu") "starts-with?"
 check (not (starts-with? "musil" "si")) "starts-with?: no"
 check (ends-with? "musil" "sil") "ends-with?"
@@ -156,7 +156,7 @@ check (equal? (fmt-fixed -1.5 0) "-2") "fmt-fixed: zero decimals rounds half up"
 check (equal? (fmt-fixed 0.05 1) "0.1") "fmt-fixed: rounding"
 check (equal? (fmt-pct 0.752 1) "75.2%") "fmt-pct"
 
-# --- strings (std.h) ---
+; --- strings (std.h) ---
 check (equal? (concat "a" "b" 42 (list 1)) "ab42(1)") "concat"
 check (equal? (split "a,b,c" ",") (list "a" "b" "c")) "split"
 check (equal? (split "abc" "") (list "a" "b" "c")) "split: chars"
@@ -175,7 +175,7 @@ check (equal? (chr 65) "A") "chr"
 check (== (ord "A") 65) "ord"
 check (contains? (error-of (function () (ord ""))) "empty") "ord: empty"
 
-# --- files and console (std.h) ---
+; --- files and console (std.h) ---
 var path "/tmp/musil_test_std.txt"
 write path "hello\n"
 append-file path "world\n"
@@ -186,7 +186,7 @@ check (contains? (error-of (function () (read "/tmp/definitely/not/here"))) "can
 write path (vec 1 2 3)
 check (equal? (read path) "(1 2 3)") "write: non-strings are printed"
 
-# --- higher-order (std.h: map, filter, reduce) ---
+; --- higher-order (std.h: map, filter, reduce) ---
 check (equal? (map (list 1 2 3) square) (list 1 4 9)) "map: list"
 check (equal? (map (vec 1 2 3) square) (vec 1 4 9)) "map: vec"
 check (equal? (map (list) square) (list)) "map: empty list"
@@ -201,7 +201,7 @@ check (== (reduce (list) + 42) 42) "reduce: empty returns the initial value"
 function add (a b) (+ a b)
 check (equal? (map (vec 1 2 3) (add 10)) (vec 11 12 13)) "map with a partial application"
 
-# --- functions (std.mu: identity, compose, times) ---
+; --- functions (std.mu: identity, compose, times) ---
 check (== (identity 7) 7) "identity"
 check (equal? (identity "s") "s") "identity: any type"
 check (== ((compose square inc) 3) 16) "compose: (f (g x))"
@@ -209,7 +209,7 @@ var ticks 0
 times 4 (function (k) (set ticks (+ ticks 1)))
 check (== ticks 4) "times"
 
-# --- testing (std.h: assert; std.mu: assert-equal) ---
+; --- testing (std.h: assert; std.mu: assert-equal) ---
 check (equal? (type (assert 1)) "nil") "assert: passes silently"
 check (contains? (error-of (function () (assert 0 "custom" 42))) "custom 42") "assert: message"
 check (contains? (error-of (function () (assert 0))) "assertion failed") "assert: default message"
@@ -219,7 +219,7 @@ check (equal? (type (assert-near (sin pi) 0 1e-10 "sin pi")) "nil") "assert-near
 check (equal? (type (assert-near (vec 1 2) (vec 1.001 2) 0.01 "vec")) "nil") "assert-near: vectors"
 check (contains? (error-of (function () (assert-near 1 2 0.1 "off"))) "off: expected 2 within 0.1") "assert-near: message"
 
-# --- records and lists by a key ---
+; --- records and lists by a key ---
 var rec (record (list 'freq 440 'dur 0.5))
 check (equal? rec (list (list 'freq 440) (list 'dur 0.5))) "record: pairs from alternating keys and values"
 check (== (get rec 'freq) 440) "get"

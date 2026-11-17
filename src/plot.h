@@ -1,7 +1,7 @@
 // plot.h — plotting, C++ half: figures drawn with FLTK, in windows of their own or to PNG.
 // The Musil half (plot.mu) builds the figure descriptions.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 //
 // A figure is a list: (list title layers options) where
 //   layers  is a list of (list kind data... label): kinds are "line" x y label,

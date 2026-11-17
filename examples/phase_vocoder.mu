@@ -1,18 +1,18 @@
-# phase vocoder: time stretching, pitch shifting, formants, denoising, phase effects
-# Usage: musil phase_vocoder.mu [sound.wav]   (defaults to the bundled data/ file)
-#
-# (pvoc x opts) does everything in one pass, as sparkle did: the output hop is fixed
-# (window / overlap) and the input hop is output-hop / stretch, so the synthesis overlap
-# never thins out however large the stretch; phases are locked to the nearest spectral
-# peak; pitch shift and formant move happen in the spectrum; formants are preserved
-# through the cepstral envelope. Any parameter given as (list start end) ramps over the file.
+; phase vocoder: time stretching, pitch shifting, formants, denoising, phase effects
+; Usage: musil phase_vocoder.mu [sound.wav]   (defaults to the bundled data/ file)
+;
+; (pvoc x opts) does everything in one pass, as sparkle did: the output hop is fixed
+; (window / overlap) and the input hop is output-hop / stretch, so the synthesis overlap
+; never thins out however large the stretch; phases are locked to the nearest spectral
+; peak; pitch shift and formant move happen in the spectrum; formants are preserved
+; through the cepstral envelope. Any parameter given as (list start end) ramps over the file.
 load "system.mu"
 load "signals.mu"
 
 var w (read-wav (if (> (length args) 0) (getidx args 0) "data/Vox.wav"))
 var sr (head w)
 var x (head (getidx w 1))
-var order 80 #(floor (/ sr 100))            # cepstral order for the envelope: ~80 at 8 kHz, ~400 at 44.1 kHz
+var order 80 ;(floor (/ sr 100))            # cepstral order for the envelope: ~80 at 8 kHz, ~400 at 44.1 kHz
 print (length x) "samples at" sr "Hz; envelope order" order
 
 function out (name y) {

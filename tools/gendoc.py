@@ -4,7 +4,7 @@
 Every library function is documented by the comment that precedes it, in one format:
 
     // (name args) description                      in a .h file
-    # (name args) description                       in a .mu file
+    ; (name args) description                       in a .mu file
 
 A line may name several forms that share the description ("(sin x) (cos x) ..."),
 and continuation lines that start with the same comment marker and an indent (or
@@ -31,7 +31,7 @@ def entries(path):
     """Yield (names, signature-line, [description lines]) for one file: only comment blocks
     whose forms name something the file actually registers or defines count as documentation."""
     text_all = path.read_text()
-    marker = "#" if path.suffix == ".mu" else "//"
+    marker = ";" if path.suffix == ".mu" else "//"
     known = set(DEF.findall(text_all)) if path.suffix == ".mu" else set(REG.findall(text_all))
     out, block = [], None
     for raw in text_all.splitlines():
@@ -96,7 +96,7 @@ grammar = {
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "name": "Musil", "scopeName": "source.musil",
     "patterns": [
-        {"name": "comment.line.number-sign.musil", "match": "#.*$"},
+        {"name": "comment.line.semicolon.musil", "match": ";.*$"},
         {"name": "string.quoted.double.musil", "begin": "\"", "end": "\"", "patterns": [{"name": "constant.character.escape.musil", "match": "\\\\."}]},
         {"name": "constant.numeric.musil", "match": "(?<![A-Za-z0-9\\-])-?[0-9]+(\\.[0-9]+)?([eE][-+]?[0-9]+)?(?![A-Za-z0-9\\-])"},
         {"name": "constant.language.musil", "match": "(?<![A-Za-z0-9\\-])(nil|true|false|pi|inf|tau|euler|version)(?![A-Za-z0-9\\-?!>])"},

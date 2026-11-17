@@ -19,7 +19,7 @@ It is strongly inspired by TCL, Lisp and Scheme. From these traditions, **Musil*
 These influences shape **Musil** as a language where programs can be constructed, transformed, and executed as data — enabling flexible and expressive workflows.
 
 ```
-# musil
+; musil
 function fact (n) {
     if (< n 2) { return 1 }
     return (* n (fact (- n 1)))
@@ -172,47 +172,47 @@ which needs `pdflatex`. Documenting a function is writing its comment.
 ## The language in one page
 
 ```
-var x 10                       # define in the current environment (a function's var is always local)
-set x 11                       # assign to an existing variable, however far out; error if none
-print "x =" x                  # a line is a command; its words are the arguments
-var y (+ x 1)                  # (...) is a sub-expression
-var z (expr (x * 2 + y))       # infix inside expr; ( ) groups, calls are allowed: (expr ((sqrt x) + 1))
+var x 10                       ; define in the current environment (a function's var is always local)
+set x 11                       ; assign to an existing variable, however far out; error if none
+print "x =" x                  ; a line is a command; its words are the arguments
+var y (+ x 1)                  ; (...) is a sub-expression
+var z (expr (x * 2 + y))       ; infix inside expr; ( ) groups, calls are allowed: (expr ((sqrt x) + 1))
 
 if (< x y) { print "less" } { print "not less" }
 while (< x 20) { var x (+ x 1) }
-for (var i 0) (< i 3) (var i (+ i 1)) { print i }      # break / continue inside blocks: { break }
+for (var i 0) (< i 3) (var i (+ i 1)) { print i }      ; break / continue inside blocks: { break }
 
-function sq (n) (* n n)        # named function, one-expression body
-function cube (n)              # an indented line continues the command above it
+function sq (n) (* n n)        ; named function, one-expression body
+function cube (n)              ; an indented line continues the command above it
     (* n n n)
-function fact (n) {            # block body; return exits early
+function fact (n) {            ; block body; return exits early
     if (< n 2) { return 1 }
     return (* n (fact (- n 1)))
 }
-var inc (function (n) (+ n 1)) # anonymous function
+var inc (function (n) (+ n 1)) ; anonymous function
 function add3 (a b c) (+ a b c)
-var add1 (add3 1)              # too few args: partial application
-(add1 2 3)                     # => 6
-(add3 1 2 3 4)                 # too many args: the result is applied to the rest (error here: 6 is not callable)
+var add1 (add3 1)              ; too few args: partial application
+(add1 2 3)                     ; => 6
+(add3 1 2 3 4)                 ; too many args: the result is applied to the rest (error here: 6 is not callable)
 
-var v (vec 1 2 3)              # numbers are vectors; scalars are vectors of size 1
-(+ v 10)                       # broadcasting: (11 12 13)
-(sin v)                        # elementwise
-(getidx v -1)                  # indices count from the end when negative
-(slice (range 10) 2 3)         # (2 3 4)
+var v (vec 1 2 3)              ; numbers are vectors; scalars are vectors of size 1
+(+ v 10)                       ; broadcasting: (11 12 13)
+(sin v)                        ; elementwise
+(getidx v -1)                  ; indices count from the end when negative
+(slice (range 10) 2 3)         ; (2 3 4)
 
-var L (list 1 "two" 'three)    # lists hold anything; 'x quotes a symbol or form
+var L (list 1 "two" 'three)    ; lists hold anything; 'x quotes a symbol or form
 (map L str) (filter v (function (n) (> n 1))) (reduce v + 0)
 (head L) (tail L) (last L) (length L) (push L 4) (pop L)
-var M (copy L)                 # copy is shallow: a new list, same elements (nested lists/vectors stay shared)
+var M (copy L)                 ; copy is shallow: a new list, same elements (nested lists/vectors stay shared)
 
-load "std.mu"                  # the Musil half of the standard library, from ~/.musil or MUSIL_PATH
+load "std.mu"                  ; the Musil half of the standard library, from ~/.musil or MUSIL_PATH
 (take (range 10) 3) (fmt-fixed pi 4) (lerp 0 10 0.5) (stdev (vec 1 2 3 4))
 
-var code '(+ 1 2)              # code is data
-(eval code)                    # => 3
-(apply + (list 1 2 3))         # => 6
-(eval (parse "(* 6 7)"))       # text -> form -> value; examples/bootstrap.mu is an evaluator written in Musil
+var code '(+ 1 2)              ; code is data
+(eval code)                    ; => 3
+(apply + (list 1 2 3))         ; => 6
+(eval (parse "(* 6 7)"))       ; text -> form -> value
 
 try (error "boom") catch e (print "caught:" e)
 assert (== (+ 2 2) 4) "arithmetic works"

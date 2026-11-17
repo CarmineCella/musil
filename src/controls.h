@@ -3,7 +3,7 @@
 // idle time (so the window works from the command line and from the IDE, whose interpreter
 // runs on another thread); the window follows changes made from code or OSC.
 //
-// Copyright (c) 2026 Carmine-Emanuele Cella. All rights reserved.
+// Copyright (c) 2026 Carmine-Emanuele Cella. SPDX-License-Identifier: BSD-2-Clause
 #pragma once
 #include "core.h"
 #include "live.h"

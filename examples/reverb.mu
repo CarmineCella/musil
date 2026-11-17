@@ -1,5 +1,5 @@
-# reverb: convolution with an impulse response (the shipped concert hall, or any response), and a Schroeder network
-# Usage: musil reverb.mu [sound.wav impulse-response.wav]   (defaults to the bundled data/anechoic1.wav and the hall)
+; reverb: convolution with an impulse response (the shipped concert hall, or any response), and a Schroeder network
+; Usage: musil reverb.mu [sound.wav impulse-response.wav]   (defaults to the bundled data/anechoic1.wav and the hall)
 load "system.mu"
 load "signals.mu"
 
@@ -8,11 +8,11 @@ var sr (head dry)
 var x (head (getidx dry 1))
 print "input" (length x) "samples at" sr "Hz"
 
-# the Concertgebouw, shipped with the libraries: (concerthall x sr dry wet) gives stereo, dry plus the hall
+; the Concertgebouw, shipped with the libraries: (concerthall x sr dry wet) gives stereo, dry plus the hall
 var hall (concerthall x sr 0.7 0.3)
 print "concerthall:" (length hall) "channels of" (length (head hall)) "samples (the input plus the hall's tail)"
 write-wav "/tmp/musil_conv_reverb.wav" sr (normalize-peak-stereo hall)
-# any response, with converb: a vector for every channel, or one response per channel
+; any response, with converb: a vector for every channel, or one response per channel
 if (> (length args) 1) {
     var ir (read-wav (getidx args 1))
     var own (converb x (map (getidx ir 1) (function (c) (resample-to c (head ir) sr))) 0.7 0.3)
@@ -21,7 +21,7 @@ if (> (length args) 1) {
 }
 var outL (head hall)
 
-# Schroeder: an algorithmic reverb; rt60 is the decay time, and the output includes the tail
+; Schroeder: an algorithmic reverb; rt60 is the decay time, and the output includes the tail
 var rt60 2.5
 var schroeder (schroeder-reverb x sr rt60)
 print "schroeder rt60" rt60 "s:" (length schroeder) "samples =" (fixed (/ (length schroeder) sr) 2) "s (input + tail)"

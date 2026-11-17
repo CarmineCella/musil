@@ -1,4 +1,4 @@
-# file I/O examples
+; file I/O examples
 
 load "system.mu"
 var tmpfile "/tmp/musil_test.txt"
@@ -28,12 +28,12 @@ log-entry logfile "done"
 print "log:"
 print (read logfile)
 
-# CSV round trip: a table is a list of rows
+; CSV round trip: a table is a list of rows
 var table (list (list "name" "midi" "hz") (list "A4" 69 440) (list "C4" 60 261.63))
 write-csv "/tmp/musil_table.csv" table
 print "csv back:" (read-csv "/tmp/musil_table.csv")
 
-# directory listing
+; directory listing
 print "/tmp has" (length (ls "/tmp")) "entries"
 remove tmpfile
 remove logfile

@@ -1,4 +1,4 @@
-# performance test: naive Fibonacci
+; performance test: naive Fibonacci
 
 load "std.mu"
 function fib (n) {

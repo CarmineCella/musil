@@ -1,35 +1,35 @@
-# Top-level: command-per-line, no enclosing parens.
-# Sub-expressions: (...)
-# Blocks: {...}
+; Top-level: command-per-line, no enclosing parens.
+; Sub-expressions: (...)
+; Blocks: {...}
 
 print "=== smoke test ==="
 
-# Simple commands
+; Simple commands
 var x 10
 var y 20
 print "x =" x "y =" y
 
-# Arithmetic via expressions (sub-expr parens)
+; Arithmetic via expressions (sub-expr parens)
 print "x + y =" (+ x y)
 print "x * y =" (* x y)
 
-# expr Pratt
+; expr Pratt
 var z (expr (x + y * 2))
 print "z =" z
 
-# if with brace block
+; if with brace block
 if (< x y) {
     print "x < y, good"
 }
 
-# if/else
+; if/else
 if (> x 100) {
     print "big"
 } {
     print "small"
 }
 
-# while
+; while
 var i 0
 var s 0
 while (< i 5) {
@@ -38,11 +38,11 @@ while (< i 5) {
 }
 print "sum 0..4 =" s
 
-# Function definition: named, with params
+; Function definition: named, with params
 function square (x) (* x x)
 print "square 7 =" (square 7)
 
-# Function with brace body
+; Function with brace body
 function fact (n) {
     if (< n 2) {
         return 1
@@ -51,27 +51,27 @@ function fact (n) {
 }
 print "fact 6 =" (fact 6)
 
-# Lambda
+; Lambda
 var inc (function (x) (+ x 1))
 print "inc 5 =" (inc 5)
 
-# Vectors
+; Vectors
 var v (vec 1 2 3 4 5)
 print "v =" v
 print "v + 10 =" (+ v 10)
 print "sum v =" (sum v)
 
-# Lists
+; Lists
 var L (list 1 "two" 3.0)
 print "L =" L
 print "head L =" (head L)
 print "length L =" (length L)
 
-# Higher-order
+; Higher-order
 var dbl (map (vec 1 2 3) (function (x) (* x 2)))
 print "dbl =" dbl
 
-# Strings
+; Strings
 print (concat "hello, " "world")
 print (upper "musil")
 print (split "a,b,c" ",")

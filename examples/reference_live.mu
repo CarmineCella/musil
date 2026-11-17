@@ -1,12 +1,12 @@
-# musil — library reference: live (live.h + live.mu)
-#
-# Real-time sound: an audio device, a sample-accurate clock, and voices that play buffers.
-# live.h is the device, the command queue and the voices; live.mu the surface over them.
-# The interpreter never runs on the audio thread: it posts commands, the callback plays.
-# Run with: musil reference_live.mu
-#
-# This reference opens the silent "null" device so it runs anywhere (and as a test);
-# replace the option list with nothing to hear it: (audio-open 44100 256 2).
+; musil — library reference: live (live.h + live.mu)
+;
+; Real-time sound: an audio device, a sample-accurate clock, and voices that play buffers.
+; live.h is the device, the command queue and the voices; live.mu the surface over them.
+; The interpreter never runs on the audio thread: it posts commands, the callback plays.
+; Run with: musil reference_live.mu
+;
+; This reference opens the silent "null" device so it runs anywhere (and as a test);
+; replace the option list with nothing to hear it: (audio-open 44100 256 2).
 
 load "live.mu"
 print ""
@@ -14,11 +14,11 @@ print "================================================================"
 print "  musil: library reference (live)"
 print "================================================================"
 
-# --- 1. The device ---------------------------------------------------------------
+; --- 1. The device ---------------------------------------------------------------
 print ""
 print "--- device ---"
 print "audio-devices    :" (equal? (type (audio-devices)) "list") "(a list of the playback devices' names)"
-audio-open 44100 256 2 (list (list "device" "null"))    # sr, block size, channels; the null device here
+audio-open 44100 256 2 (list (list "device" "null"))    ; sr, block size, channels; the null device here
 print "audio-open       : opened;" (audio-sr) "Hz, block" (opt (audio-status) "block" 0) "," (audio-channels) "channels, device" (opt (audio-status) "device" "")
 audio-start
 print "audio-start      : running" (audio-running?)
@@ -26,7 +26,7 @@ sleep 0.05
 print "audio-time       :" (> (audio-time) 0) "(the clock advances, in seconds)"
 print "audio-report     : prints every field of audio-status (open, running, sr, block, channels, device, time, voices, load, peak)"
 
-# --- 2. Voices ----------------------------------------------------------------------
+; --- 2. Voices ----------------------------------------------------------------------
 print ""
 print "--- voices ---"
 var sr 44100
@@ -48,7 +48,7 @@ print "stop, stop-all   : voices left" (length (voices))
 wait-for v
 print "wait-for         : waited for voice" v "to end"
 
-# --- 3. Time -----------------------------------------------------------------------
+; --- 3. Time -----------------------------------------------------------------------
 print ""
 print "--- time: sample-accurate scheduling on the clock ---"
 var t0 (audio-time)
@@ -60,7 +60,7 @@ var scheduled (sequence (list (list (+ (audio-time) 0.05) tone sr) (list (+ (aud
 print "sequence         :" (length scheduled) "voices scheduled at once"
 stop-all
 
-# --- 4. Files ---------------------------------------------------------------------------
+; --- 4. Files ---------------------------------------------------------------------------
 print ""
 print "--- files ---"
 write-wav "/tmp/musil_live_ref.wav" 8000 (* 0.3 (sine 8000 300 0.1))
@@ -68,11 +68,11 @@ print "play-file        : voice" (play-file "/tmp/musil_live_ref.wav") "(any sam
 print "play-file-with   : voice" (play-file-with "/tmp/musil_live_ref.wav" (list (list "rate" 2)))
 remove "/tmp/musil_live_ref.wav"
 
-# --- 5. Synths: a function of parameters, streamed --------------------------------------
+; --- 5. Synths: a function of parameters, streamed --------------------------------------
 print ""
 print "--- synths ---"
 print "streamable       :" (streamable)
-# an instrument is an ordinary function: called, it returns a buffer; given to synth, it streams
+; an instrument is an ordinary function: called, it returns a buffer; given to synth, it streams
 function beep (gate freq cutoff) (pan (* (adsr sr gate 0.01 0.1 0.6 0.3) (lowpass (osc sr freq sine-table) sr cutoff 0.7)) 0)
 var offline (beep (vec (ones 4410) (zeros 4410)) (+ (zeros 8820) 440) 1500)
 print "offline call     :" (length offline) "channels of" (length (head offline)) "samples"
@@ -99,7 +99,7 @@ print "synth-render     : the graph offline; equals the call within" (< (max (ab
 print "not streamable   :" (try (synth (function (freq) (pvoc-stretch (osc sr freq sine-table) 2))) catch e e)
 print "tables           : sine-table saw-table square-table triangle-table, for osc"
 
-# --- 6. Loops: patterns on the clock ---------------------------------------------------
+; --- 6. Loops: patterns on the clock ---------------------------------------------------
 print ""
 print "--- loops ---"
 tempo 120
@@ -121,7 +121,7 @@ print "steps            :" (map (steps 0.5 (list 60 nil 62 64) (function (n) (fu
 print "synth-ev, play-ev: events on a synth (parameters + gate) or a buffer"
 free p
 
-# --- 6b. Notes, patterns, the house kit -----------------------------------------------------
+; --- 6b. Notes, patterns, the house kit -----------------------------------------------------
 print ""
 print "--- notes, patterns, the kit ---"
 print "hz, note->midi   :" (hz "A4") (fixed (hz "C4") 2) (note->midi "F#5") "; chord A3 min7:" (chord-midi "A3" 'min7)
@@ -139,7 +139,7 @@ print "drums, melody    :" (length (drums kit "bd ~ sn ~ bd bd sn ~" 4)) "drum e
 print "poly, chord-ev   :" (length (poly stab 3)) "voices for chords"
 free-all
 
-# --- 7. Controls and OSC ------------------------------------------------------------------
+; --- 7. Controls and OSC ------------------------------------------------------------------
 print ""
 print "--- controls and osc ---"
 var q (synth beep)
@@ -162,7 +162,7 @@ clear-controls
 free q
 print "serve            : (serve 7770) opens the evaluation port editors send code to; (serving) tells which"
 
-# --- 8. Closing --------------------------------------------------------------------------
+; --- 8. Closing --------------------------------------------------------------------------
 print ""
 print "--- closing ---"
 master-gain 0.8

@@ -32,7 +32,7 @@
 \lstdefinelanguage{Musil}{
   morekeywords={var,set,function,return,if,while,for,break,continue,try,catch,expr,eval,apply,quote,do,load,print,help,and,or,not},
   morestring=[b]",
-  morecomment=[l]{\#},
+  morecomment=[l]{;},
   sensitive=true,
   alsoletter={-?>!},
 }
@@ -135,9 +135,9 @@ their own. It runs the same interpreter. See section~\ref{sec:ide}.
 \begin{lstlisting}[numbers=none]
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build          # every library has a test and a reference
-cmake --install build           # musil -> /usr/local/bin,  *.mu and help.txt -> ~/.musil
-./deploy_macos.sh               # macOS: dist/Musil.app
+ctest --test-dir build          ; every library has a test and a reference
+cmake --install build           ; musil -> /usr/local/bin,  *.mu and help.txt -> ~/.musil
+./deploy_macos.sh               ; macOS: dist/Musil.app
 \end{lstlisting}
 
 The build fetches FLTK~1.4, the one external dependency, used by the plot library, the
@@ -171,9 +171,9 @@ A program is a sequence of lines. Each line is a command: its first word is a fu
 and the rest are its arguments.
 
 \begin{lstlisting}
-print "hello"                  # (print "hello")
-var x 10                       # (var x 10)
-print "x + 1 =" (+ x 1)        # a parenthesised form is a sub-expression
+print "hello"                  ; (print "hello")
+var x 10                       ; (var x 10)
+print "x + 1 =" (+ x 1)        ; a parenthesised form is a sub-expression
 \end{lstlisting}
 
 Inside parentheses, newlines are ordinary whitespace, so a long call can span lines.
@@ -190,7 +190,8 @@ if (> x 5) {
 A line holding a single parenthesised form is that form; a line holding a single
 literal is that value; a line holding a single \emph{symbol} calls it
 (\musil{ctr} calls the function \musil{ctr}, as in Tcl). A comment runs from
-\musil{\#} to the end of the line; a backslash at the end of a line continues it, and
+\musil{;} to the end of the line, as in Lisp and in Moritz's patches (\musil{\#} is an ordinary
+character: \musil{'C\#4} is a symbol); a backslash at the end of a line continues it, and
 so does \textbf{indentation}: at the top level, a line that starts with spaces continues
 the command above it, which is how a function's body goes on the next line:
 
@@ -225,10 +226,10 @@ every arithmetic and math builtin is elementwise, with size-one broadcasting:
 
 \begin{lstlisting}
 var v (vec 1 2 3)
-(+ v 10)                # (11 12 13)
-(* v v)                 # (1 4 9)
-(sin (/ (range 8) 8))   # elementwise
-(+ (vec 1 2) (vec 1 2 3))   # error: +: size mismatch (2 vs 3)
+(+ v 10)                ; (11 12 13)
+(* v v)                 ; (1 4 9)
+(sin (/ (range 8) 8))   ; elementwise
+(+ (vec 1 2) (vec 1 2 3))   ; error: +: size mismatch (2 vs 3)
 \end{lstlisting}
 
 Lists hold anything, including other lists and vectors; that is also how matrices
@@ -253,11 +254,11 @@ none.
 var counter 0
 function bump () (set counter (+ counter 1))
 function shadow () {
-    var counter 99          # a different, local counter
+    var counter 99          ; a different, local counter
     return counter
 }
 bump
-print counter (shadow) counter    # 1 99 1
+print counter (shadow) counter    ; 1 99 1
 \end{lstlisting}
 
 Blocks (\musil{\{ \}}, loop bodies, \musil{if} branches) do not open a scope: a
@@ -266,10 +267,10 @@ Blocks (\musil{\{ \}}, loop bodies, \musil{if} branches) do not open a scope: a
 \subsection{Control flow}
 
 \begin{lstlisting}
-if (< x 0) { print "negative" } { print "not negative" }    # then-block, optional else-block
+if (< x 0) { print "negative" } { print "not negative" }    ; then-block, optional else-block
 while (< i 10) { var i (+ i 1) }
-for (var k 0) (< k 10) (var k (+ k 1)) { print k }           # init, condition, step, body
-if (== k 7) { break }        # break and continue are calls, so inside a block or in parens
+for (var k 0) (< k 10) (var k (+ k 1)) { print k }           ; init, condition, step, body
+if (== k 7) { break }        ; break and continue are calls, so inside a block or in parens
 \end{lstlisting}
 
 There is no \texttt{else if}; a chain of \musil{if}s with early \musil{return}s reads
@@ -279,13 +280,13 @@ last; it is what a block is.
 \subsection{Functions}
 
 \begin{lstlisting}
-function square (n) (* n n)          # named, one-expression body
-function fact (n) {                  # block body; return leaves early
+function square (n) (* n n)          ; named, one-expression body
+function fact (n) {                  ; block body; return leaves early
     if (< n 2) { return 1 }
     return (* n (fact (- n 1)))
 }
-var inc (function (n) (+ n 1))       # anonymous function in a variable
-(map (vec 1 2 3) square)             # functions are values
+var inc (function (n) (+ n 1))       ; anonymous function in a variable
+(map (vec 1 2 3) square)             ; functions are values
 \end{lstlisting}
 
 \textbf{Closures} capture the environment they were created in; a stateful closure
@@ -297,8 +298,8 @@ function make-counter () {
     return (function () { set c (+ c 1) })
 }
 var ctr (make-counter)
-ctr                                  # 1
-print (ctr)                          # 2
+ctr                                  ; 1
+print (ctr)                          ; 2
 \end{lstlisting}
 
 \textbf{Currying.} A function called with fewer arguments than it takes returns a
@@ -307,10 +308,10 @@ partial application; with more, the result is applied to the rest:
 \begin{lstlisting}
 function add3 (a b c) (+ a b c)
 var add1 (add3 1)
-(add1 2 3)                           # 6
-(map (vec 1 2 3) (add3 10 100))      # (111 112 113)
+(add1 2 3)                           ; 6
+(map (vec 1 2 3) (add3 10 100))      ; (111 112 113)
 function twice (f) (function (x) (f (f x)))
-(twice inc 5)                        # 7: (twice inc) applied to 5
+(twice inc 5)                        ; 7: (twice inc) applied to 5
 \end{lstlisting}
 
 \begin{warn}
@@ -329,18 +330,18 @@ nothing; only a \musil{return} from inside a loop unwinds.
 \subsection{Infix arithmetic: \texttt{expr}}
 
 \begin{lstlisting}
-(expr (x + y * 2))                   # precedence as usual: 16 for x=10, y=3
-(expr ((x + y) * 2))                 # parentheses group
-(expr ((sqrt x) + 1))                # a form without an operator in second position is a call
-(expr (a > 1 && b < 2))              # comparisons and logic: < > <= >= == != && ||
+(expr (x + y * 2))                   ; precedence as usual: 16 for x=10, y=3
+(expr ((x + y) * 2))                 ; parentheses group
+(expr ((sqrt x) + 1))                ; a form without an operator in second position is a call
+(expr (a > 1 && b < 2))              ; comparisons and logic: < > <= >= == != && ||
 \end{lstlisting}
 
 \subsection{Errors}
 
 \begin{lstlisting}
 var r (try (num "abc") catch e (concat "caught: " e))
-error "negative not allowed: " n     # raise; the arguments become the message
-assert (== (+ 2 2) 4) "arithmetic"   # std: stop unless true
+error "negative not allowed: " n     ; raise; the arguments become the message
+assert (== (+ 2 2) 4) "arithmetic"   ; std: stop unless true
 \end{lstlisting}
 
 Every error carries the file, the line and the call stack, innermost first:
@@ -358,17 +359,12 @@ Deep recursion stops with \texttt{stack overflow} rather than crashing.
 \subsection{Code as data}
 
 \begin{lstlisting}
-var code '(+ 1 2)                    # a list, not a call
-(eval code)                          # 3
-(eval (list '* 2 (+ 1 2)))           # code built at run time: 6
-(apply add3 (list 1 2 3))            # a list spread as arguments
-(eval (parse "var z (* 6 7)"))       # text read into a form, then evaluated: a REPL in two calls
+var code '(+ 1 2)                    ; a list, not a call
+(eval code)                          ; 3
+(eval (list '* 2 (+ 1 2)))           ; code built at run time: 6
+(apply add3 (list 1 2 3))            ; a list spread as arguments
+(eval (parse "var z (* 6 7)"))       ; text read into a form, then evaluated: a REPL in two calls
 \end{lstlisting}
-
-\texttt{examples/bootstrap.mu} takes this to its end: an evaluator for the language,
-written in the language in eighty lines (environments, closures, \musil{if}, \musil{var},
-\musil{set}, \musil{return}, \musil{while}), with a prompt at which every line is read by
-the host and evaluated by it.
 
 \subsection{Loading files}
 
@@ -447,9 +443,9 @@ command is a name followed by its arguments; parentheses are only needed to nest
 inside another.
 
 \begin{lstlisting}
-print "hello"                 # a command: the function print with one argument
-print (+ 1 2) (* 3 4)         # two nested calls: prints 3 12
-var x 10                      # a variable
+print "hello"                 ; a command: the function print with one argument
+print (+ 1 2) (* 3 4)         ; two nested calls: prints 3 12
+var x 10                      ; a variable
 print (* x 2)
 \end{lstlisting}
 
@@ -460,13 +456,13 @@ Inside parentheses the operator comes first, Lisp-style: \musil{(+ 1 2)}, \musil
 works on whole vectors at once, element by element, a scalar spreading over a vector.
 
 \begin{lstlisting}
-var v (vec 1 2 3)             # a vector
-print (* v 2)                 # (2 4 6)
-print (+ v (vec 10 20 30))    # (11 22 33)
+var v (vec 1 2 3)             ; a vector
+print (* v 2)                 ; (2 4 6)
+print (+ v (vec 10 20 30))    ; (11 22 33)
 print (sum v) (mean v) (max v) (length v)
-print (range 5)               # (0 1 2 3 4)
-print (getidx v 1)            # 2: indices start at 0
-print (take v 2) (drop v 1)   # (1 2) (2 3)
+print (range 5)               ; (0 1 2 3 4)
+print (getidx v 1)            ; 2: indices start at 0
+print (take v 2) (drop v 1)   ; (1 2) (2 3)
 \end{lstlisting}
 
 Strings are in double quotes; \musil{concat} joins, \musil{str} converts to text,
@@ -514,19 +510,19 @@ scope, from inside a function). The everyday loop, though, is not \musil{for} bu
 \begin{lstlisting}
 each (list "a" "b" "c") (function (s) (print s))
 each (range 3) (function (k) (print k (square k)))
-var t (/ (range 44100) 44100)                 # a second of time, no loop
-var y (* (exp (* -3 t)) (sin (* tau 440 t)))  # a decaying sine, no loop
+var t (/ (range 44100) 44100)                 ; a second of time, no loop
+var y (* (exp (* -3 t)) (sin (* tau 440 t)))  ; a decaying sine, no loop
 \end{lstlisting}
 
 \paragraph{map, filter, reduce.} They build new collections from old ones and are the
 functional heart of the language; use them when the function fits on the line.
 
 \begin{lstlisting}
-print (map (list 1 2 3) square)                          # (1 4 9)
-print (filter (range 10) odd?)                           # (1 3 5 7 9)
-print (reduce (list 1 2 3 4) + 0)                        # 10
-print (map (list "a" "bb") length)                       # (1 2)
-print (sort-by (list "pear" "fig" "apple") length)       # (fig pear apple)
+print (map (list 1 2 3) square)                          ; (1 4 9)
+print (filter (range 10) odd?)                           ; (1 3 5 7 9)
+print (reduce (list 1 2 3 4) + 0)                        ; 10
+print (map (list "a" "bb") length)                       ; (1 2)
+print (sort-by (list "pear" "fig" "apple") length)       ; (fig pear apple)
 \end{lstlisting}
 
 \paragraph{Records.} Structured data is a list of \musil{(list key value)} pairs, made with
@@ -559,17 +555,17 @@ you will rarely need it.
 
 \begin{lstlisting}
 load "system.mu"
-write "/tmp/notes.txt" "a line of text"       # a string, or anything printed
+write "/tmp/notes.txt" "a line of text"       ; a string, or anything printed
 var text (read "/tmp/notes.txt")
-var rows (read-csv "data/iris.csv")            # a list of rows (vectors of numbers)
+var rows (read-csv "data/iris.csv")            ; a list of rows (vectors of numbers)
 write-csv "/tmp/out.csv" (list (vec 1 2) (vec 3 4))
-var w (read-wav "data/drums.wav")             # (list sample-rate channels)
+var w (read-wav "data/drums.wav")             ; (list sample-rate channels)
 var sr (head w)
-var x (head (getidx w 1))                     # the first channel
-write-wav "/tmp/out.wav" sr x                 # 16-bit; 24, 32, "float" as a fourth argument
-write-wav "/tmp/stereo.wav" sr (list x x)     # a list of channels
+var x (head (getidx w 1))                     ; the first channel
+write-wav "/tmp/out.wav" sr x                 ; 16-bit; 24, 32, "float" as a fourth argument
+write-wav "/tmp/stereo.wav" sr (list x x)     ; a list of channels
 print (ls ".") (exists? "/tmp/out.wav")
-var answer (input "your name? ")              # a line from the console
+var answer (input "your name? ")              ; a line from the console
 \end{lstlisting}
 
 A relative path is looked for in the current directory, then next to the file being run,
@@ -585,16 +581,16 @@ starts with \musil{load "signals.mu"}, which loads \texttt{std} as well.
 
 \begin{lstlisting}
 load "std.mu"
-print (zip (list 1 2) (list "a" "b"))          # ((1 a) (2 b))
-print (concat-list (list 1) (list 2 3))         # (1 2 3)
+print (zip (list 1 2) (list "a" "b"))          ; ((1 a) (2 b))
+print (concat-list (list 1) (list 2 3))         ; (1 2 3)
 print (unique (list 1 1 2)) (reverse (list 1 2 3)) (sort-list (list 3 1 2))
 print (split "a,b,c" ",") (join (list "a" "b") "-") (replace "hello" "l" "L")
 print (starts-with? "musil" "mu") (contains? "musil" "si") (trim "  x  ")
-print (find-first (list 1 4 9) (function (x) (> x 3)))   # 4
-print (group-by (list 1 2 3 4) odd?)            # ((1 (1 3)) (0 (2 4)))
+print (find-first (list 1 4 9) (function (x) (> x 3)))   ; 4
+print (group-by (list 1 2 3 4) odd?)            ; ((1 (1 3)) (0 (2 4)))
 print (fixed 3.14159 2) (round 2.5) (floor 2.7) (mod 7 3)
-print (rand) (seed 3)                           # random numbers, and a seed for repeatable ones
-print (clock) (now)                             # seconds since the start, and the date
+print (rand) (seed 3)                           ; random numbers, and a seed for repeatable ones
+print (clock) (now)                             ; seconds since the start, and the date
 \end{lstlisting}
 
 Vectors have their own family: \musil{zeros}, \musil{ones}, \musil{vec} (concatenation),
@@ -613,12 +609,12 @@ var sr (head w)
 var x (head (getidx w 1))
 print (length x) "samples," (fixed (/ (length x) sr) 2) "s, rms" (fixed (rms x) 3)
 show (waveform x sr)
-var dull (lowpass x sr 800 0.7)                          # a biquad: cutoff, Q
+var dull (lowpass x sr 800 0.7)                          ; a biquad: cutoff, Q
 var bright (highpass x sr 2000 0.7)
-var hall (concerthall x sr 0.7 0.3)                      # the shipped concert hall (stereo)
+var hall (concerthall x sr 0.7 0.3)                      ; the shipped concert hall (stereo)
 write-wav "/tmp/drums_hall.wav" sr hall
 var ir (head (getidx (read-wav "data/Concertgebouw-s.wav") 1))
-var wet (conv x (resample-to ir 44100 sr))                # any impulse response, by FFT
+var wet (conv x (resample-to ir 44100 sr))                ; any impulse response, by FFT
 \end{lstlisting}
 
 \paragraph{Synthesis as functions.} A sound is a function of time; write it as vector
@@ -647,7 +643,7 @@ var mags (magnitude-spectrum (take x 4096))
 var freqs (spectrum-freqs 4096 sr)
 print "centroid" (fixed (spectral-centroid mags freqs) 0) "Hz"
 show (spectrogram x sr 1024 256)
-var frames (stft x 1024 256)                               # complex frames, for your own analysis
+var frames (stft x 1024 256)                               ; complex frames, for your own analysis
 \end{lstlisting}
 
 \paragraph{Further.} Time stretching keeps the pitch (\musil{pvoc-stretch x 2}), onsets
@@ -673,14 +669,14 @@ load "scientific.mu"
 var A (list->mat (list (list 2 1) (list 1 3)))
 var b (vec 3 5)
 print (mat-mul A A) (transpose A) (det A) (inv A)
-print (solve A b)                                       # A x = b
-print (eig-sym A)                                       # eigenvalues and vectors of a symmetric matrix
+print (solve A b)                                       ; A x = b
+print (eig-sym A)                                       ; eigenvalues and vectors of a symmetric matrix
 var X (list->mat (list (list 1 2) (list 2 4.1) (list 3 6.2)))
 var P (pca X)
-print (pca-explained P)                                 # how much variance each direction carries
+print (pca-explained P)                                 ; how much variance each direction carries
 var groups (kmeans X 2)
 print (kmeans-labels groups)
-var W-H (nmf (mat-map X abs) 1 50)                      # non-negative factorisation
+var W-H (nmf (mat-map X abs) 1 50)                      ; non-negative factorisation
 \end{lstlisting}
 
 In music these are the tools behind feature spaces (a database's spectra as rows: PCA maps
@@ -697,14 +693,14 @@ things while the clock runs.
 
 \begin{lstlisting}
 load "live.mu"
-audio-init                                              # 44100 Hz, stereo
+audio-init                                              ; 44100 Hz, stereo
 var sr (audio-sr)
 function pluck (gate freq cutoff)
     (* (adsr sr gate 0.005 0.2 0.3 0.2) (lowpass (osc sr (sig gate freq) saw-table) sr cutoff 2))
-var p (synth pluck)                                     # compiled into the engine
+var p (synth pluck)                                     ; compiled into the engine
 set-param p 'freq 220
 set-param p 'cutoff 1500
-note p 0.5                                              # gate on for half a second
+note p 0.5                                              ; gate on for half a second
 \end{lstlisting}
 
 \paragraph{The clock and loops.} \musil{tempo} sets the beat; a \musil{live-loop} calls a
@@ -734,10 +730,10 @@ can also be driven from code, or by OSC from another program.
 \begin{lstlisting}
 control 'cutoff 200 5000 1500
 bind-control 'cutoff p 'cutoff
-controls                                                # the window
+controls                                                ; the window
 osc-listen 9000
-osc-map "/cutoff" 'cutoff                               # /cutoff 800 from anywhere sets it
-osc-send "127.0.0.1" 9001 "/hello" 1 2.5 "three"        # and the other way
+osc-map "/cutoff" 'cutoff                               ; /cutoff 800 from anywhere sets it
+osc-send "127.0.0.1" 9001 "/hello" 1 2.5 "three"        ; and the other way
 \end{lstlisting}
 
 The IDE keeps the interpreter running while the loops turn, so you edit the file, send a
@@ -754,14 +750,14 @@ load "music.mu"
 var db (db-load "data/microsol/microsol.spectrum.db")
 print (db-instruments db) (db-range db 'Vn)
 var s (score "first" 44100)
-event s 0 1 (note db 'Vn "C4" 'mf 'ord)                 # instrument, pitch, dynamics, technique
+event s 0 1 (note db 'Vn "C4" 'mf 'ord)                 ; instrument, pitch, dynamics, technique
 event s 0.5 1 (note db 'Ob "F#4" 'p 'ord)
-event-at s 1 2 (chord db 'Hn 'mf 'ord (list "D4" "G#4")) -30 0   # placed at the right
-event s 2 3 "data/gong_c_sharp.wav"                     # a file
-event s 3 1 (* 0.3 (sine 44100 660 1))                  # a buffer
+event-at s 1 2 (chord db 'Hn 'mf 'ord (list "D4" "G#4")) -30 0   ; placed at the right
+event s 2 3 "data/gong_c_sharp.wav"                     ; a file
+event s 3 1 (* 0.3 (sine 44100 660 1))                  ; a buffer
 render s "/tmp/first.wav" "stereo"
-display s                                               # the roll: Play, Render, a double-click on a note
-play-score s 0.8                                        # in the concert hall
+display s                                               ; the roll: Play, Render, a double-click on a note
+play-score s 0.8                                        ; in the concert hall
 \end{lstlisting}
 
 \paragraph{Pitches, rhythms, lines.} Pitches are strings (\musil{"F\#4"}) or MIDI numbers,
@@ -785,9 +781,8 @@ fragment to transpose it (\musil{fragment-map}), \musil{reverse} a rhythm,
 \musil{fragment->score} to make a section that another score holds as one event.
 \texttt{algorithmic\_comp.mu} and \texttt{score\_in\_score.mu} go through all of it.
 
-\paragraph{A convention.} Pitches are always strings (\musil{"A3"}, \musil{"D\#5"}): a
-sharp needs one, since \texttt{\#} starts a comment in a symbol, and one spelling is better
-than two. Symbols name things: instruments, dynamics, techniques, keys and parameters
+\paragraph{A convention.} Pitches are written as strings (\musil{"A3"}, \musil{"D\#5"}); symbols
+(\musil{'A3}, \musil{'D\#5}) work too, but one spelling is better than two. Symbols name things: instruments, dynamics, techniques, keys and parameters
 (\musil{'Vn}, \musil{'mf}, \musil{'ord}, \musil{'freq}). Numbers are for computed pitches
 (\musil{(+ 7 60)}), and every element accepts them.
 
@@ -852,8 +847,8 @@ Numbers are vectors. Anything that can be written as an operation on whole vecto
 faster (the loop runs in C++) and shorter than a loop in Musil.
 
 \begin{lstlisting}
-var t (/ (range n) sr)                            # a time axis
-var y (* (exp (* -3 t)) (sin (* tau 440 t)))      # a decaying sine, no loop
+var t (/ (range n) sr)                            ; a time axis
+var y (* (exp (* -3 t)) (sin (* tau 440 t)))      ; a decaying sine, no loop
 var peak (max (abs y))
 var clipped (clip y -0.5 0.5)
 \end{lstlisting}
@@ -969,18 +964,18 @@ comment, a \musil{check} in the test, a line in the reference, a regenerated gol
 \subsection{Style at a glance}
 
 \begin{lstlisting}
-# a comment says why, the code says what
+; a comment says why, the code says what
 load "live.mu"
 audio-init
 var sr (audio-sr)
 
-function pluck-note (gate freq)                   # instrument: a function of its parameters
+function pluck-note (gate freq)                   ; instrument: a function of its parameters
     (* (adsr sr gate 0.005 0.1 0.3 0.2) (osc sr (sig gate freq) saw-table))
 
-var p (synth pluck-note)                          # streamed
-var buffer (pluck-note (vec (ones 400) (zeros 8000)) 220)   # or rendered: the same function
+var p (synth pluck-note)                          ; streamed
+var buffer (pluck-note (vec (ones 400) (zeros 8000)) 220)   ; or rendered: the same function
 
-function bassline (cycle)                         # a pattern: events from data
+function bassline (cycle)                         ; a pattern: events from data
     (melody p "a1 ~ a1 c2" 4 (list))
 live-loop 'bassline 4
 \end{lstlisting}
@@ -1081,8 +1076,8 @@ orthogonal), is C++ and serves the orchestrators.
 load "scientific.mu"
 var A (list (vec 2 1) (vec 1 3))
 print (mat-mul A (inv A)) (solve A (vec 3 5)) (eig-sym A)
-var P (pca X)                          # rows: direction then eigenvalue, largest first
-var km (kmeans X 3)                    # (list labels centroids)
+var P (pca X)                          ; rows: direction then eigenvalue, largest first
+var km (kmeans X 3)                    ; (list labels centroids)
 var model (knn-model training 3)
 print (accuracy (knn-test model test) test)
 \end{lstlisting}
@@ -1166,9 +1161,9 @@ B-format for an external decoder such as the IEM BinauralDecoder in a DAW),
 load "signals.mu"
 var x (sine 44100 440 1)
 var frames (stft x 2048 512)
-var y (istft frames 2048 512)               # exact reconstruction
-var slow (pvoc-stretch x 2)                  # twice as long, same pitch
-var up (pvoc-pitch-formant x 1.5 400)        # a fifth up, formants kept
+var y (istft frames 2048 512)               ; exact reconstruction
+var slow (pvoc-stretch x 2)                  ; twice as long, same pitch
+var up (pvoc-pitch-formant x 1.5 400)        ; a fifth up, formants kept
 var any (pvoc x (list (list "stretch" (list 1 3)) (list "pitch" 0.75) (list "envelope" 400)))
 var lp (lowpass x 44100 500 0.707)
 print (spectral-centroid (magnitude-spectrum x) (spectrum-freqs 65536 44100))
@@ -1202,14 +1197,14 @@ suite exercises everything but the ears.
 
 \begin{lstlisting}
 load "live.mu"
-audio-init                                   # 44100 Hz, 256 samples, stereo, started
-var v (play-file "data/drums.wav")           # a voice
+audio-init                                   ; 44100 Hz, 256 samples, stereo, started
+var v (play-file "data/drums.wav")           ; a voice
 wait-for v
 var lp (loop-buffer x sr)
 set-rate lp 0.5
 stop lp
 var t (audio-time)
-each (range 8) (function (k) (play-at (+ t (* k 0.25)) hit sr))   # sample-accurate, ahead of time
+each (range 8) (function (k) (play-at (+ t (* k 0.25)) hit sr))   ; sample-accurate, ahead of time
 audio-quit
 \end{lstlisting}
 
@@ -1231,11 +1226,11 @@ instrument.
 \begin{lstlisting}
 function lead (gate freq cutoff) \
     (pan (* (adsr sr gate 0.01 0.2 0.5 0.4) (lowpass (osc sr freq saw-table) sr cutoff 2)) 0)
-var a (synth lead)                               # compiled, silent
+var a (synth lead)                               ; compiled, silent
 set-params a (list (list 'freq 110) (list 'cutoff 1200))
-note a 0.5                                       # gate on, off after half a second (scheduled)
-set-param a 'cutoff 300 1.5                      # ramp while it plays
-var y (lead gate-vector freq-vector 1200)        # the same function, offline: a buffer
+note a 0.5                                       ; gate on, off after half a second (scheduled)
+set-param a 'cutoff 300 1.5                      ; ramp while it plays
+var y (lead gate-vector freq-vector 1200)        ; the same function, offline: a buffer
 \end{lstlisting}
 
 \textbf{Loops.} A loop is a function of the cycle number returning events, each
@@ -1256,7 +1251,7 @@ function drums (cycle) (stack (list
     (steps 1 (list 1 nil 1 nil) (function (x) (function (t d) (note-at t k 0.1))))
     (every 4 cycle (function (e) (fast e 2)) (steps 0.5 (list nil 1) (function (x) (function (t d) (note-at t h 0.05)))))))
 live-loop 'drums 4
-function drums (cycle) ...          # redefine: next cycle it changes
+function drums (cycle) ...          ; redefine: next cycle it changes
 \end{lstlisting}
 
 \textbf{Notes, patterns, a kit.} \musil{hz}, \musil{note->midi}, \musil{midi->hz},
@@ -1308,16 +1303,16 @@ elevation, for the spatial layouts). What an event holds is decided by what is p
 
 \begin{lstlisting}
 var s (score "study" 44100)
-event s 0 3.5 "bells.wav"                                  # a sound file, read when rendered, cached
-event s 2 3.6 buffer                                       # a vector, or a list of channel vectors
-event s 4 1 (note db 'Vn 'C5 'mf 'ord)                     # a sound from a database (nearest pitch, shifted)
-event s 5 2 (instrument pluck (list (list 'freq 440)))     # a synth: an instrument function and its parameters
-event s 6 1 (call my-function (list 1 2 'dur))             # any function, called when rendered ('dur = the duration)
-event-at s 7 1 my-function 90 0                            # a bare function is called with the duration; placed at the left
-event s 8 0 other-score                                    # a score inside a score (0: its whole length); any depth
-render s "study.wav" "stereo"                              # layouts: "mono" "stereo" "binaural" "ambi N", a ring, or N channels
-play-score s 0.8                                           # through live, ahead of the clock, scaled
-display s                                                  # the roll, drawn like music
+event s 0 3.5 "bells.wav"                                  ; a sound file, read when rendered, cached
+event s 2 3.6 buffer                                       ; a vector, or a list of channel vectors
+event s 4 1 (note db 'Vn 'C5 'mf 'ord)                     ; a sound from a database (nearest pitch, shifted)
+event s 5 2 (instrument pluck (list (list 'freq 440)))     ; a synth: an instrument function and its parameters
+event s 6 1 (call my-function (list 1 2 'dur))             ; any function, called when rendered ('dur = the duration)
+event-at s 7 1 my-function 90 0                            ; a bare function is called with the duration; placed at the left
+event s 8 0 other-score                                    ; a score inside a score (0: its whole length); any depth
+render s "study.wav" "stereo"                              ; layouts: "mono" "stereo" "binaural" "ambi N", a ring, or N channels
+play-score s 0.8                                           ; through live, ahead of the clock, scaled
+display s                                                  ; the roll, drawn like music
 \end{lstlisting}
 
 A sound longer than its event is faded out at the end; a shorter one is left as it is; a
@@ -1694,7 +1689,7 @@ the bundled MicroSOL last, and run with what is there. \musil{note} finds the en
 for an instrument, pitch, dynamics and technique, or the nearest available pitch of that
 instrument, and shifts it by resampling; only sounds present on disk are candidates, so a
 feature file describing more than is present still works. A sharp in a pitch is written as
-a string (\musil{"D\#5"}): a \texttt{\#} in a symbol would start a comment. The bundled
+a string (\musil{"D\#5"}) or a symbol (\musil{'D\#5}). The bundled
 \texttt{examples/data/microsol} (MicroSOL: oboe, horn, violin, cello, C4--G4, 32 sounds)
 makes every example run from a fresh clone; the full TinySOL is fetched into
 \texttt{datasets/} (ignored by git) with \texttt{./fetch\_tinysol.sh}, and each example has
@@ -1737,7 +1732,7 @@ The interpreter is one header. A host includes it, registers functions, and runs
 code:
 
 \begin{lstlisting}[language=C++]
-#include "musil.h"
+;include "musil.h"
 musil::Interp I;
 musil::make_env(I);                       // the C++ halves of the libraries
 I.def("hello", [](musil::vlist& a, musil::Interp& i) -> musil::vptr {
@@ -1790,7 +1785,6 @@ All in \texttt{examples/}, all run by \texttt{ctest}. Run them from that directo
 \texttt{simple\_score.mu}, \texttt{loaddb.mu}, \texttt{random\_music.mu}, \texttt{random\_collage.mu} & a score written by hand (a Bach chorale and one event of every kind); a sample database loaded and questioned; a random score of notes; a random collage of recordings, processing, notes, synths and functions \\
 \texttt{score\_in\_score.mu}, \texttt{algorithmic\_comp.mu} & phrases as scores inside sections inside a piece; the musical elements combined with the language \\
 \texttt{gran\_orchestration.mu}, \texttt{gran\_orchestration2.mu}, \texttt{gran\_orchestration3.mu}, \texttt{haas.mu}, \texttt{static\_orchidea.mu}, \texttt{dynamic\_orchidea.mu}, \texttt{orchfest.mu}, \texttt{modulations.mu}, \texttt{atmospheres.mu}, \texttt{atmospheres2.mu}, \texttt{morph\_orchestration.mu}, \texttt{dbgen.mu} & orchestration as granular synthesis: two processes from a unison to a storm and to a spectrum; one process, a parameter at a time (a pulse together that quickens, widens, comes apart, and ends in long loud sounds); the players as people (seats, lines, clusters, a strike scattered, strict dynamics, two granulators on the same people, and the score validated against the orchestra); Haas's processes after \emph{in vain} (cascades of tempered scales, an overtone chord in just intonation swelling in waves, a beating near-unison, the return), its parts written as MusicXML; Orchidea on a bell (static) and on a piano phrase cut at its chords (dynamic), the solutions chosen in the roll; the three orchestrators one after the other on the same bell; Grisey's \emph{Modulations} simulated section by section; Ligeti's \emph{Atmosphères} as clusters in bands read off its register diagram, the dynamics off the measured loudness of a recording, and again with every envelope taken from the recording's curves; a recording orchestrated by its morphology; a feature file made from a folder of sounds \\
-\texttt{bootstrap.mu} & Musil evaluating Musil: a metacircular evaluator and its REPL \\
 \bottomrule
 \end{tabular}
 \end{center}

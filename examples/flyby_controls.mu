@@ -1,11 +1,11 @@
-# flyby_controls: the helicopter in your hands. Two sliders, azimuth and elevation, move it
-# around your head in real time, rendered binaurally through the measured HRTFs; a third
-# sets the distance. Headphones.
-# Usage: musil flyby_controls.mu   (or open it in the IDE: the controls window appears)
-#
-# Inside the instrument, (binaural x az el sr) is a streaming node: when the direction changes
-# it crossfades from the old pair of impulse responses to the new within a block, so moving a
-# slider never clicks. Azimuth: 0 in front, 90 left, -90 right, 180 behind. Elevation: 90 above.
+; flyby_controls: the helicopter in your hands. Two sliders, azimuth and elevation, move it
+; around your head in real time, rendered binaurally through the measured HRTFs; a third
+; sets the distance. Headphones.
+; Usage: musil flyby_controls.mu   (or open it in the IDE: the controls window appears)
+;
+; Inside the instrument, (binaural x az el sr) is a streaming node: when the direction changes
+; it crossfades from the old pair of impulse responses to the new within a block, so moving a
+; slider never clicks. Azimuth: 0 in front, 90 left, -90 right, 180 behind. Elevation: 90 above.
 load "live.mu"
 audio-init
 var sr (audio-sr)

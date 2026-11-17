@@ -1,8 +1,8 @@
-# test_music: the score, the database, notes, rendering, playing, the roll
+; test_music: the score, the database, notes, rendering, playing, the roll
 load "test.mu"
 load "music.mu"
 
-# --- the score and its events ---
+; --- the score and its events ---
 var s (score "t" 8000)
 check (equal? (get s 'name) "t") "score: name"
 check (== (score-sr s) 8000) "score-sr"
@@ -36,7 +36,7 @@ event-length! e7 0.1
 event-gain! e7 0.5
 check (and (== (get e7 'at) 6) (== (get e7 'dur) 0.1) (== (get e7 'gain) 0.5)) "event-move!, event-length!, event-gain!"
 
-# --- rendering ---
+; --- rendering ---
 var r1 (render-event e1 8000)
 check (== (length r1) 1) "render-event: a buffer, one channel"
 check (== (length (head r1)) 2000) "render-event: cut to the duration"
@@ -62,7 +62,7 @@ check (contains? (error-of (function () (score-render s "quad-ish"))) "unknown")
 render s "/tmp/musil_test_score.wav" "stereo"
 check (== (head (read-wav "/tmp/musil_test_score.wav")) 8000) "render: a file at the score's rate"
 
-# --- the roll ---
+; --- the roll ---
 var rows (score-rows s)
 check (equal? (map rows head) (list "files" "buffers" "synths" "calls")) "score-rows: kinds in order"
 var roll (score-roll s)
@@ -81,7 +81,7 @@ check (equal? (map (getidx (head (getidx roll 1)) 1) last) (list "none" "none" "
 save-png roll "/tmp/musil_test_roll.png" 600 300
 check (exists? "/tmp/musil_test_roll.png") "the roll draws"
 
-# --- transformations ---
+; --- transformations ---
 score-shift! s 1
 check (== (get e2 'at) 1) "score-shift!"
 score-scale! s 2
@@ -94,7 +94,7 @@ check (== (get (head (score-events s)) 'at) 2) "score-sort!"
 var m (score-merge s s)
 check (== (length (score-events m)) 12) "score-merge"
 
-# --- the database and notes ---
+; --- the database and notes ---
 var db (db-load "../examples/data/microsol/microsol.spectrum.db")
 check (== (db-size db) 32) "db-load: entries"
 check (ends-with? (get db 'root) "microsol/microsol") "db-load: the sounds' folder next to the feature file, found by content"
@@ -117,7 +117,7 @@ check (== (length (db-features e)) 1024) "db-features"
 check (db-available? db e) "db-available?: a bundled sound"
 check (== (length (db-available db)) 32) "db-available: every sound"
 check (ends-with? (db-path db e) "Strings/Vn/Vn-ord-C4-mf-4c.wav") "db-path: relative to the sounds' folder"
-check (ends-with? (db-path db (head (db-query db 'Vn "C#4" 'mf 'ord))) "Vn-ord-C#4-mf-4c.wav") "db-path: a sharp on disk (a # in a symbol would start a comment: use a string)"
+check (ends-with? (db-path db (head (db-query db 'Vn "C#4" 'mf 'ord))) "Vn-ord-C#4-mf-4c.wav") "db-path: a sharp on disk"
 check (== (pitch->midi "C4") 60) "pitch->midi"
 check (== (pitch->midi "Bb3") 58) "pitch->midi: flat"
 check (== (pitch->midi "x") -1) "pitch->midi: not a pitch"
@@ -158,7 +158,7 @@ event s3 0 1 (note db 'Vn 'C4 'mf 'ord)
 event s3 0 1 (note db 'Ob 'C4 'mf 'ord)
 check (equal? (map (score-rows s3) head) (list "Ob" "Vn" "Vc")) "score-rows: orchestral order"
 
-# --- more queries ---
+; --- more queries ---
 check (== (length (db-query db (list 'Vn 'Vc) nil (list 'mf 'ff) nil)) 16) "db-query: lists match any of their members"
 check (== (length (db-grep db "Vn-ord-C.?4-mf")) 2) "db-grep: a regular expression on the file name (C4 and C#4)"
 check (contains? (error-of (function () (db-grep db "("))) "bad pattern") "db-grep: a bad pattern"
@@ -170,7 +170,7 @@ check (equal? (get (head near) 'file) (get e 'file)) "db-nearest: the entry itse
 check (== (length near) 3) "db-nearest: n entries"
 check (equal? (db-instruments-available db) (list "Ob" "Hn" "Vn" "Vc")) "db-instruments-available"
 
-# --- db-gen: the features of the bundled sounds, against Orchidea's own ---
+; --- db-gen: the features of the bundled sounds, against Orchidea's own ---
 var sounds "../examples/data/microsol/microsol"
 var n-made (db-gen sounds "/tmp/musil_test_gen.db" "spectrum" 2048 256 1024)
 check (== n-made 32) "db-gen: every WAV under the folder"
@@ -188,7 +188,7 @@ check (contains? (error-of (function () (db-gen sounds "/tmp/x.db" "nope" 2048 2
 check (contains? (error-of (function () (db-gen sounds "/tmp/x.db" "spectrum" 1000 100 4))) "power of 2") "db-gen: block"
 check (contains? (error-of (function () (db-gen "/nowhere" "/tmp/x.db" "spectrum" 1024 256 4))) "not a folder") "db-gen: folder"
 
-# --- musical elements ---
+; --- musical elements ---
 seed 4
 var rr (rhythm (list 0.5 0.5 -0.25 1))
 check (== (rhythm-duration rr) 2.25) "rhythm-duration: pauses count"
@@ -240,7 +240,7 @@ check (== (get (head (add-placed! sc 2 ln 45 0)) 'az) 45) "add-placed!"
 var fs (fragment->score "frag" 44100 ln)
 check (and (equal? (get fs 'name) "frag") (== (length (score-events fs)) 3)) "fragment->score"
 
-# --- more elements ---
+; --- more elements ---
 seed 7
 score-tempo! sc 120
 check (== (beat->sec sc 4) 2) "score-tempo!, beat->sec"
@@ -280,7 +280,7 @@ check (equal? (unique (map (score-events sc) (function (e) (get e 'gain)))) (lis
 check (> (length (score-instrument sc 'Ob)) 0) "score-instrument"
 check (== (length (shuffle (list 1 2 3 4))) 4) "shuffle"
 
-# --- scores in scores ---
+; --- scores in scores ---
 var outer (score "outer" 44100)
 var se (event outer 0 0 fs)
 check (equal? (get se 'kind) 'score) "event: a score is a payload"
@@ -298,7 +298,7 @@ event deep 0 0 outer
 check (== (length (score-render deep "stereo")) 2) "score-render: two levels"
 check (equal? (type (play-event (register-score outer) (get se (quote id)))) "nil") "play-event: on a score inside, its roll is opened (nothing shown under MUSIL_NOSHOW)"
 
-# --- MIDI files ---
+; --- MIDI files ---
 var mid (midi-read "../examples/data/test.mid")
 check (== (get mid 'ppq) 480) "midi-read: ppq"
 check (equal? (get mid 'tracks) (list "Piano" "Bass")) "midi-read: track names"
@@ -314,7 +314,7 @@ var ms (midi->score "../examples/data/test.mid" db (list 'Vn 'Vc) 'ord "m")
 check (equal? (map (score-rows ms) head) (list "Vn" "Vc")) "midi->score: an instrument per channel"
 check (contains? (error-of (function () (midi-read "/nope.mid"))) "cannot open") "midi-read: missing file"
 
-# --- the index ---
+; --- the index ---
 var idx (db-index! db)
 check (equal? (sort-by (keys idx) instrument-rank) (list "Ob" "Hn" "Vn" "Vc")) "db-index!: an entry per instrument on disk"
 check (== (length (get (get idx "Vn") 'all)) 8) "db-index!: the instrument's pitched available sounds"
@@ -326,7 +326,7 @@ check (equal? (db-techniques-of db 'Vn) (list "ord")) "db-techniques-of"
 check (equal? (sort-list (db-dynamics-of db (quote Vc))) (list "ff" "mf")) "db-dynamics-of"
 check (has? db 'index) "db-index!: kept on the database"
 
-# --- envelopes, the orchestra, the granulator ---
+; --- envelopes, the orchestra, the granulator ---
 seed 5
 var en (env (list 0 (list 4 6) 10 (list 0.5 1)))
 check (equal? (env-at en 0) (list 4 6)) "env-at: at the first breakpoint"
@@ -396,7 +396,7 @@ var uncoupled (best-connection (orchestrate-granular db (orchestra (list (list '
 check (== (length (unique (map uncoupled head))) (length uncoupled)) "granular: coupling 0, a paired group's players sound one at a time"
 var coupled (best-connection (orchestrate-granular db (orchestra (list (list 'Vn 'Vc))) 3 (put cp 'coupling 1)))
 check (< (length (unique (map coupled head))) (length coupled)) "granular: coupling 1, they sound together"
-# --- the players as people: state, constraints, the report, the validation ---
+; --- the players as people: state, constraints, the report, the validation ---
 seed 9
 var rep (get (orchestrate-granular db orch 10 (record (list 'density (list 6 6) 'register (list 4 4) 'duration (list 0.5 1)))) 'report)
 check (and (>= (get rep 'due) 60) (<= (get rep 'due) 61) (== (+ (get rep 'events) (get rep 'skipped-busy) (get rep 'skipped-unplayable)) (get rep 'due)) (>= (get rep 'notes) (get rep 'events))) "report: every event due is played, skipped busy or unplayable (a paired group's event writes more notes than one)"
@@ -446,7 +446,7 @@ check (== (balance-gain (record (list 'brass -6)) 'Vn) 1) "balance-gain: ... els
 check (equal? (list (instrument-family 'Fl) (instrument-family 'Tbn) (instrument-family 'Vc) (instrument-family 'Timp) (instrument-family 'Hp) (instrument-family 'Xyz)) (list 'winds 'brass 'strings 'percussion 'plucked 'other)) "instrument-family"
 var balanced (best-connection (orchestrate-granular db (orchestra (list 'Hn 'Vn)) 4 (record (list 'balance (record (list 'brass -6)) 'density (list 6 6) 'register (list 4 4) 'dynamics 0.5))))
 check (all? (map balanced (function (x) (if (equal? (get (last x) 'instr) "Hn") (near? (get (last x) 'gain) (* (level->gain 0.5) (pow 10 -0.3)) 1e-6) (near? (get (last x) 'gain) (level->gain 0.5) 1e-6)))) identity) "balance: the brass 6 dB under the strings at the same level"
-# one orchestra shared by two calls ('continue): the second books only players the first left free
+; one orchestra shared by two calls ('continue): the second books only players the first left free
 seed 4
 var shared (orchestra (list 'Ob 'Hn 'Vn 'Vc))
 var cp1 (record (list 'continue 1 'start 0 'density (list 4 4) 'duration (list 2 2) 'register (list 4 4)))
@@ -488,7 +488,7 @@ check (equal? (env-at cie 5) (list (list 66))) "chordinterp-env: the chord halfw
 var merged (merge-continuations (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "D4" 'mf 'ord))))
 check (and (== (length merged) 2) (== (getidx (head merged) 1) 2)) "merge-continuations: a note continued becomes one longer note"
 
-# --- mimetic orchestration (Orchidea) ---
+; --- mimetic orchestration (Orchidea) ---
 seed 7
 var mt-score (score "mimetic target" 44100)
 event mt-score 0 2 (note db 'Ob "C4" 'mf 'ord)
@@ -536,7 +536,7 @@ check (and (== (length msegs) 3) (== (getidx (head msegs) 4) 0) (== (getidx (get
 check (equal? (map (mimetic-connection mr3) head) (map (connection mr3 (get mr3 'choices)) head)) "mimetic-connection: the connection Orchidea chose"
 check (== (length (get mr 'curves)) 1) "orchestrate-mimetic: a fitness curve per segment"
 check (near? (mimetic-seating 'Vn) 30 1e-9) "mimetic-seating: the violins at the left"
-# the ids of events are never reused: a score with a file at its end keeps it through replacements of a segment
+; the ids of events are never reused: a score with a file at its end keeps it through replacements of a segment
 var mids (score "ids" 44100)
 var mev1 (connect! mids 0 mr3 (get mr3 'choices))
 var tailev (event mids 10 1 (note db 'Ob "C4" 'mf 'ord))
@@ -545,7 +545,7 @@ score-choose! mids 0 0 1
 score-choose! mids 0 1 1
 check (and (any? (score-events mids) (function (e) (== (get e 'id) tail-id))) (== (length (unique (map (score-events mids) (function (e) (get e 'id))))) (length (score-events mids)))) "score-choose!: an event added after the orchestration survives two replacements (ids never reused)"
 check (== (score-next-id! mids) (+ 1 (max-of (map (score-events mids) (function (e) (get e 'id)))))) "score-next-id!: past every id in use"
-# the memory between segments: hysteresis, dovetailing, the path connection, the octaves, the hold
+; the memory between segments: hysteresis, dovetailing, the path connection, the octaves, the hold
 var mseg3 (put mprm 'segmentation (list 0 1.5 3))
 var mhy (orchestrate-mimetic db morch mtx 44100 (put mseg3 'hysteresis 0.5))
 check (== (length (get mhy 'choices)) 3) "orchestrate-mimetic: hysteresis > 0 runs (the standardised forecasts of the chosen solutions remembered)"
@@ -561,7 +561,7 @@ var mhf (connection mhold (get mhold 'choices))
 check (all? (map mhf (function (x) (<= (getidx x 1) 2.01))) identity) "hold: a note continued across segments never longer than 'hold seconds"
 var madapt (mimetic-target db mtx 44100 (record (list 'segmentation 'adaptive 'ratio 2 'timegate 0.2 'partials 0)))
 check (>= (length (get madapt 'segments)) 1) "mimetic-target: 'adaptive segmentation (flux-peaks against the local median)"
-# the players hold their sound on across segments ('sustain), the report, the cache, the genetic decision
+; the players hold their sound on across segments ('sustain), the report, the cache, the genetic decision
 var msus (orchestrate-mimetic db morch mtx 44100 (put mprm 'segmentation (list 0 1 2 3)))
 check (== (length (get msus 'report)) 4) "orchestrate-mimetic: a report, a record per segment"
 check (all? (map (get msus 'report) (function (g) (and (has? g 'cost) (has? g 'used) (has? g 'held) (has? g 'missing) (has? g 'space)))) identity) "report: cost, players used, holding on, the pitches not in the orchestra, the space"
@@ -574,7 +574,7 @@ check (< (length (head (get mpat 'curves))) 200) "patience: a stalled search sto
 check (== (length (mimetic-report msus)) 4) "mimetic-report: prints and returns the report"
 check (== (length (merge-continuations-within (list (list 0 1 (note db 'Vn "C4" 'mf 'ord)) (list 1 1 (note db 'Vn "C4" 'mf 'ord)) (list 2 1 (note db 'Vn "C4" 'mf 'ord))) 2)) 2) "merge-continuations-within: the hold splits a continuation (three seconds of C4 in two notes)"
 
-# --- morphological orchestration ---
+; --- morphological orchestration ---
 seed 6
 var tsc (score "target" 44100)
 event tsc 0 3 (put (note db 'Vc "C4" 'mf 'ord) 'gain 2)
@@ -632,7 +632,7 @@ check (all? (map kd (function (x) (near? (getidx x 1) 0.2 1e-9))) identity) "orc
 var polyf (best-connection (orchestrate-granular db orch 4 (record (list 'density (list 20 20) 'duration (list 2 2) 'polyphony 2))))
 check (<= (max-of (map (vec->list (range 0 4 0.1)) (function (t) (active-at polyf t)))) 2) "granular: 'polyphony caps the players sounding at once"
 
-# --- several databases at once ---
+; --- several databases at once ---
 var both (db-merge (list db db))
 check (== (db-size both) 64) "db-merge: the entries of both"
 check (has? (head (get both 'entries)) 'root) "db-merge: each entry keeps its own sounds' folder"
@@ -643,7 +643,7 @@ var other (record (list 'path "x" 'root "." 'type "mfcc" 'block 2048 'hop 256 'n
 check (contains? (error-of (function () (db-merge (list db other)))) "types differ") "db-merge: feature types must agree"
 check (contains? (error-of (function () (db-merge (list)))) "no databases") "db-merge: empty"
 
-# --- the roll of notes: staves ---
+; --- the roll of notes: staves ---
 var roll2 (score-roll s2)
 var rows2 (getidx (head (getidx roll2 1)) 1)
 check (equal? (head (head rows2)) "Vn") "score-roll: a row per instrument"
@@ -653,7 +653,7 @@ check (equal? (getidx (head (getidx (head (getidx roll2 1)) 2)) 9) "mf") "score-
 save-png roll2 "/tmp/musil_test_staff.png" 800 400
 check (exists? "/tmp/musil_test_staff.png") "the staff draws"
 
-# --- play, on the null device ---
+; --- play, on the null device ---
 check (equal? (get s2 'reverb) (list 0.7 0.3)) "score: in the hall by default"
 score-reverb! s2 1 0
 check (equal? (get s2 'reverb) (list 1 0)) "score-reverb!: dry"
@@ -725,22 +725,22 @@ function bad (gate) (pvoc-stretch gate 2)
 var s4 (score "bad" 44100)
 event s4 0 0.1 (instrument bad (list))
 check (contains? (error-of (function () (score-schedule s4 1 0))) "does not stream") "score-schedule: a non-streamable instrument is refused (play-score renders it instead)"
-# --- notation: quantization and MusicXML ---
+; --- notation: quantization and MusicXML ---
 var sn (score "notation" 44100)
-score-tempo! sn 120                                                        # a beat is half a second
+score-tempo! sn 120                                                        ; a beat is half a second
 score-meter! sn 3 4
 check (equal? (score-meter sn) (list 3 4)) "score-meter!/score-meter"
 event sn 0 0.5 (note db 'Vn "C4" 'mf 'ord)
-event sn 0.52 0.25 (note db 'Vn "D4" 'mf 'ord)                            # 20 ms late: an eighth on the beat
+event sn 0.52 0.25 (note db 'Vn "D4" 'mf 'ord)                            ; 20 ms late: an eighth on the beat
 event sn 0.75 0.25 (note db 'Vn "E4" 'f 'ord)
-event sn 1 (/ 0.5 3) (note db 'Vn "F4" 'f 'pizz-lv)                       # a triplet
+event sn 1 (/ 0.5 3) (note db 'Vn "F4" 'f 'pizz-lv)                       ; a triplet
 event sn (+ 1 (/ 0.5 3)) (/ 0.5 3) (note db 'Vn "G4" 'f 'pizz-lv)
 event sn (+ 1 (/ 1 3)) (/ 0.5 3) (note db 'Vn "E4" 'f 'pizz-lv)
-event sn 1.5 1.5 (note-cents! (note db 'Vn "F4" 'p 'ord) 50)              # a quarter tone, across the bar
+event sn 1.5 1.5 (note-cents! (note db 'Vn "F4" 'p 'ord) 50)              ; a quarter tone, across the bar
 event sn 2 0.5 (note db 'Vc "C3" 'mf 'ord)
-event sn 2 0.5 (note db 'Vc "E3" 'mf 'ord)                                # a chord
+event sn 2 0.5 (note db 'Vc "E3" 'mf 'ord)                                ; a chord
 event sn 2.5 0.1 (note db 'Vc "G3" 'ff 'ord)
-event sn 3 0.1 (note db 'Vc "G3" 'ff 'ord)                                # a quintuplet: 0.1 s is a fifth of the beat
+event sn 3 0.1 (note db 'Vc "G3" 'ff 'ord)                                ; a quintuplet: 0.1 s is a fifth of the beat
 event sn 3.2 0.1 (note db 'Vc "G3" 'ff 'ord)
 event sn 3.4 0.1 (note db 'Vc "G3" 'ff 'ord)
 event sn 1 1 (sine 44100 440 1)
@@ -764,7 +764,7 @@ check (equal? (map vn-bar2 (function (pc) (list (get pc 'type) (get pc 'dots) (o
 check (equal? (map (getidx (head (get vn 'bars)) 2) (function (pc) (list (get pc 'type) (equal? (type (get pc 'note)) "nil")))) (list (list "half" 1) (list "quarter" 1))) "voice-bars: bar 3 rests, never dotted"
 var sn2 (score "tie" 44100)
 score-tempo! sn2 120
-event sn2 1 1.5 (note db 'Vn "A4" 'mf 'ord)                              # from beat 2 of 4/4 over the bar line
+event sn2 1 1.5 (note db 'Vn "A4" 'mf 'ord)                              ; from beat 2 of 4/4 over the bar line
 var nm2 (score-notate sn2 (record (list)))
 var tie-bars (head (get (head (get nm2 'parts)) 'bars))
 check (equal? (map (head tie-bars) (function (pc) (list (get pc 'type) (opt pc 'tie-start 0)))) (list (list "half" 0) (list "half" 1))) "voice-bars: a half rest, then the note tied over the bar (a half from beat 3)"
@@ -821,7 +821,7 @@ score-quantize! sn (record (list))
 check (near? (get (getidx (get sn 'events) 1) 'at) 0.5 1e-9) "score-quantize!: the late eighth on the beat"
 check (near? (get (getidx (get sn 'events) 1) 'dur) 0.25 1e-9) "score-quantize!: its duration"
 check (near? (get (getidx (get sn 'events) 10) 'dur) 0.1 1e-9) "score-quantize!: the quintuplet kept"
-# parts per player: the notes that say who played them
+; parts per player: the notes that say who played them
 var sp (score "players" 44100)
 score-tempo! sp 120
 var pn1 (note db 'Vn "C4" 'mf 'ord)
@@ -829,7 +829,7 @@ put! pn1 'player 3
 var pn2 (note db 'Vn "E4" 'mf 'ord)
 put! pn2 'player 4
 var pn3 (note db 'Vc "C3" 'mf 'ord)
-put! pn3 'player 4                                                        # the same player, doubling (an ossia Vn|Vc)
+put! pn3 'player 4                                                        ; the same player, doubling (an ossia Vn|Vc)
 var pn4 (note db 'Vn "G4" 'mf 'ord)
 put! pn4 'player 3
 var pn5 (note db 'Vn "D4" 'mf 'ord)
@@ -837,9 +837,9 @@ put! pn5 'player 3
 event sp 0 0.5 pn1
 event sp 0 0.5 pn2
 event sp 1 0.5 pn3
-event sp 0.4 0.5 pn4                                                      # overlaps pn1 by 0.1 s on one player: pn1 cut at its start
-event sp 0.4 0.1 pn5                                                      # the same tick as pn4, ends before it: left out
-event sp 2 1 (note db 'Ob "C4" 'mf 'ord)                                  # no player: by instrument
+event sp 0.4 0.5 pn4                                                      ; overlaps pn1 by 0.1 s on one player: pn1 cut at its start
+event sp 0.4 0.1 pn5                                                      ; the same tick as pn4, ends before it: left out
+event sp 2 1 (note db 'Ob "C4" 'mf 'ord)                                  ; no player: by instrument
 var mp (score-notate sp (record (list)))
 check (equal? (map (get mp 'parts) (function (q) (get q 'code))) (list "Ob" "Vn" "Vn|Vc")) "player-rows: a part per player, named by its instruments, the loose notes by instrument"
 check (equal? (map (get mp 'parts) (function (q) (get q 'name))) (list "Oboe" "Violin" "Violin / Violoncello")) "instrument-name: a doubling"

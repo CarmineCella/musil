@@ -1,9 +1,9 @@
-# test_live.mu — self-checking test of the live library (live.h + live.mu), on the null device.
-#
-# The null backend runs the audio callback from a timer at the real rate, so the clock, the
-# queue, the voices and the scheduling are exercised; only the ears are missing. Commands
-# reach the audio thread at the next block, so a short sleep follows each one before looking.
-# Run with: musil tests/test_live.mu
+; test_live.mu — self-checking test of the live library (live.h + live.mu), on the null device.
+;
+; The null backend runs the audio callback from a timer at the real rate, so the clock, the
+; queue, the voices and the scheduling are exercised; only the ears are missing. Commands
+; reach the audio thread at the next block, so a short sleep follows each one before looking.
+; Run with: musil tests/test_live.mu
 
 load "test.mu"
 load "live.mu"
@@ -13,13 +13,13 @@ var sr 44100
 var tone (* 0.5 (sine sr 440 0.2))
 var null-opts (list (list "device" "null"))
 
-# --- before opening ---
+; --- before opening ---
 check (== (opt (audio-status) "open" 1) 0) "audio-status: closed at first"
 check (contains? (error-of (function () (play tone sr))) "no audio device open") "play: needs an open device"
 check (equal? (type (audio-close)) "nil") "audio-close: harmless when closed"
 check (equal? (type (audio-devices)) "list") "audio-devices: a list"
 
-# --- opening ---
+; --- opening ---
 audio-open sr 256 2 null-opts
 check (== (opt (audio-status) "open" 0) 1) "audio-open"
 check (== (audio-sr) sr) "audio-sr"
@@ -35,7 +35,7 @@ check (== (audio-running?) 1) "audio-start"
 sleep 0.1
 check (> (audio-time) 0.05) "the clock advances while running"
 
-# --- voices ---
+; --- voices ---
 var v (play tone sr)
 check (equal? (type v) "scalar") "play: returns a voice id"
 sleep 0.05
@@ -66,7 +66,7 @@ check (contains? (error-of (function () (play (vec) sr))) "empty") "play: empty 
 check (contains? (error-of (function () (play tone 0))) "> 0") "play: sample rate"
 stop-all
 
-# --- scheduling on the clock ---
+; --- scheduling on the clock ---
 var t0 (audio-time)
 var s (play-at (+ t0 0.3) tone sr)
 sleep 0.1
@@ -79,7 +79,7 @@ var seq (sequence (list (list (+ (audio-time) 0.1) tone sr) (list (+ (audio-time
 check (== (length seq) 2) "sequence: one voice per step"
 stop-all
 
-# --- files ---
+; --- files ---
 write-wav "/tmp/musil_live_test.wav" 8000 (* 0.3 (sine 8000 300 0.1))
 var fv (play-file "/tmp/musil_live_test.wav")
 sleep 0.05
@@ -89,7 +89,7 @@ check (equal? (type (play-file-with "/tmp/musil_live_test.wav" (list (list "amp"
 remove "/tmp/musil_live_test.wav"
 stop-all
 
-# --- synths: a function of parameters, streamed ---
+; --- synths: a function of parameters, streamed ---
 var table (gen 1024 (vec 1 0.5))
 function beep (gate freq cutoff) (pan (* (adsr sr gate 0.01 0.1 0.6 0.3) (lowpass (osc sr freq table) sr cutoff 0.7)) -0.3)
 check (contains? (streamable) "osc") "streamable: lists the ugens"
@@ -133,7 +133,7 @@ sleep 0.5
 free-all
 sleep 0.05
 check (equal? (synths) (list)) "free-all"
-# the streamed graph equals the function called offline, to float precision
+; the streamed graph equals the function called offline, to float precision
 var n 22050
 var gate (vec (ones 11025) (zeros 11025))
 var offline (beep gate (+ (zeros n) 220) 1500)
@@ -149,7 +149,7 @@ function verb (amp) (* amp (conv (noise 0) (vec 1 (zeros 300) 0.5)))
 check (> (rms (synth-render verb (list (list 'amp 0.5)) 0.2)) 0.1) "synth-render: partitioned conv streams"
 check (contains? (error-of (function () (synth-render beep (list (list 'nope 1)) 0.1))) "no parameter") "synth-render: unknown parameter"
 
-# --- the scheduler: loops in beats, redefined while running ---
+; --- the scheduler: loops in beats, redefined while running ---
 tempo 120
 check (== (bpm) 120) "tempo, bpm"
 check (>= (beat) 0) "beat: counts from tempo"
@@ -177,7 +177,7 @@ check (contains? (error-of (function () (live-loop 'bass 0))) "> 0") "live-loop:
 lookahead 0.5
 check (contains? (error-of (function () (lookahead 0))) ">= 0.01") "lookahead: bounds"
 lookahead 0.25
-# event lists and their transformations
+; event lists and their transformations
 var e (list (ev 0 1 print) (ev 2 1 print))
 check (equal? (map (fast e 2) ev-beat) (list 0 1)) "fast"
 check (equal? (map (slow e 2) ev-beat) (list 0 4)) "slow"
@@ -195,7 +195,7 @@ var pe (play-ev 1 tone sr)
 check (== (ev-beat pe) 1) "play-ev"
 check (equal? (type (ev-thunk pe)) "function") "an event's thunk is a function"
 
-# --- pitch names, chords, the step notation, rhythm tools, the kit ---
+; --- pitch names, chords, the step notation, rhythm tools, the kit ---
 check (== (hz "A4") 440) "hz: A4"
 check (near? (hz "C4") 261.63 0.01) "hz: C4"
 check (near? (hz "Bb3") 233.08 0.01) "hz: flats"
@@ -224,7 +224,7 @@ check (> (rms (ohat g)) 0.01) "ohat"
 check (contains? (error-of (function () (acid g (+ (zeros 8200) 55) 800 4))) "streaming feature") "acid: its cutoff envelope is a streaming feature (offline says so)"
 check (> (rms (synth-render acid (list (list 'gate g) (list 'freq 55) (list 'cutoff 800) (list 'res 4)) 0.18)) 0.05) "acid: renders through the graph"
 check (== (length (noise g)) (length g)) "noise: as long as a signal"
-# the techno kit, and user functions inlined by the compiler
+; the techno kit, and user functions inlined by the compiler
 each (list (list "tkick" tkick) (list "rumble" rumble) (list "that" that) (list "tohat" tohat) (list "tclap" tclap)) (function (p) (check (> (rms ((last p) g)) 0.01) (concat (head p) ": renders offline")))
 check (> (rms (perc g 220)) 0.05) "perc"
 check (> (rms (sub g 110)) 0.05) "sub (a constant frequency through sig)"
@@ -241,7 +241,7 @@ check (== (length tk) 6) "techno-kit: six synths"
 check (== (length (drums tk "[bd rm] hh pc cp" 4)) 5) "drums: rm and pc tokens"
 check (== (length (duck (poly tpad 2) 4 0.2)) 4) "duck: one event per beat"
 check (equal? (map (accents (list (ev 0 1 print) (ev 0.5 1 print)) 0.05) ev-beat) (list 0 0.55)) "accents"
-# the trance kit
+; the trance kit
 check (near? (synth-render supersaw (list (list 'gate g) (list 'freq 220) (list 'cutoff 1800) (list 'spread 14)) (/ (length g) sr)) (supersaw g 220 1800 14) 1e-5) "supersaw: seven saws, graph equals call"
 check (> (rms (offbass g 110)) 0.05) "offbass"
 check (> (rms (synth-render pluck (list (list 'gate g) (list 'freq 440) (list 'cutoff 3000)) 0.18)) 0.05) "pluck (a falling cutoff: through the graph)"
@@ -258,7 +258,7 @@ check (== (length (gater gp "x ~ x x" 4 0.1)) 4) "gater: one event per token"
 check (== (length (roll (synth clap) 4 24)) 24) "roll: n hits"
 check (< (ev-beat (getidx (roll (synth clap) 4 24) 23)) 4) "roll: within the beats"
 check (== (length (trance-kit)) 4) "trance-kit"
-# spatial nodes: encode, decode, rotate, pan-azimuth, and binaural-decode inlined from signals.mu
+; spatial nodes: encode, decode, rotate, pan-azimuth, and binaural-decode inlined from signals.mu
 function turning (gate az) (ambi-encode (osc sr (sig gate 440) sine-table) 1 az 0)
 var enc (synth-render turning (list (list 'gate g) (list 'az 90)) (/ (length g) sr))
 check (== (length enc) 4) "ambi-encode streamed: four channels"
@@ -288,7 +288,7 @@ check (== (length voices3) 3) "poly"
 check (== (ev-beat (chord-ev 1 0.5 voices3 (chord-midi "A3" 'min) (list))) 1) "chord-ev"
 free-all
 
-# --- controls ---
+; --- controls ---
 clear-controls
 control 'cutoff 100 5000 1200
 toggle 'on 1
@@ -306,7 +306,7 @@ unbind-control 'cutoff
 clear-controls
 check (equal? (controls-list) (list)) "clear-controls"
 
-# --- OSC ---
+; --- OSC ---
 control 'level 0 1 0.5
 osc-listen 47131
 osc-map "/level" 'level
@@ -325,10 +325,10 @@ osc-stop
 clear-controls
 free-all
 
-# --- the evaluation port ---
+; --- the evaluation port ---
 serve 47770
 check (== (serving) 47770) "serve, serving"
-# the client runs in the background: the port is served from this thread's idle time (sleep idles)
+; the client runs in the background: the port is served from this thread's idle time (sleep idles)
 exec "(printf 'var from-editor 41\\n(+ from-editor 1)\\n\\004' | nc 127.0.0.1 47770 > /tmp/musil_port_reply.txt 2>/dev/null &)"
 sleep 0.5
 check (equal? (trim (read "/tmp/musil_port_reply.txt")) "42") "the port evaluates what it receives and replies with the value"
@@ -336,7 +336,7 @@ check (== from-editor 41) "...in the global environment"
 serve-stop
 check (== (serving) 0) "serve-stop"
 
-# --- stopping and closing ---
+; --- stopping and closing ---
 master-gain 0.5
 audio-stop
 check (== (audio-running?) 0) "audio-stop"

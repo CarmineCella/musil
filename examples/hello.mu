@@ -1,4 +1,4 @@
-# Hello Musil!
+; Hello Musil!
 
 print "Hello, Musil!"
 
@@ -12,12 +12,12 @@ print "x * y =" (* x y)
 print "x / 3 =" (/ x 3)
 print "(x + 6) * 2 =" (expr ((x + 6) * 2))
 
-# comparisons return 1 (true) or 0 (false)
+; comparisons return 1 (true) or 0 (false)
 print "x > 10 ->" (> x 10)
 print "x < 10 ->" (< x 10)
 print "x == 42 ->" (== x 42)
 print "x != 42 ->" (!= x 42)
 
-# variable reassignment: var assigns to an existing binding
+; variable reassignment: var assigns to an existing binding
 var x (+ x 1)
 print "x after increment =" x
